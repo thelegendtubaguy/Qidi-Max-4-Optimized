@@ -22,6 +22,7 @@ It exists as a backup/reference for this specific machine, not as a universal pr
 
 ## Public repo notes
 
+- To see config files as shipped by QIDI for specific firmware versions, browse this repo's tags.
 - Main printer MCU and box MCU serial identifiers have been intentionally redacted.
 - This repo is safe to read as reference, but still reflects one physical machine's environment and wiring.
 - If you publish your own dump, review it for hardware IDs, host/network details, and device paths before pushing.
