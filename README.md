@@ -1,4 +1,10 @@
-# QIDI Max 4 Config Repository
+# QIDI Max 4 Combo Config Repository
+
+> [!CAUTION]
+> Use at your own risk!  If you brick your printer, that's a bad day.
+
+> [!CAUTION]
+> This repo contains config files that have values tuned for the Max 4 Combo (with Qidi Box).  If you do not have a Qidi Box connected to your Max 4, you may need different values.
 
 This repository has two goals:
 
@@ -33,6 +39,8 @@ This repository has two goals:
 ## Important notes
 
 - This repo is QIDI Max 4 specific; treat it as a platform-focused reference, not a universal Klipper profile.
+- The active macro flow in this repo assumes a QIDI Box is present and enabled (`box_count >= 1`, `enable_box = 1`).
+- If you are not using a QIDI Box, review and adjust box-related startup/filament macros before using this config set as-is.
 - Some values remain machine-specific (offsets, wiring assumptions, saved state).
 - Main printer and box MCU serial identifiers are redacted where applicable.
 - On-device, `config/fluidd.cfg` is read-only; behavior changes should be implemented in other files under `config/`.
