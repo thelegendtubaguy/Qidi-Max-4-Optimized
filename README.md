@@ -3,7 +3,7 @@
 > [!CAUTION]
 > Use at your own risk!  If you brick your printer, that's a bad day.
 
-> [!CAUTION]
+> [!WARNING]
 > This repo contains config files that have values tuned for the Max 4 Combo (with Qidi Box).  If you do not have a Qidi Box connected to your Max 4, you may need different values.
 
 This repository has two goals:
