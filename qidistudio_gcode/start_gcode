@@ -1,0 +1,202 @@
+;===== PRINT_PHASE_INIT =====
+SET_PRINT_STATS_INFO TOTAL_LAYER=[total_layer_count]
+SET_PRINT_MAIN_STATUS MAIN_STATUS=print_start
+M220 S100
+M221 S100
+SET_INPUT_SHAPER SHAPER_TYPE_X=mzv
+SET_INPUT_SHAPER SHAPER_TYPE_Y=mzv
+DISABLE_ALL_SENSOR
+M1002 R1
+M107
+CLEAR_PAUSE
+M140 S[bed_temperature_initial_layer_single]
+M141 S[chamber_temperatures]
+G29.0
+G28
+
+;===== BOX_PREPAR =====
+BOX_PRINT_START EXTRUDER=[initial_no_support_extruder] HOTENDTEMP={nozzle_temperature_range_high[initial_tool]}
+M400
+EXTRUSION_AND_FLUSH HOTEND=[nozzle_temperature_initial_layer]
+
+;===== CLEAR_NOZZLE =====
+G1 Z20 F480
+MOVE_TO_TRASH
+G1 Y403.5 F2000
+{if chamber_temperatures[0] == 0}
+M106 P3 S[during_print_exhaust_fan_speed]
+{else}
+M106 P3 S0
+{endif}
+M1004
+M106 S0
+M109 S[nozzle_temperature_initial_layer]
+G92 E0
+M83
+G1 E5 F80
+G1 E250 F300
+M400
+M106 S255
+G1 E-3 F1000
+M104 S140
+M109.1 S{nozzle_temperature_initial_layer[0]-30}
+M204 S10000
+G1 Y403 F2000
+G1 X163 F8000
+G1 X145 F5000
+G1 X163 F8000
+G1 X145 F5000
+G1 X175 F6000
+G1 X163
+G1 X175
+G1 X163
+G1 X175
+G1 X163
+G1 X180 F10000
+G1 Y395 F6000
+G1 X188
+G1 Z-0.2 F480
+M106 S255
+M109.1 S150
+G91
+G1 X15 F200
+G1 Y2
+G1 X-15
+G1 Y-2
+G1 X15
+G90
+G2 I0.5 J0.5 F480
+G2 I0.5 J0.5
+G2 I0.5 J0.5
+G1 Z10
+G1 Y383 F12000
+G1 X116
+G1 Y403
+G1 X163 F8000
+G1 X145 F5000
+G1 X163 F8000
+G1 X145 F5000
+G1 X175 F6000
+G1 X163
+G1 X175
+G1 X163
+G1 X175
+G1 X163
+G1 X180 F10000
+G1 X195 Y195
+M106 S0
+M190 S[bed_temperature_initial_layer_single]
+M191 S[chamber_temperatures]
+M400
+SET_OPERATING_CURRENT STEPPER=x VALUE=1500
+G4 P400
+SET_OPERATING_CURRENT STEPPER=y VALUE=1500
+G4 P400
+G1 Y0 F15000
+G1 X15
+G1 X3 F5000
+G4 P1000
+G1 X4 F1000
+G1 X3 F5000
+G4 P1000
+G1 E-4 F1800
+G1 X15 F3000
+
+M400
+SET_OPERATING_CURRENT STEPPER=x VALUE=1200
+G4 P400
+SET_OPERATING_CURRENT STEPPER=y VALUE=1200
+G4 P2000
+G1 X20 Y20 F15000
+Z_TILT_ADJUST
+G29
+M1002 A1
+G1 X380 Y5 F20000
+M109 S[nozzle_temperature_initial_layer]
+ENABLE_ALL_SENSOR
+
+;===== PRINT_START =====
+; Mark printer status as actively printing.
+SET_PRINT_MAIN_STATUS MAIN_STATUS=printing
+; Set total layer count for progress reporting.
+SET_PRINT_STATS_INFO TOTAL_LAYER=[total_layer_count]
+; Select the initial tool.
+T[initial_tool]
+; Set bed target temperature (do not wait).
+M140 S[bed_temperature_initial_layer_single]
+; Set nozzle target temperature (do not wait).
+M104 S[nozzle_temperature_initial_layer]
+; Set chamber target temperature (do not wait).
+M141 S[chamber_temperatures]
+; Move to the front-edge prime area.
+G0 X195 Y1 F20000
+; Move to a safe Z height before probing and priming.
+G0 Z10 F480
+; Apply temperature-based virtual Z compensation (no physical move).
+G92 Z{10 - ((nozzle_temperature_initial_layer[initial_tool] - 130) / 14 - 5.0) / 100}
+; Pause 3 seconds to let temperatures and mechanics settle.
+G4 P3000
+; Take one probe sample at this location.
+probe samples=1
+; Switch to relative coordinates for local moves.
+G91
+; Lift 5 mm in relative mode.
+G0 Z5 F480
+; Return to absolute coordinates.
+G90
+; Move to prime pass #1 start point at the front edge.
+G1 X170 Y1 F20000
+; Switch to relative coordinates for Z approach.
+G91
+; Drop toward first-layer prime height.
+G0 Z{initial_layer_print_height-5} F480
+; Return to absolute coordinates for prime strokes.
+G90
+; Prime pass #1: start stroke with larger extrusion.
+G0 X190 E8 F{outer_wall_volumetric_speed/(24/20) * 60}
+; Prime pass #1: continue stroke segment.
+G0 X195 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5)/4 * 60}
+; Prime pass #1: continue stroke segment.
+G0 X200 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5) * 60}
+; Prime pass #1: continue stroke segment.
+G0 X205 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5)/4 * 60}
+; Prime pass #1: continue stroke segment.
+G0 X210 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5) * 60}
+; Prime pass #1: finish stroke segment.
+G0 X215 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5)/4 * 60}
+; Switch to relative coordinates for inter-pass repositioning.
+G91
+; Move slightly right while lowering Z for transition.
+G1 X1 Z{-1+initial_layer_print_height+0.1}
+; Move right to help break the strand.
+G1 X4
+; Lift 1 mm before moving to the next lane.
+G1 Z1 F480
+; Shift to the second prime lane near the front edge.
+G1 X-50 Y1.5 F20000
+; Move Z back down after lane shift.
+G1 Z{1-initial_layer_print_height-0.1} F480
+; Return to absolute coordinates for prime pass #2.
+G90
+; Prime pass #2: start stroke with larger extrusion.
+G0 X190 E10 F{outer_wall_volumetric_speed/(24/20) * 60}
+; Prime pass #2: continue stroke segment.
+G0 X195 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5)/4 * 60}
+; Prime pass #2: continue stroke segment.
+G0 X200 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5) * 60}
+; Prime pass #2: continue stroke segment.
+G0 X205 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5)/4 * 60}
+; Prime pass #2: continue stroke segment.
+G0 X210 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5) * 60}
+; Prime pass #2: finish stroke segment.
+G0 X215 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5)/4 * 60}
+; Switch to relative coordinates for exit moves.
+G91
+; Move slightly right while lowering Z for final wipe.
+G1 X1 Z{-initial_layer_print_height-0.1}
+; Move right to finish the prime sequence.
+G1 X4
+; Lift 1 mm after priming.
+G1 Z1 F480
+; Restore absolute coordinates for subsequent gcode.
+G90

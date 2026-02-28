@@ -1,0 +1,274 @@
+;===== PRINT_PHASE_INIT =====
+SET_PRINT_STATS_INFO TOTAL_LAYER=[total_layer_count]
+SET_PRINT_MAIN_STATUS MAIN_STATUS=print_start
+M220 S100
+M221 S100
+SET_INPUT_SHAPER SHAPER_TYPE_X=mzv
+SET_INPUT_SHAPER SHAPER_TYPE_Y=mzv
+DISABLE_ALL_SENSOR
+M1002 R1
+M107
+CLEAR_PAUSE
+M140 S[bed_temperature_initial_layer_single]
+M141 S[chamber_temperature]
+G29.0
+G28
+
+;===== BOX_PREPAR =====
+BOX_PRINT_START EXTRUDER=[initial_no_support_extruder] HOTENDTEMP={nozzle_temperature_range_high[initial_tool]}
+M400
+EXTRUSION_AND_FLUSH HOTEND=[nozzle_temperature_initial_layer]
+
+;===== CLEAR_NOZZLE =====
+; Lift nozzle for safe travel into the cleaning routine.
+G1 Z20 F480
+; Move the toolhead to the rear trash/wipe position.
+MOVE_TO_TRASH
+; Nudge to the exact rear purge Y coordinate.
+G1 Y403.5 F2000
+; If chamber heating is off, use exhaust fan speed during purge.
+{if chamber_temperature[0] == 0}
+; Set chamber exhaust fan to configured print speed.
+M106 P3 S[during_print_exhaust_fan_speed]
+; Otherwise keep the chamber exhaust fan off.
+{else}
+; Disable chamber exhaust fan when chamber heating is active.
+M106 P3 S0
+; End chamber fan conditional.
+{endif}
+; Apply configured polar cooler behavior.
+M1004
+; Turn off part cooling fan before hot purge.
+M106 S0
+; Heat nozzle to purge temperature and wait.
+M109 S[nozzle_temperature_initial_layer]
+; Reset extruder position counter.
+G92 E0
+; Use relative extrusion moves.
+M83
+; Prime a small amount to re-establish flow.
+G1 E2 F80
+; Execute the long rear purge.
+G1 E10 F300
+; Wait for all queued purge moves to finish.
+M400
+; Turn part cooling fan to full for ooze control.
+M106 S255
+; Retract slightly to relieve nozzle pressure.
+G1 E-3 F1000
+; Lower nozzle target for wipe/cooldown phase.
+M104 S140
+; Wait for nozzle to cool to the configured threshold.
+M109.1 S{nozzle_temperature_initial_layer[0]-30}
+; Raise acceleration for fast wipe motions.
+M204 S10000
+; Move to rear edge for wipe strokes.
+G1 Y403 F2000
+; Wipe stroke toward X163.
+G1 X163 F8000
+; Wipe stroke toward X145.
+G1 X145 F5000
+; Wipe stroke toward X163.
+G1 X163 F8000
+; Wipe stroke toward X145.
+G1 X145 F5000
+; Sweep to X175.
+G1 X175 F6000
+; Sweep back to X163.
+G1 X163
+; Sweep to X175.
+G1 X175
+; Sweep back to X163.
+G1 X163
+; Sweep to X175.
+G1 X175
+; Sweep back to X163.
+G1 X163
+; Finish sweep at X180.
+G1 X180 F10000
+; Move slightly forward for the next wipe phase.
+G1 Y395 F6000
+; Move to X188 at the wipe feature.
+G1 X188
+; Lower nozzle slightly for contact wiping.
+G1 Z-0.2 F480
+; Keep part cooling fan at full during contact wipe.
+M106 S255
+; Wait until nozzle cools near 150C before scrub motions.
+M109.1 S150
+; Switch to relative mode for short scrub moves.
+G91
+; Scrub move: shift right.
+G1 X15 F200
+; Scrub move: shift up.
+G1 Y2
+; Scrub move: shift left.
+G1 X-15
+; Scrub move: shift down.
+G1 Y-2
+; Scrub move: final shift right.
+G1 X15
+; Return to absolute positioning.
+G90
+; Small circular scrub pass #1.
+G2 I0.5 J0.5 F480
+; Small circular scrub pass #2.
+G2 I0.5 J0.5
+; Small circular scrub pass #3.
+G2 I0.5 J0.5
+; Lift nozzle after scrub.
+G1 Z10
+; Move forward from rear edge.
+G1 Y383 F12000
+; Move toward trash lane X position.
+G1 X116
+; Return to rear wipe Y position.
+G1 Y403
+; Second wipe stroke toward X163.
+G1 X163 F8000
+; Second wipe stroke toward X145.
+G1 X145 F5000
+; Second wipe stroke toward X163.
+G1 X163 F8000
+; Second wipe stroke toward X145.
+G1 X145 F5000
+; Second sweep to X175.
+G1 X175 F6000
+; Second sweep back to X163.
+G1 X163
+; Second sweep to X175.
+G1 X175
+; Second sweep back to X163.
+G1 X163
+; Second sweep to X175.
+G1 X175
+; Second sweep back to X163.
+G1 X163
+; Finish second sweep at X180.
+G1 X180 F10000
+; Move off rear edge after wipe.
+G1 Y383
+; Turn part cooling fan off.
+M106 S0
+; Wait for bed to reach target temperature.
+M190 S[bed_temperature_initial_layer_single]
+; Wait for chamber to reach target temperature.
+M191 S[chamber_temperature]
+; Move to front cutter area.
+G1 Y0 F15000
+; Move to cutter X approach.
+G1 X15 F15000
+; Push into cutter position.
+G1 X3 F5000
+; Dwell to allow cutter action.
+G4 P1000
+; Back off slightly.
+G1 X4 F1000
+; Push into cutter position again.
+G1 X3 F5000
+; Dwell to allow second cutter action.
+G4 P1000
+; Move away from cutter.
+G1 X15 F3000
+; Retract filament after cut.
+G1 E-4 F1800
+; Move to center-front staging position.
+G1 X20 Y20 F15000
+; Run Z-tilt adjustment routine.
+Z_TILT_ADJUST
+; Run bed mesh sequence via g29 macro.
+G29
+; Re-apply saved print Z offset.
+M1002 A1
+; Park near right-front staging position.
+G1 X380 Y5 F20000
+; Heat nozzle back to initial layer temperature and wait.
+M109 S[nozzle_temperature_initial_layer]
+; Re-enable filament sensors for active print.
+ENABLE_ALL_SENSOR
+
+;===== PRINT_START =====
+; Mark printer status as actively printing.
+SET_PRINT_MAIN_STATUS MAIN_STATUS=printing
+; Set total layer count for progress reporting.
+SET_PRINT_STATS_INFO TOTAL_LAYER=[total_layer_count]
+; Select the initial tool.
+T[initial_tool]
+; Set bed target temperature (do not wait).
+M140 S[bed_temperature_initial_layer_single]
+; Set nozzle target temperature (do not wait).
+M104 S[nozzle_temperature_initial_layer]
+; Set chamber target temperature (do not wait).
+M141 S[chamber_temperature]
+; Move to the front-edge prime area.
+G0 X195 Y1 F20000
+; Move to a safe Z height before probing and priming.
+G0 Z10 F480
+; Pause 3 seconds to let temperatures and mechanics settle.
+G4 P3000
+; Take one probe sample at this location.
+probe samples=1
+; Switch to relative coordinates for local moves.
+G91
+; Lift 5 mm in relative mode.
+G0 Z5 F480
+; Return to absolute coordinates.
+G90
+; Move to prime pass #1 start point at the front edge.
+G1 X170 Y1 F20000
+; Switch to relative coordinates for Z approach.
+G91
+; Drop toward first-layer prime height.
+G0 Z{initial_layer_print_height-5} F480
+; Return to absolute coordinates for prime strokes.
+G90
+; Prime pass #1: start stroke with larger extrusion.
+G0 X193 E8 F{outer_wall_volumetric_speed/(24/20) * 60}
+; Prime pass #1: continue stroke segment.
+G0 X198 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5)/4 * 60}
+; Prime pass #1: continue stroke segment.
+G0 X203 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5) * 60}
+; Prime pass #1: continue stroke segment.
+G0 X208 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5)/4 * 60}
+; Prime pass #1: continue stroke segment.
+G0 X213 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5) * 60}
+; Prime pass #1: finish stroke segment.
+G0 X218 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5)/4 * 60}
+; Switch to relative coordinates for inter-pass repositioning.
+G91
+; Move slightly right for transition (Z drop disabled).
+; G1 X1 Z{-initial_layer_print_height-0.1}
+G1 X1
+; Move right to help break the strand.
+G1 X4
+; Keep original Z-lift command disabled.
+; G1 Z1 F480
+; Shift to the second prime lane near the front edge.
+G1 X-50 Y1.5 F20000
+; Keep original Z-drop command disabled.
+; G1 Z-0.7 F480
+; Return to absolute coordinates for prime pass #2.
+G90
+; Prime pass #2: start stroke with larger extrusion.
+G0 X193 E10 F{outer_wall_volumetric_speed/(24/20) * 60}
+; Prime pass #2: continue stroke segment.
+G0 X198 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5)/4 * 60}
+; Prime pass #2: continue stroke segment.
+G0 X203 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5) * 60}
+; Prime pass #2: continue stroke segment.
+G0 X208 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5)/4 * 60}
+; Prime pass #2: continue stroke segment.
+G0 X213 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5) * 60}
+; Prime pass #2: finish stroke segment.
+G0 X218 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5)/4 * 60}
+; Switch to relative coordinates for exit moves.
+G91
+; Move slightly right for final wipe (Z drop disabled).
+; G1 X1 Z{-initial_layer_print_height-0.1}
+G1 X1
+; Move right to finish the prime sequence.
+G1 X4
+; Keep original post-prime Z-lift command disabled.
+; G1 Z1 F480
+; Restore absolute coordinates for subsequent gcode.
+G90

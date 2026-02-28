@@ -23,6 +23,8 @@ This repository has two goals:
 - `config/officiall_filas_list.cfg`, `config/drying.conf`: filament and drying presets.
 - `config/MCU_ID.cfg`, `config/saved_variables.cfg`: MCU mapping and runtime state values.
 - `config/fluidd.cfg`: included for completeness from the printer config set.
+- `orcaslicer_gcode/`: optimized OrcaSlicer custom G-code snippets for this machine.
+- `qidistudio_gcode/`: QIDI Studio custom G-code snippets retained for reference.
 
 ## How to use this repo
 
@@ -30,6 +32,11 @@ This repository has two goals:
 - As part of the optimization pass, original QIDI Chinese comments were translated to English for readability and maintenance.
 - Use git tags/history to inspect config snapshots associated with QIDI firmware releases.
 - Compare your local printer files against this repo before applying changes; merge intentionally rather than copying everything blindly.
+
+## OrcaSlicer G-code
+
+- This repo includes optimized OrcaSlicer custom G-code in `orcaslicer_gcode/`.
+- Use these snippets as the baseline for OrcaSlicer start/end, layer-change, pause, timelapse, and filament-change hooks on this printer.
 
 ## Firmware reference snapshots
 
