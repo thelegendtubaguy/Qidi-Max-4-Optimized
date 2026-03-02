@@ -28,7 +28,7 @@ G1 E{retraction_distances_when_cut[previous_extruder]} F{old_filament_e_feedrate
 {if flush_length_1 > 1}
 ; FLUSH_START
 G1 Y403.5 F2000
-G1 E{flush_length_1} F{old_filament_e_feedrate *0.5}
+G1 E{flush_length_1} F{old_filament_e_feedrate * 0.5}
 ; FLUSH_END
 {endif}
 {if flush_length_2 > 1}
