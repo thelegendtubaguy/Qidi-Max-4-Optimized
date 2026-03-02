@@ -160,13 +160,13 @@ G1 Y0 F15000
 G1 X15 F15000
 ; Push into cutter position.
 G1 X3 F5000
-; Dwell to allow cutter action.
+; Brief 100 ms dwell for cutter action.
 G4 P100
 ; Back off slightly.
 G1 X4 F1000
 ; Push into cutter position again.
 G1 X3 F5000
-; Dwell to allow second cutter action.
+; Brief 100 ms dwell for second cutter action.
 G4 P100
 ; Move away from cutter.
 G1 X15 F3000
@@ -204,8 +204,8 @@ M141 S[chamber_temperatures]
 G0 X195 Y1 F20000
 ; Move to a safe Z height before probing and priming.
 G0 Z10 F480
-; Pause 3 seconds to let temperatures and mechanics settle.
-G4 P3000
+; Pause 1 second to let temperatures and mechanics settle.
+G4 P1000
 ; Take one probe sample at this location.
 probe samples=1
 ; Switch to relative coordinates for local moves.
