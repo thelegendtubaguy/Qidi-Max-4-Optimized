@@ -176,8 +176,8 @@ G1 E-4 F1800
 G1 X20 Y20 F15000
 ; Run Z-tilt adjustment routine.
 Z_TILT_ADJUST
-; Run bed mesh sequence via g29 macro.
-G29
+; Run bed mesh sequence via g29_zsafe macro.
+G29_ZSAFE
 ; Re-apply saved print Z offset.
 M1002 A1
 ; Park near right-front staging position.
