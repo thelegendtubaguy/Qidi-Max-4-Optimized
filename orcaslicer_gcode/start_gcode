@@ -161,13 +161,13 @@ G1 X15 F15000
 ; Push into cutter position.
 G1 X3 F5000
 ; Dwell to allow cutter action.
-G4 P1000
+G4 P100
 ; Back off slightly.
 G1 X4 F1000
 ; Push into cutter position again.
 G1 X3 F5000
 ; Dwell to allow second cutter action.
-G4 P1000
+G4 P100
 ; Move away from cutter.
 G1 X15 F3000
 ; Retract filament after cut.
