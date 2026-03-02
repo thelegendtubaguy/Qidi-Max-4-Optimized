@@ -1,4 +1,5 @@
 G1 Z{max_layer_z + 3.0} F1200
+{if current_extruder != next_extruder}
 TOOL_CHANGE_START F=[current_extruder] T=[next_extruder]
 DISABLE_ALL_SENSOR
 M104 S{old_filament_temp - 10}
@@ -52,7 +53,7 @@ M104 S{new_filament_temp - 10}
 G1 E1 F10
 M109.1 S{new_filament_temp - 10}
 G1 E-4 F1000
-G4 P2000
+G4 P500
 M204 S5000
 G1 Y403 F2000
 G1 X163 F8000
@@ -82,3 +83,4 @@ M104 S[new_filament_temp]
 TOOL_CHANGE_END
 G1 E{new_retract_length_toolchange + 1} F{new_filament_e_feedrate}
 ENABLE_ALL_SENSOR
+{endif}
