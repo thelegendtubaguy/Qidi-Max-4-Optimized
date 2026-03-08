@@ -188,8 +188,6 @@ M109 S[nozzle_temperature_initial_layer]
 ENABLE_ALL_SENSOR
 
 ;===== PRINT_START =====
-; Mark printer status as actively printing.
-SET_PRINT_MAIN_STATUS MAIN_STATUS=printing
 ; Set total layer count for progress reporting.
 SET_PRINT_STATS_INFO TOTAL_LAYER=[total_layer_count]
 ; Select the initial tool.
@@ -272,3 +270,5 @@ G1 X4
 ; G1 Z1 F480
 ; Restore absolute coordinates for subsequent gcode.
 G90
+; Mark printer status as actively printing after startup completes.
+SET_PRINT_MAIN_STATUS MAIN_STATUS=printing
