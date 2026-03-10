@@ -20,6 +20,10 @@
 
 4. Keep redacted hardware identifiers redacted.
 
+5. When a user asks you to find, verify, or compare behavior against what QIDI shipped, check the `main` branch.
+   - In this repo, `main` is the stock QIDI-shipped branch for this machine.
+   - Treat configs and macros from `main` as the baseline definition of "stock" unless the user says otherwise.
+
 ## Fast repo orientation
 
 - Active runtime include graph is in `config/printer.cfg`:
