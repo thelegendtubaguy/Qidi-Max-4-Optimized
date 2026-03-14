@@ -33,6 +33,14 @@ This repository has two goals:
 - Use git tags/history to inspect config snapshots associated with QIDI firmware releases.
 - Compare your local printer files against this repo before applying changes; merge intentionally rather than copying everything blindly.
 
+## Formatting
+
+- Use `python3 scripts/format_klipper_configs.py` to format editable Klipper config files in `config/`.
+- Use `python3 scripts/format_klipper_configs.py --check` to verify formatting without writing changes.
+- Use `python3 scripts/format_klipper_configs.py --diff` to preview the formatter diff.
+- You can also target specific files or directories, for example `python3 scripts/format_klipper_configs.py config/printer.cfg`.
+- The formatter intentionally skips `config/fluidd.cfg` and `config/saved_variables.cfg`, and preserves the auto-generated `SAVE_CONFIG` block.
+
 ## Optimized branch results vs `main`
 
 - Print start and tool prep spend less fixed dead time. Key waits were trimmed in homing, cutter, and probe flows (for example: mesh save wait reduced from `5.0s` to `0.5s`, and one cutter sequence reduced from about `3.2s` of fixed waits to about `0.22s`).

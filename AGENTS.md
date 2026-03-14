@@ -24,6 +24,15 @@
    - In this repo, `main` is the stock QIDI-shipped branch for this machine.
    - Treat configs and macros from `main` as the baseline definition of "stock" unless the user says otherwise.
 
+6. If you edit Klipper config files while on the `optimized` branch, run `python3 scripts/format_klipper_configs.py` before finishing.
+   - This applies to editable `.cfg` files under `config/`.
+   - Do not run it against `config/fluidd.cfg` or `config/saved_variables.cfg`; the script already skips them.
+
+7. On the `optimized` branch, never add, restore, or commit unredacted hardware identifiers.
+   - This includes MCU serials, USB `by-id` paths, board IDs, and any other machine-unique hardware identifier.
+   - If a file on `optimized` needs an identifier for reference, keep the existing `REDACTED` form or redact the value before saving.
+   - Treat `config/MCU_ID.cfg` and `config/box.cfg` as especially sensitive: do not ever store the real IDs in those files on `optimized`.
+
 ## Fast repo orientation
 
 - Active runtime include graph is in `config/printer.cfg`:
@@ -52,3 +61,4 @@
 
 - If asked to translate Chinese text, only translate comments unless explicitly instructed otherwise.
 - Leave runtime/status/warning strings unchanged by default to avoid breaking UI integrations or expected messages.
+- Do not translate runtime/status/warning strings in this repo unless the user explicitly approves each affected string set after review.
