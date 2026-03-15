@@ -214,61 +214,29 @@ G91
 G0 Z5 F480
 ; Return to absolute coordinates.
 G90
-; Move to prime pass #1 start point at the front edge.
-G1 X170 Y1 F20000
-; Switch to relative coordinates for Z approach.
-G91
-; Drop toward first-layer prime height.
-G0 Z{initial_layer_print_height-5} F480
-; Return to absolute coordinates for prime strokes.
-G90
-; Prime pass #1: start stroke with larger extrusion.
-G0 X193 E8 F{outer_wall_volumetric_speed/(24/20) * 60}
-; Prime pass #1: continue stroke segment.
-G0 X198 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5)/4 * 60}
-; Prime pass #1: continue stroke segment.
-G0 X203 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5) * 60}
-; Prime pass #1: continue stroke segment.
-G0 X208 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5)/4 * 60}
-; Prime pass #1: continue stroke segment.
-G0 X213 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5) * 60}
-; Prime pass #1: finish stroke segment.
-G0 X218 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5)/4 * 60}
-; Switch to relative coordinates for inter-pass repositioning.
-G91
-; Move slightly right for transition (Z drop disabled).
-; G1 X1 Z{-initial_layer_print_height-0.1}
-G1 X1
-; Move right to help break the strand.
-G1 X4
-; Keep original Z-lift command disabled.
-; G1 Z1 F480
-; Shift to the second prime lane near the front edge.
-G1 X-50 Y1.5 F20000
-; Keep original Z-drop command disabled.
-; G1 Z-0.7 F480
-; Return to absolute coordinates for prime pass #2.
-G90
-; Prime pass #2: start stroke with larger extrusion.
-G0 X193 E10 F{outer_wall_volumetric_speed/(24/20) * 60}
-; Prime pass #2: continue stroke segment.
-G0 X198 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5)/4 * 60}
-; Prime pass #2: continue stroke segment.
-G0 X203 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5) * 60}
-; Prime pass #2: continue stroke segment.
-G0 X208 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5)/4 * 60}
-; Prime pass #2: continue stroke segment.
-G0 X213 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5) * 60}
-; Prime pass #2: finish stroke segment.
-G0 X218 E.3742 F{outer_wall_volumetric_speed/(0.3*0.5)/4 * 60}
-; Switch to relative coordinates for exit moves.
-G91
-; Move slightly right for final wipe (Z drop disabled).
-; G1 X1 Z{-initial_layer_print_height-0.1}
-G1 X1
-; Move right to finish the prime sequence.
-G1 X4
-; Keep original post-prime Z-lift command disabled.
-; G1 Z1 F480
-; Restore absolute coordinates for subsequent gcode.
-G90
+; Move to the front-edge purge start point.
+G1 X194 Y1 F20000
+; Drop to the first-layer purge height.
+G1 Z{initial_layer_print_height} F480
+; Wait for nozzle to be fully back at first-layer temperature.
+M109 S[nozzle_temperature_initial_layer]
+; Use relative extrusion for the purge line.
+M83
+; Reset extruder position before priming.
+G92 E0
+; Build nozzle pressure before the line starts.
+G1 E6 F{min(1200, max(120, filament_max_volumetric_speed[initial_no_support_extruder]*60/2/2.5043))}
+; Run part cooling during the purge to help the strand release cleanly.
+M106 S200
+; Draw one continuous front-edge purge line.
+G1 X154 E20 F{min(12000, max(1200, filament_max_volumetric_speed[initial_no_support_extruder]*60/2/2.5043))}
+; Slow slightly for the tail to finish the line cleanly.
+G1 F6000
+; Add a short tail move to reduce stringing at line end.
+G1 X149 E0.8
+; Turn the part cooling fan back off after the purge.
+M106 S0
+; Reset extruder position for the print proper.
+G92 E0
+; Restore absolute extrusion mode for sliced moves.
+M82
