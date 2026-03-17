@@ -18,8 +18,6 @@ G28
 START_PRINT_FILAMENT_PREP EXTRUDER=[initial_no_support_extruder] HOTENDTEMP={nozzle_temperature_range_high[initial_tool]} PURGETEMP=[nozzle_temperature_initial_layer] BEDTEMP=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperatures]
 
 ;===== PRINT_START =====
-; Mark printer status as actively printing.
-SET_PRINT_MAIN_STATUS MAIN_STATUS=printing
 ; Set total layer count for progress reporting.
 SET_PRINT_STATS_INFO TOTAL_LAYER=[total_layer_count]
 ; Select the initial tool.
@@ -70,3 +68,5 @@ M106 S0
 G92 E0
 ; Restore absolute extrusion mode for sliced moves.
 M82
+; Mark printer status as actively printing after startup completes.
+SET_PRINT_MAIN_STATUS MAIN_STATUS=printing
