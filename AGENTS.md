@@ -51,6 +51,13 @@
 - Adaptive mesh wrapper and `g29`: `config/klipper-macros-qd/bed_mesh.cfg`
 - Pause/resume/cancel flow: `config/klipper-macros-qd/pause_resume_cancel.cfg`
 
+## Vendor reverse-engineering notes
+
+- `BOX_PRINT_START_NOTES.md` is a repo-local technical note about QIDI's vendor-implemented `BOX_PRINT_START` command.
+- It documents the current evidence trail across macros, visible Python modules, compiled Klipper extras on the printer, and inferred call paths.
+- Read it when working on box or multi-color startup behavior, tracing `BOX_PRINT_START`, `box_extras`, `multi_color_controller`, or other vendor box internals.
+- Read it before claiming how box print-start material prep works; the implementation is partly in compiled vendor modules and is not obvious from the config files alone.
+
 ## Timing and tuning notes
 
 - `G4 P...` is fixed dead time; `M400` waits only for queued motion to finish.
