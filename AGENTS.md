@@ -64,6 +64,12 @@
 - For conservative speedups, trim fixed `G4` waits before changing motion speeds/accelerations.
 - Common timing knobs are exposed in `config/klipper-macros-qd/globals.cfg` (`*_settle*`, `start_bed_heat_delay`, etc.).
 
+## Start-sequence terminology
+
+- Use `purge` only for extrusion over the waste chute / wiper area at the rear of the machine.
+- Use `prime line` for the front-of-bed extrusion in slicer start gcode.
+- Keep that distinction explicit when describing, tracing, or editing print-start behavior.
+
 ## Localization guardrail
 
 - If asked to translate Chinese text, only translate comments unless explicitly instructed otherwise.
