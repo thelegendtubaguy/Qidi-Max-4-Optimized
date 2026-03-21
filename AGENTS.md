@@ -63,6 +63,7 @@
 - `G4 P...` is fixed dead time; `M400` waits only for queued motion to finish.
 - For conservative speedups, trim fixed `G4` waits before changing motion speeds/accelerations.
 - Common timing knobs are exposed in `config/klipper-macros-qd/globals.cfg` (`*_settle*`, `start_bed_heat_delay`, etc.).
+- Treat apparently unused globals in `config/klipper-macros-qd/globals.cfg` as potentially externally consumed unless proven otherwise. In particular, be cautious about removing or renaming `bed_surface_max_name_length`, `bed_surfaces`, `load_length`, `load_min_temp`, `load_priming_length`, `load_priming_speed`, `menu_show_octoprint`, `menu_show_sdcard`, `menu_temperature`, and `start_end_park_y`.
 
 ## Start-sequence terminology
 
