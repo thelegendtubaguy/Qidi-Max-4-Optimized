@@ -1383,6 +1383,131 @@ Recovered validation strings include:
 - `未指定温度参数` - no temperature parameter specified
 - `未知的ACTION参数:` - unknown `ACTION` parameter
 
+### `sync_to_extruder` and `unsync_from_extruder`
+
+These are real first-class controller operations, not just UI bookkeeping.
+
+Best current cross-stack meaning:
+
+- `sync_to_extruder` means bind a specific slot to the active extruder path
+- `unsync_from_extruder` means clear that binding and return to an unsynced sentinel state
+
+The strongest current evidence is that `slot_sync` is both:
+
+- a persisted software record of the active bound slot
+- a real control input used by print-start logic to decide whether an already-loaded path can be trusted
+
+#### Controller entry behavior
+
+`cmd_multi_color_sync` appears to be the public controller entry point.
+
+Best current command model:
+
+- sync uses an `ACTION`-driven branch
+- starting sync requires `SLOT`
+- unsync does not appear to require `SLOT`
+
+#### Local adapter behavior
+
+Best current local model:
+
+- `LocalAdapter.sync_to_extruder(slot)` calls a one-argument local hardware-facing sync primitive
+- on success, it appears to persist sync state, most likely `save_variable("slot_sync", slot)`
+- `LocalAdapter.unsync_from_extruder()` is a zero-argument local unbind path
+- it appears to call a local unsync primitive, then a local follow-up helper, then return success/failure
+
+The strongest current inference is that the local sync primitive is either:
+
+- `box_stepper.slot_sync(slot)`
+
+or a very thin wrapper around it.
+
+The local unsync primitive looks like a higher-level path that likely reaches the lower-level unbind logic indirectly.
+
+#### Remote adapter behavior
+
+Best current remote model:
+
+- `RemoteAdapter.sync_to_extruder(slot)` builds a remote command dict and sends it over USB JSON
+- that payload contains a fixed command string for `sync_to_extruder`
+- the provided `slotN` string is normalized to a numeric slot value before send
+- `RemoteAdapter.unsync_from_extruder()` is a zero-argument remote action
+- it builds a remote command dict, adds a generated command id, sends it, and evaluates the reply
+
+Best current remote payload model:
+
+```json
+{"command":"sync_to_extruder","slot":N,"cmd_id":"..."}
+```
+
+and:
+
+```json
+{"command":"unsync_from_extruder","cmd_id":"..."}
+```
+
+The exact field names beyond the command string and slot are still not fully pinned down, but the shape above is strongly supported.
+
+## Lower-level sync implementation in `box_stepper.so`
+
+### Relevant methods
+
+- `BoxExtruderStepper.slot_sync`
+- `BoxExtruderStepper.init_slot_sync`
+- `BoxExtruderStepper.sync_unbind_extruder`
+
+### Best current behavior model
+
+`slot_sync` is not just a boolean.
+
+Best current combined model:
+
+- persisted `save_variables.slot_sync` holds a slot-name token such as `slot0` or the unsynced sentinel `slot-1`
+- `box_stepper.so` also maintains a separate in-memory boolean sync flag
+- together they represent a real binding between a feeder slot and the extruder path
+
+#### `BoxExtruderStepper.slot_sync`
+
+Best current understanding:
+
+- takes a slot-related argument and an optional extra argument
+- builds a `slot` token string internally
+- flips an internal sync boolean `True` or `False` on different paths
+- likely performs the actual bind/rebind work between the active slot and the extruder path
+- likely updates persisted `slot_sync` state through a helper path
+
+#### `BoxExtruderStepper.init_slot_sync`
+
+Best current understanding:
+
+- startup/reconciliation-style method
+- likely restores or validates sync bookkeeping from current slot/object state and saved state
+- does not look like the full load/unload path
+
+#### `BoxExtruderStepper.sync_unbind_extruder`
+
+Best current understanding:
+
+- returns early if the internal sync flag is not set
+- otherwise clears the same internal sync flag
+- then runs cleanup helpers
+- likely tears down the active sync binding and resets persisted sync state toward the unsynced sentinel
+
+### Why sync matters to `BOX_PRINT_START`
+
+`BOX_PRINT_START` reads:
+
+- target slot from `value_t<EXTRUDER>`
+- current slot from `last_load_slot`
+- sync state from `slot_sync`
+
+Best current implication:
+
+- if `target_slot == current_slot` but `slot_sync != current_slot`, print start does not trust the already-loaded path
+- instead, it takes a same-slot reload/resync path
+
+So sync is not just bookkeeping. It materially affects whether the printer trusts the current filament path.
+
 ## Practical direct-control conclusion
 
 Best current practical answer:
