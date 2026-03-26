@@ -652,11 +652,11 @@ Best current conclusion:
 - `cmd_BOX_PRINT_START`
 - `cmd_INIT_BOX_STATE`
 - `cmd_INIT_RFID_READ`
+- `cmd_CLEAR_FLUSH`
+- `cmd_CLEAR_OOZE`
 - `cmd_CLEAR_RUNOUT_NUM`
 - `cmd_TIGHTEN_FILAMENT`
 - `cmd_RELOAD_ALL`
-- `cmd_CLEAR_FLUSH`
-- `cmd_CLEAR_OOZE`
 - `cmd_CUT_FILAMENT`
 - `cmd_AUTO_RELOAD_FILAMENT`
 - `cmd_RETRY`
@@ -692,6 +692,117 @@ Best current conclusion:
 
 - `cmd_BOX_PRINT_START` is not a tiny pass-through
 - it builds and runs substantial internal gcode scripts
+
+### `CLEAR_FLUSH` and `CLEAR_OOZE`
+
+These two commands are now much better understood.
+
+#### What they are not
+
+- they are not persisted save-variable clears
+- they are not large orchestration handlers like `cmd_BOX_PRINT_START`
+- they are not implemented by `M1004`
+
+#### Local implementation in `box_extras.so`
+
+Both local handlers are tiny wrappers that resolve `self.gcode` and then call:
+
+- `self.gcode.run_script_from_command(...)`
+
+with a fixed embedded script string.
+
+Best current reconstruction:
+
+```python
+def cmd_CLEAR_FLUSH(self, gcmd):
+    self.gcode.run_script_from_command(
+        "M204 S10000\nG1 X180 F10000\nMOVE_TO_TRASH"
+    )
+```
+
+```python
+def cmd_CLEAR_OOZE(self, gcmd):
+    self.gcode.run_script_from_command(
+        "M204 S10000\n"
+        "G1 X163 F8000\n"
+        "G1 X145 F5000\n"
+        "G1 X163 F8000\n"
+        "G1 X145 F5000\n"
+        "G1 X175 F6000\n"
+        "G1 X163\n"
+        "G1 X175\n"
+        "G1 X163\n"
+        "G1 X175\n"
+        "G1 X163\n"
+    )
+```
+
+That means these commands do issue real motion locally.
+
+Best current physical interpretation:
+
+- `CLEAR_FLUSH` performs a fast X move and then sends the toolhead to the trash position
+- `CLEAR_OOZE` performs a short nozzle-wipe style X oscillation sequence
+
+So despite the names sounding like hidden-state resets, the local implementations are actual canned cleanup motions.
+
+#### Controller-layer behavior
+
+`multi_color_controller.so` contains:
+
+- `cmd_multi_color_clear_flush`
+- `cmd_multi_color_clear_ooze`
+- `LocalAdapter.clear_flush`
+- `LocalAdapter.clear_ooze`
+- `RemoteAdapter.clear_flush`
+- `RemoteAdapter.clear_ooze`
+
+Best current controller model:
+
+- controller handlers are thin wrappers
+- local adapter emits `CLEAR_FLUSH` or `CLEAR_OOZE`
+- remote adapter sends remote actions `clear_flush` or `clear_ooze`
+- controller code appears to unpack a `(success, message)` style result and report it
+
+I do not currently have proof that the controller wrappers themselves mutate `UnifiedState` directly.
+
+#### Best current semantic meaning
+
+These commands now look like cleanup primitives for vendor-managed purge/wipe phases:
+
+- `CLEAR_FLUSH` is most likely the cleanup motion for the flush/purge phase, probably corresponding to the vendor wipe/old-filament-removal stage
+- `CLEAR_OOZE` is most likely the cleanup motion for residual nozzle ooze/drip, implemented as a short wipe pattern
+
+They may still also act as implicit acknowledgements of hidden vendor state, but the strongest direct evidence now is the local motion scripts above.
+
+#### Macro placement
+
+In visible config, they are always called as a pair, always in this order:
+
+- `CLEAR_OOZE`
+- `CLEAR_FLUSH`
+
+Visible call sites:
+
+- `config/klipper-macros-qd/filament.cfg` after `M1004` and `G4 P5000` inside `EXTRUSION_AND_FLUSH`
+- `config/box.cfg` after unload, small extrusion, and heater-off inside `UNLOAD_FILAMENT`
+
+That placement still supports the idea that they are post-purge/post-unload cleanup motions.
+
+#### `M1004`
+
+`M1004` is not one of the hidden box cleanup handlers.
+
+In this repo, `M1004` is a normal macro in `config/klipper-macros-qd/qd_macro.cfg` that drives:
+
+- `M106 P4`
+
+which maps to the `Polar_cooler` output.
+
+Best current interpretation:
+
+- `M1004` is a cooling aid before the delayed cleanup sequence
+- it is not itself the thing that clears flush/ooze state
 
 ### `cmd_BOX_PRINT_START` size and significance
 
