@@ -11,7 +11,7 @@ It is:
 For stock QIDI-shipped configs and firmware-version snapshots, see [Qidi-Max4-Defaults](https://github.com/thelegendtubaguy/Qidi-Max4-Defaults).
 
 > [!WARNING]
-> These configs are tuned around a Max 4 Combo setup with a QIDI Box. If you are running a plain Max 4 or different hardware, review the box, startup, and filament flows before using them.
+> These configs were tuned with a Qidi box, but should work without a Qidi box or multiple boxes.
 
 ## What's in this repo
 
