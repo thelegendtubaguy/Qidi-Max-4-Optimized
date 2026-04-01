@@ -6,15 +6,14 @@
 > [!WARNING]
 > This repo contains config files that have values tuned for the Max 4 Combo (with Qidi Box).  If you do not have a Qidi Box connected to your Max 4, you may need different values.
 
-This repository has two goals:
+This repository tracks the current QIDI Max 4 configuration set for this machine.
 
-1. Maintain an optimized QIDI Max 4 configuration set for daily printing.
-2. Preserve QIDI-shipped configuration files from firmware releases as a reference archive.
+Stock QIDI-shipped configs and firmware-version snapshots for this printer are tracked separately at [Qidi-Max4-Defaults](https://github.com/thelegendtubaguy/Qidi-Max4-Defaults).
 
 ## What's in this repo
 
 - `config/`: active Klipper configuration, macros, machine settings, and included support configs.
-- `docs/`: repo-local technical notes, flow documentation, and branch/reference notes.
+- `docs/`: repo-local technical notes, flow documentation, and reference notes.
 - `orcaslicer_gcode/`: OrcaSlicer custom G-code snippets for this machine.
 - `qidistudio_gcode/`: QIDI Studio custom G-code snippets for this machine.
 
@@ -22,13 +21,14 @@ This repository has two goals:
 
 - [Temperature Flow From Orca And QIDI Studio Start G-Code](docs/orca-hotendtemp-purgetemp-flow.md): temperature timeline from the OrcaSlicer and QIDI Studio start gcode through the active box-prep and prime-line sequence.
 - [QIDI Box Implementation Notes](docs/box_print_start_notes.md): reverse-engineering notes for QIDI's vendor-implemented `BOX_PRINT_START` and related box internals.
-- [Optimized Branch Results Vs `main`](docs/optimized-vs-main.md): summary of optimized-branch behavior changes and estimated time impact versus stock `main`.
+- [Current Config Results Vs Stock QIDI Configs](docs/current-config-results-vs-stock-qidi-configs.md): summary of behavior changes and estimated time impact versus the stock configs shipped by QIDI.
+- [QIDI Client Firmware Update Flow](docs/qidi_client_firmware_update_flow.md): confirmed firmware update endpoints, download hosts, and best-supported interpretation of `currentVersion` and `deviceId`.
 
 ## How to use this repo
 
-- Use the current files in `config/` as the optimized baseline for QIDI Max 4 tuning and macro behavior.
+- Use the current files in `config/` as the active baseline for QIDI Max 4 tuning and macro behavior on this machine.
 - As part of the optimization pass, original QIDI Chinese comments were translated to English for readability and maintenance.
-- Use git tags/history to inspect config snapshots associated with QIDI firmware releases.
+- Use the stock-configs repo tags/history to inspect config snapshots associated with QIDI firmware releases.
 - Compare your local printer files against this repo before applying changes; merge intentionally rather than copying everything blindly.
 
 ## Formatting
@@ -41,10 +41,10 @@ This repository has two goals:
 - This repo includes custom slicer G-code in `orcaslicer_gcode/` and `qidistudio_gcode/`.
 - Use these snippets as the baseline for start/end, layer-change, pause, timelapse, and filament-change hooks on this printer.
 
-## Firmware reference snapshots
+## Stock Configs
 
-- QIDI-shipped configurations are tracked in repository history and tags.
-- To inspect a specific firmware snapshot, check out the relevant tag and review the files under `config/`.
+- Stock QIDI-shipped configs and firmware-version snapshots are tracked at [Qidi-Max4-Defaults](https://github.com/thelegendtubaguy/Qidi-Max4-Defaults).
+- Use that repo when you want to compare the current configs here against what QIDI shipped for a given firmware release.
 
 ## Important notes
 

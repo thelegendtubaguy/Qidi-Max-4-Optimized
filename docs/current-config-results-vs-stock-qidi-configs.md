@@ -1,6 +1,8 @@
-# Optimized Branch Results Vs `main`
+# Current Config Results Vs Stock QIDI Configs
 
-This note summarizes the practical differences between the current optimized branch and the stock QIDI-shipped `main` branch for this machine.
+This note summarizes the practical differences between the current configs in this repo and the stock configs shipped by QIDI for this machine.
+
+For stock baselines and firmware-version snapshots, see `https://github.com/thelegendtubaguy/Qidi-Max4-Defaults`.
 
 ## Behavior Changes
 
@@ -11,7 +13,7 @@ This note summarizes the practical differences between the current optimized bra
 - Multi-color/toolchange flow is more controllable: `CUT_FILAMENT_TC` adds a wrapper for cutter mode selection, and startup box flush is now optional (`start_box_flush_after_load`) instead of always forced.
 - End-of-print cooling is improved with a timed chamber/exhaust fan cooldown macro (`END_FAN_COOLDOWN`), so post-print heat is evacuated without leaving fans running indefinitely.
 - Electronics cooling was strengthened by increasing board fan run speed (`0.6` to `0.9`) and adding a controller fan idle timeout.
-- Slicer integration is explicit in-repo: optimized custom G-code packs for OrcaSlicer and QIDI Studio are included and aligned with the branch macros.
+- Slicer integration is explicit in-repo: custom G-code packs for OrcaSlicer and QIDI Studio are included and aligned with the current macros.
 
 ## Estimated Time Impact
 

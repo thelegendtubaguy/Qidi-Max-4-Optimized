@@ -20,18 +20,18 @@
 
 4. Keep redacted hardware identifiers redacted.
 
-5. When a user asks you to find, verify, or compare behavior against what QIDI shipped, check the `main` branch.
-   - In this repo, `main` is the stock QIDI-shipped branch for this machine.
-   - Treat configs and macros from `main` as the baseline definition of "stock" unless the user says otherwise.
+5. When a user asks you to find, verify, or compare behavior against what QIDI shipped, use the stock-configs repo as the baseline.
+   - Stock QIDI-shipped configs and firmware-version snapshots for this machine live at `https://github.com/thelegendtubaguy/Qidi-Max4-Defaults`.
+   - Treat that repo's configs, docs, tags, and release snapshots as the definition of "stock" unless the user says otherwise.
 
-6. If you edit Klipper config files while on the `optimized` branch, run `python3 scripts/format_klipper_configs.py` before finishing.
+6. If you edit Klipper config files, run `python3 scripts/format_klipper_configs.py` before finishing.
    - This applies to editable `.cfg` files under `config/`.
    - Do not run it against `config/fluidd.cfg` or `config/saved_variables.cfg`; the script already skips them.
 
-7. On the `optimized` branch, never add, restore, or commit unredacted hardware identifiers.
+7. Never add, restore, or commit unredacted hardware identifiers.
    - This includes MCU serials, USB `by-id` paths, board IDs, and any other machine-unique hardware identifier.
-   - If a file on `optimized` needs an identifier for reference, keep the existing `REDACTED` form or redact the value before saving.
-   - Treat `config/MCU_ID.cfg` and `config/box.cfg` as especially sensitive: do not ever store the real IDs in those files on `optimized`.
+   - If a file in this repo needs an identifier for reference, keep the existing `REDACTED` form or redact the value before saving.
+   - Treat `config/MCU_ID.cfg` and `config/box.cfg` as especially sensitive: do not ever store the real IDs in those files in this repo.
 
 8. When you change Klipper configs or slicer G-code, update repo documentation where needed.
    - This applies to edits under `config/`, `orcaslicer_gcode/`, and `qidistudio_gcode/`.
