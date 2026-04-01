@@ -17,7 +17,7 @@ The current in-repo OrcaSlicer and QIDI Studio startup temperature flow is:
 1. bed starts heating to first-layer bed temp
 2. chamber starts heating to chamber temp
 3. `START_PRINT_FILAMENT_PREP` begins the box/material prep path
-4. vendor box-start logic uses `HOTENDTEMP = nozzle_temperature_range_high[initial_tool]`
+4. QIDI box-start logic uses `HOTENDTEMP = nozzle_temperature_range_high[initial_tool]`
 5. visible rear flush uses that same `HOTENDTEMP`
 6. the macro cools down toward `PURGETEMP - 30`
 7. the macro returns the nozzle to `PURGETEMP = nozzle_temperature_initial_layer`
@@ -152,7 +152,7 @@ Important:
 - with the current slicer profile, that is `{nozzle_temperature_range_high[initial_tool]}`
 - it does not receive `PURGETEMP`
 
-So the vendor box-start path is driven from the slicer's configured high-end nozzle temperature, not the first-layer nozzle temperature.
+So the QIDI box-start path is driven from the slicer's configured high-end nozzle temperature, not the first-layer nozzle temperature.
 
 ## 4.2 Visible flush also uses `HOTENDTEMP`
 
@@ -263,4 +263,4 @@ In this repo's OrcaSlicer and QIDI Studio start gcode:
 - `PURGETEMP` also sets the post-flush cooldown threshold through `PURGETEMP - 30`
 - the slicer then uses that same first-layer nozzle temperature for the front prime line
 
-For deeper vendor reverse-engineering, see `docs/box_print_start_notes.md`.
+For deeper QIDI reverse-engineering, see `docs/box_print_start_notes.md`.
