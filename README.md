@@ -1,11 +1,5 @@
 # Qidi Max 4 Optimized
 
-> [!CAUTION]
-> Use at your own risk. If you brick your printer, that's a bad day.
-
-> [!WARNING]
-> These configs are tuned around a Max 4 Combo setup with a QIDI Box. If you are running a plain Max 4 or different hardware, review the box, startup, and filament flows before using them.
-
 This repository is an opinionated, tuned configuration set for the QIDI Max 4.
 
 It is:
@@ -15,6 +9,9 @@ It is:
 - a reference for the docs and reverse-engineering notes needed to maintain that setup
 
 For stock QIDI-shipped configs and firmware-version snapshots, see [Qidi-Max4-Defaults](https://github.com/thelegendtubaguy/Qidi-Max4-Defaults).
+
+> [!WARNING]
+> These configs are tuned around a Max 4 Combo setup with a QIDI Box. If you are running a plain Max 4 or different hardware, review the box, startup, and filament flows before using them.
 
 ## What's in this repo
 
