@@ -33,6 +33,15 @@
    - If a file on `optimized` needs an identifier for reference, keep the existing `REDACTED` form or redact the value before saving.
    - Treat `config/MCU_ID.cfg` and `config/box.cfg` as especially sensitive: do not ever store the real IDs in those files on `optimized`.
 
+8. When you change Klipper configs or slicer G-code, update repo documentation where needed.
+   - This applies to edits under `config/`, `orcaslicer_gcode/`, and `qidistudio_gcode/`.
+   - Update existing notes in `docs/` or add new ones when the change alters behavior, assumptions, or integration details that future agents or operators would need.
+
+9. Keep the OrcaSlicer and QIDI Studio G-code packs in sync functionally.
+   - This applies to matching files under `orcaslicer_gcode/` and `qidistudio_gcode/`.
+   - Preserve the slicer-specific variable syntax and placeholders each slicer requires.
+   - When one slicer's custom G-code behavior changes, update the other slicer's equivalent file so the two flows still behave the same unless the user explicitly wants them to diverge.
+
 ## Fast repo orientation
 
 - Active runtime include graph is in `config/printer.cfg`:
@@ -53,7 +62,7 @@
 
 ## Vendor reverse-engineering notes
 
-- `BOX_PRINT_START_NOTES.md` is a repo-local technical note about QIDI's vendor-implemented `BOX_PRINT_START` command.
+- `docs/box_print_start_notes.md` is a repo-local technical note about QIDI's vendor-implemented `BOX_PRINT_START` command.
 - It documents the current evidence trail across macros, visible Python modules, compiled Klipper extras on the printer, and inferred call paths.
 - Read it when working on box or multi-color startup behavior, tracing `BOX_PRINT_START`, `box_extras`, `multi_color_controller`, or other vendor box internals.
 - Read it before claiming how box print-start material prep works; the implementation is partly in compiled vendor modules and is not obvious from the config files alone.
