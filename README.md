@@ -14,12 +14,6 @@ It is:
 - a place to keep the paired OrcaSlicer and QIDI Studio custom G-code in sync with those configs
 - a reference for the docs and reverse-engineering notes needed to maintain that setup
 
-It is not:
-
-- a stock mirror of what QIDI ships
-- a generic profile for every Max 4
-- a literal dump of one printer's full live filesystem
-
 For stock QIDI-shipped configs and firmware-version snapshots, see [Qidi-Max4-Defaults](https://github.com/thelegendtubaguy/Qidi-Max4-Defaults).
 
 ## What's in this repo
@@ -34,8 +28,6 @@ For stock QIDI-shipped configs and firmware-version snapshots, see [Qidi-Max4-De
 - [Temperature Flow From Orca And QIDI Studio Start G-Code](docs/orca-hotendtemp-purgetemp-flow.md): temperature timeline from the OrcaSlicer and QIDI Studio start gcode through the active box-prep and prime-line sequence.
 - [QIDI Box Implementation Notes](docs/box_print_start_notes.md): reverse-engineering notes for QIDI's vendor-implemented `BOX_PRINT_START` and related box internals.
 - [Current Config Results Vs Stock QIDI Configs](docs/current-config-results-vs-stock-qidi-configs.md): summary of behavior changes and estimated time impact versus the stock configs shipped by QIDI.
-- [QIDI Client Firmware Update Flow](docs/qidi_client_firmware_update_flow.md): confirmed firmware update endpoints, download hosts, and best-supported interpretation of `currentVersion` and `deviceId`.
-- [QIDI Max 4 Firmware GitHub Action Setup](docs/qidi_max4_firmware_github_action.md): setup notes for the starter GitHub Action that checks Max 4 firmware and can download the update package for analysis.
 
 ## How to use this repo
 
