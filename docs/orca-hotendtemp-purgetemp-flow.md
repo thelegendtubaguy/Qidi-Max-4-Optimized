@@ -63,7 +63,7 @@ This is not the same as passing one nozzle value through the whole startup.
 
 ## Temperature Timeline
 
-## 1. Slicer Init Block
+### 1. Slicer Init Block
 
 Files:
 
@@ -81,7 +81,7 @@ At this point:
 - the chamber starts heating if a chamber target is configured
 - the nozzle is not explicitly heated yet by this slicer init block
 
-## 2. Box Prep Entry
+### 2. Box Prep Entry
 
 Files:
 
@@ -98,7 +98,7 @@ QIDI Studio uses the same call with its chamber placeholder.
 
 This is the handoff from slicer start gcode into the Klipper macro layer for startup filament prep.
 
-## 3. `START_PRINT_FILAMENT_PREP` Reuse Path
+### 3. `START_PRINT_FILAMENT_PREP` Reuse Path
 
 File: `config/klipper-macros-qd/filament.cfg`
 
@@ -130,7 +130,7 @@ With the current slicer start gcode, that means it waits for:
 
 before returning to slicer gcode.
 
-## 4. `START_PRINT_FILAMENT_PREP` Fresh Load Path
+### 4. `START_PRINT_FILAMENT_PREP` Fresh Load Path
 
 File: `config/klipper-macros-qd/filament.cfg`
 
@@ -138,7 +138,7 @@ If filament is not being reused, the macro takes the fresh-load path.
 
 That path is where most visible temperature changes happen.
 
-### 4.1 Vendor box start uses `HOTENDTEMP`
+#### 4.1 QIDI box start uses `HOTENDTEMP`
 
 The macro calls:
 
@@ -154,7 +154,7 @@ Important:
 
 So the QIDI box-start path is driven from the slicer's configured high-end nozzle temperature, not the first-layer nozzle temperature.
 
-## 4.2 Visible flush also uses `HOTENDTEMP`
+#### 4.2 Visible flush also uses `HOTENDTEMP`
 
 Immediately after `BOX_PRINT_START`, the macro calls:
 
@@ -170,7 +170,7 @@ M109 S{hotendtemp}
 
 So the visible rear flush also heats to `HOTENDTEMP`, which in the current slicer profile is the top of the nozzle temperature range.
 
-## 4.3 Post-flush cooldown uses `PURGETEMP - 30`
+#### 4.3 Post-flush cooldown uses `PURGETEMP - 30`
 
 After that flush, the macro does:
 
@@ -188,7 +188,7 @@ This is the visible `30C` offset in the active startup macro path.
 
 It is a cooldown threshold after the flush, not a `+30C` bump.
 
-## 4.4 Bed and chamber settle back to slicer targets
+#### 4.4 Bed and chamber settle back to slicer targets
 
 Later in the same macro, it waits for:
 
@@ -199,7 +199,7 @@ M191 S{chambertemp}
 
 So the bed and chamber are brought back to the slicer-provided targets before the rest of the prep finishes.
 
-## 4.5 Final wait inside prep returns to `PURGETEMP`
+#### 4.5 Final wait inside prep returns to `PURGETEMP`
 
 Near the end of the fresh-load branch, the macro does:
 
@@ -211,7 +211,7 @@ So before `START_PRINT_FILAMENT_PREP` returns to the slicer, the nozzle is broug
 
 - `PURGETEMP = [nozzle_temperature_initial_layer]`
 
-## 5. Slicer Prime-Line Block After Macro Return
+### 5. Slicer Prime-Line Block After Macro Return
 
 Files:
 
@@ -240,7 +240,7 @@ So the slicer itself reasserts:
 
 Then it waits for the nozzle to be fully at first-layer temperature before the front prime line.
 
-## 6. Front Prime Line Uses First-Layer Temperature
+### 6. Front Prime Line Uses First-Layer Temperature
 
 Still in the slicer start gcode, the front-edge prime line runs after:
 
