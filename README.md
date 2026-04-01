@@ -20,9 +20,9 @@ This repository has two goals:
 
 ## Documentation
 
-- [`docs/orca-hotendtemp-purgetemp-flow.md`](docs/orca-hotendtemp-purgetemp-flow.md): temperature timeline from the OrcaSlicer and QIDI Studio start gcode through the active box-prep and prime-line sequence.
-- [`docs/box_print_start_notes.md`](docs/box_print_start_notes.md): reverse-engineering notes for QIDI's vendor-implemented `BOX_PRINT_START` and related box internals.
-- [`docs/optimized-vs-main.md`](docs/optimized-vs-main.md): summary of optimized-branch behavior changes and estimated time impact versus stock `main`.
+- [Temperature Flow From Orca And QIDI Studio Start G-Code](docs/orca-hotendtemp-purgetemp-flow.md): temperature timeline from the OrcaSlicer and QIDI Studio start gcode through the active box-prep and prime-line sequence.
+- [QIDI Box Implementation Notes](docs/box_print_start_notes.md): reverse-engineering notes for QIDI's vendor-implemented `BOX_PRINT_START` and related box internals.
+- [Optimized Branch Results Vs `main`](docs/optimized-vs-main.md): summary of optimized-branch behavior changes and estimated time impact versus stock `main`.
 
 ## How to use this repo
 
