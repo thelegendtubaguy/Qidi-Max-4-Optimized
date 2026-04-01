@@ -6,9 +6,9 @@ For this discussion, OrcaSlicer and QIDI Studio behave the same way. Their start
 
 The startup flow is split across:
 
-- [`orcaslicer_gcode/start_gcode`](../orcaslicer_gcode/start_gcode)
-- [`qidistudio_gcode/start_gcode`](../qidistudio_gcode/start_gcode)
-- [`config/klipper-macros-qd/filament.cfg`](../config/klipper-macros-qd/filament.cfg) via `START_PRINT_FILAMENT_PREP`
+- [`orcaslicer_gcode/start_gcode`](../orcaslicer_gcode/start_gcode#L12-L50)
+- [`qidistudio_gcode/start_gcode`](../qidistudio_gcode/start_gcode#L12-L50)
+- [`config/klipper-macros-qd/filament.cfg`](../config/klipper-macros-qd/filament.cfg#L78-L189) via `START_PRINT_FILAMENT_PREP`
 
 ## Practical Summary
 
@@ -33,7 +33,7 @@ In this profile:
 
 ## Actual Slicer Entry Point
 
-The in-repo OrcaSlicer start gcode in [`orcaslicer_gcode/start_gcode`](../orcaslicer_gcode/start_gcode) does this:
+The in-repo OrcaSlicer start gcode in [`orcaslicer_gcode/start_gcode`](../orcaslicer_gcode/start_gcode#L12-L50) does this:
 
 ```gcode
 M140 S[bed_temperature_initial_layer_single]
@@ -67,8 +67,8 @@ This is not the same as passing one nozzle value through the whole startup.
 
 Files:
 
-- [`orcaslicer_gcode/start_gcode`](../orcaslicer_gcode/start_gcode)
-- [`qidistudio_gcode/start_gcode`](../qidistudio_gcode/start_gcode)
+- [`orcaslicer_gcode/start_gcode`](../orcaslicer_gcode/start_gcode#L12-L15)
+- [`qidistudio_gcode/start_gcode`](../qidistudio_gcode/start_gcode#L12-L15)
 
 Temperature actions:
 
@@ -85,8 +85,8 @@ At this point:
 
 Files:
 
-- [`orcaslicer_gcode/start_gcode`](../orcaslicer_gcode/start_gcode)
-- [`qidistudio_gcode/start_gcode`](../qidistudio_gcode/start_gcode)
+- [`orcaslicer_gcode/start_gcode`](../orcaslicer_gcode/start_gcode#L17-L18)
+- [`qidistudio_gcode/start_gcode`](../qidistudio_gcode/start_gcode#L17-L18)
 
 The next major call is:
 
@@ -100,11 +100,11 @@ This is the handoff from slicer start gcode into the Klipper macro layer for sta
 
 ### 3. `START_PRINT_FILAMENT_PREP` Reuse Path
 
-File: [`config/klipper-macros-qd/filament.cfg`](../config/klipper-macros-qd/filament.cfg)
+File: [`config/klipper-macros-qd/filament.cfg`](../config/klipper-macros-qd/filament.cfg#L78-L120)
 
 If the machine is reusing already-loaded filament, the macro takes the `reuse_loaded` branch.
 
-This reuse behavior is enabled by default in [`config/klipper-macros-qd/globals.cfg`](../config/klipper-macros-qd/globals.cfg):
+This reuse behavior is enabled by default in [`config/klipper-macros-qd/globals.cfg`](../config/klipper-macros-qd/globals.cfg#L66-L68):
 
 ```text
 variable_keep_loaded_between_prints: True
@@ -132,7 +132,7 @@ before returning to slicer gcode.
 
 ### 4. `START_PRINT_FILAMENT_PREP` Fresh Load Path
 
-File: [`config/klipper-macros-qd/filament.cfg`](../config/klipper-macros-qd/filament.cfg)
+File: [`config/klipper-macros-qd/filament.cfg`](../config/klipper-macros-qd/filament.cfg#L121-L189)
 
 If filament is not being reused, the macro takes the fresh-load path.
 
@@ -215,8 +215,8 @@ So before `START_PRINT_FILAMENT_PREP` returns to the slicer, the nozzle is broug
 
 Files:
 
-- [`orcaslicer_gcode/start_gcode`](../orcaslicer_gcode/start_gcode)
-- [`qidistudio_gcode/start_gcode`](../qidistudio_gcode/start_gcode)
+- [`orcaslicer_gcode/start_gcode`](../orcaslicer_gcode/start_gcode#L20-L50)
+- [`qidistudio_gcode/start_gcode`](../qidistudio_gcode/start_gcode#L20-L50)
 
 After `START_PRINT_FILAMENT_PREP` returns, the slicer continues with its own front-edge prime-line block.
 
@@ -263,4 +263,4 @@ In this repo's OrcaSlicer and QIDI Studio start gcode:
 - `PURGETEMP` also sets the post-flush cooldown threshold through `PURGETEMP - 30`
 - the slicer then uses that same first-layer nozzle temperature for the front prime line
 
-For deeper QIDI reverse-engineering, see [QIDI Box Implementation Notes](box_print_start_notes.md).
+For deeper QIDI reverse-engineering, see [QIDI Box Implementation Notes](box_print_start_notes.md#L1-L40).
