@@ -1,17 +1,14 @@
 # Qidi Max 4 Optimized
 
-This repository is an opinionated, tuned configuration set for the QIDI Max 4.
+Opinionated and tuned configs to make your QIDI Max 4 run the way it should.
 
-It is:
-
-- a curated Klipper macro and config set aimed at the behavior this repo wants from the printer
-- a place to keep the paired OrcaSlicer and QIDI Studio custom G-code in sync with those configs
-- a reference for the docs and reverse-engineering notes needed to maintain that setup
+> [!NOTE]
+> If you want to help support content like this, consider subscribing over on [YouTube](https://youtube.com/@TubaMakes)!
 
 For stock QIDI-shipped configs and firmware-version snapshots, see [Qidi-Max4-Defaults](https://github.com/thelegendtubaguy/Qidi-Max4-Defaults).
 
 > [!WARNING]
-> These configs were tuned with a Qidi box, but should work without a Qidi box or multiple boxes.
+> These configurations were created and tested using a printer with a single Qidi box.  They likely work with no Qidi box and multiple Qidi boxes, just something to keep in mind.
 
 ## What's in this repo
 
@@ -29,7 +26,6 @@ For stock QIDI-shipped configs and firmware-version snapshots, see [Qidi-Max4-De
 ## How to use this repo
 
 - Treat the files in `config/` as this repo's intended tuned baseline, not as a drop-in stock profile.
-- Compare against [Qidi-Max4-Defaults](https://github.com/thelegendtubaguy/Qidi-Max4-Defaults) if you want to see what QIDI shipped for a given firmware version.
 - Review changes and merge intentionally rather than copying everything blindly onto a printer.
 - Expect some values to remain machine-specific, especially offsets, saved state, and hardware integration details.
 
@@ -44,16 +40,8 @@ For stock QIDI-shipped configs and firmware-version snapshots, see [Qidi-Max4-De
 - The two slicer packs are meant to behave the same way, even though their placeholder syntax differs.
 - Use these snippets as the baseline for start/end, layer-change, pause, timelapse, and filament-change hooks on this printer.
 
-## Stock Configs
-
-- Stock QIDI-shipped configs and firmware-version snapshots are tracked at [Qidi-Max4-Defaults](https://github.com/thelegendtubaguy/Qidi-Max4-Defaults).
-- Use that repo when you want to compare the tuned configs here against what QIDI shipped for a given firmware release.
-
 ## Important notes
 
-- This repo is QIDI Max 4 specific; treat it as a platform-focused reference, not a universal Klipper profile.
-- The active macro flow here assumes a QIDI Box is present and enabled (`box_count >= 1`, `enable_box = 1`).
-- If you are not using a QIDI Box, review and adjust box-related startup and filament macros before using this config set as-is.
 - Main printer and box MCU serial identifiers are redacted where applicable.
 - On-device, `config/fluidd.cfg` is read-only; behavior changes should be implemented in other files under `config/`.
 - Vendor-specific features and macros are present, including `multi_color_controller`, `box_config`, `probe_air`, and `closed_loop`.
