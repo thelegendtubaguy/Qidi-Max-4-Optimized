@@ -1,7 +1,5 @@
 # Current Config Results Vs Stock QIDI Configs
 
-This note summarizes the practical differences between the current configs in this repo and the stock configs shipped by QIDI for this machine.
-
 For stock baselines and firmware-version snapshots, see `https://github.com/thelegendtubaguy/Qidi-Max4-Defaults`.
 
 ## Behavior Changes
