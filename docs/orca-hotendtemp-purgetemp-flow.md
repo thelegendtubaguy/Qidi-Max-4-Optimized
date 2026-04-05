@@ -18,11 +18,11 @@ The slicer startup temperature flow is:
 3. `START_PRINT_FILAMENT_PREP` begins the box/material prep path
 4. QIDI box-start logic uses `HOTENDTEMP = nozzle_temperature_range_high[initial_tool]`
 5. visible rear flush uses that same `HOTENDTEMP`
-6. the macro cools down toward `PURGETEMP - 30`
+6. the macro cools down over the waste chute with staged wipe passes
 7. the macro returns the nozzle to `PURGETEMP = nozzle_temperature_initial_layer`
 8. slicer gcode reasserts first-layer nozzle temperature
 9. slicer gcode waits at first-layer nozzle temperature
-10. slicer gcode runs an adaptive KAMP line purge near the print
+10. slicer gcode runs the front prime line
 
 ## Actual Slicer Entry Point
 
@@ -143,19 +143,30 @@ M109 S{hotendtemp}
 
 The rear flush also heats to `HOTENDTEMP`, which in the current slicer profile is the top of the nozzle temperature range.
 
-#### 4.3 Post-flush cooldown uses `PURGETEMP - 30`
+#### 4.3 Post-flush cooldown now stages chute wipes as temperature drops
 
-After that flush, the macro does:
+After that flush, the macro keeps the nozzle over the waste chute, aims for the probing temperature target, and performs repeated wipe passes as it cools:
 
 ```gcode
+G1 E-0.2 F1800
 M104 S{km.start_extruder_probing_temp if km.start_extruder_probing_temp > 0 else 140}
-M109.1 S{purgetemp - 30}
+TEMPERATURE_WAIT SENSOR=extruder MAXIMUM={purgetemp}
+_START_PRINT_TRASH_WIPE
+TEMPERATURE_WAIT SENSOR=extruder MAXIMUM={purgetemp - 30}
+_START_PRINT_TRASH_WIPE
+TEMPERATURE_WAIT SENSOR=extruder MAXIMUM={km.start_extruder_probing_temp if km.start_extruder_probing_temp > 0 else 140}
+_START_PRINT_TRASH_WIPE
 ```
 
-With the current slicer profile:
+With the current slicer profile for typical materials:
 
 - `purgetemp` is `[nozzle_temperature_initial_layer]`
-- The printer waits for `first_layer_temp - 30C`
+- the macro first does a small `0.2mm` retract to relieve nozzle pressure over the chute
+- the first chute wipe happens after cooling back to first-layer nozzle temperature
+- the second chute wipe happens after cooling to `first_layer_temp - 30C`
+- the third chute wipe happens after cooling to 140C
+
+Only after those chute-side wipe passes does it move to the bed scrape area.
 
 #### 4.4 Bed and chamber settle back to slicer targets
 
@@ -180,11 +191,11 @@ So before `START_PRINT_FILAMENT_PREP` returns to the slicer, the nozzle is broug
 
 - `PURGETEMP = [nozzle_temperature_initial_layer]`
 
-### 5. Slicer Purge Block After Macro Return
+### 5. Slicer Prime-Line Block After Macro Return
 
 [`orcaslicer_gcode/start_gcode`](../orcaslicer_gcode/start_gcode#L20-L50)
 
-After `START_PRINT_FILAMENT_PREP` returns, the slicer continues with the on-bed purge step.
+After `START_PRINT_FILAMENT_PREP` returns, the slicer continues with the front prime line.
 
 Relevant temperature lines are:
 
@@ -194,7 +205,6 @@ M104 S[nozzle_temperature_initial_layer]
 M141 S[chamber_temperature]
 ...
 M109 S[nozzle_temperature_initial_layer]
-LINE_PURGE
 ```
 
 So the slicer itself reasserts:
@@ -203,7 +213,7 @@ So the slicer itself reasserts:
 - nozzle target = first-layer nozzle temp
 - chamber target = chamber temp
 
-Then it waits for the nozzle to be fully at first-layer temperature before calling `LINE_PURGE`, which places the purge line near the detected print area using `exclude_object` bounds.
+Then it waits for the nozzle to be fully at first-layer temperature before printing the front prime line and then continuing with the rest of the print.
 
 ## What `HOTENDTEMP` And `PURGETEMP` Mean In This Profile
 
@@ -213,7 +223,7 @@ In the Orca and QIDIStudio start gcode:
 - `HOTENDTEMP` is the highest nozzle temp of all filaments in use
 - `PURGETEMP` is the first-layer nozzle temperature of the first used filament
 - `PURGETEMP` controls the later wait inside `START_PRINT_FILAMENT_PREP`
-- `PURGETEMP` also sets the post-flush cooldown threshold through `PURGETEMP - 30`
-- the slicer then uses that same first-layer nozzle temperature for the adaptive `LINE_PURGE`
+- `PURGETEMP` sets the first two staged post-flush cleanup thresholds: `PURGETEMP` and `PURGETEMP - 30`
+- the slicer then uses that same first-layer nozzle temperature for the front prime line
 
 For deeper QIDI reverse-engineering, see [QIDI Box Implementation Notes](box_print_start_notes.md#L1-L40).
