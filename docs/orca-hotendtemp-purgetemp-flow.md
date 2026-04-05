@@ -92,8 +92,8 @@ In that path it:
 1. computes `preheat_temp`
 2. sets the nozzle target with `M104 S{preheat_temp}`
 3. reheats bed and chamber if needed
-4. runs `Z_TILT_ADJUST` and `G29_ZSAFE`
-5. waits for bed and chamber targets
+4. waits for bed and chamber targets
+5. runs `Z_TILT_ADJUST` and `G29_ZSAFE`
 6. moves to the rear purge area
 7. waits for `M109 S{purgetemp}`
 

@@ -23,6 +23,8 @@
 5. When a user asks you to find, verify, or compare behavior against what QIDI shipped, use the stock-configs repo as the baseline.
    - Stock QIDI-shipped configs and firmware-version snapshots for this machine live at `https://github.com/thelegendtubaguy/Qidi-Max4-Defaults`.
    - Treat that repo's configs, docs, tags, and release snapshots as the definition of "stock" unless the user says otherwise.
+   - `docs/current-config-results-vs-stock-qidi-configs.md` is not a changelog of local edits. It should only record behavior/config differences between this repo and stock.
+   - Before updating `docs/current-config-results-vs-stock-qidi-configs.md`, check the stock baseline in `https://github.com/thelegendtubaguy/Qidi-Max4-Defaults`.
 
 6. If you edit Klipper config files, run `python3 scripts/format_klipper_configs.py` before finishing.
    - This applies to editable `.cfg` files under `config/`.

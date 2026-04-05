@@ -6,6 +6,7 @@ For stock baselines and firmware-version snapshots, see `https://github.com/thel
 
 - Print start and tool prep spend less fixed dead time. Key waits were trimmed in homing, cutter, and probe flows.
 - XY homing runs faster and with shorter post-home clearances, reducing non-print travel time before calibration and print start.
+- Axis-specific homing no longer silently no-ops: `G28 X` and `G28 Y` run dedicated single-axis routines, and `G28 Z` now uses a safe Z-only path when XY is known or falls back to full home otherwise.
 - Bed mesh flow now supports a Z-safe path (`G29_ZSAFE`) that skips redundant XY re-home when XY is already homed.
 - Nozzle cleaning now uses tunable purge volumes with lower defaults (`prime=4mm`, `purge=50mm`, `retract=4mm`), reducing filament waste while keeping the wipe/cool routine.
 - Multi-color/toolchange flow is more controllable: `CUT_FILAMENT_TC` adds a wrapper for cutter mode selection, and startup box flush is now optional (`start_box_flush_after_load`) instead of always forced.
