@@ -22,7 +22,7 @@ The slicer startup temperature flow is:
 7. the macro returns the nozzle to `PURGETEMP = nozzle_temperature_initial_layer`
 8. slicer gcode reasserts first-layer nozzle temperature
 9. slicer gcode waits at first-layer nozzle temperature
-10. slicer gcode runs the front prime line
+10. slicer gcode runs an adaptive KAMP line purge near the print
 
 ## Actual Slicer Entry Point
 
@@ -180,11 +180,11 @@ So before `START_PRINT_FILAMENT_PREP` returns to the slicer, the nozzle is broug
 
 - `PURGETEMP = [nozzle_temperature_initial_layer]`
 
-### 5. Slicer Prime-Line Block After Macro Return
+### 5. Slicer Purge Block After Macro Return
 
 [`orcaslicer_gcode/start_gcode`](../orcaslicer_gcode/start_gcode#L20-L50)
 
-After `START_PRINT_FILAMENT_PREP` returns, the slicer continues with the front prime line.
+After `START_PRINT_FILAMENT_PREP` returns, the slicer continues with the on-bed purge step.
 
 Relevant temperature lines are:
 
@@ -194,6 +194,7 @@ M104 S[nozzle_temperature_initial_layer]
 M141 S[chamber_temperature]
 ...
 M109 S[nozzle_temperature_initial_layer]
+LINE_PURGE
 ```
 
 So the slicer itself reasserts:
@@ -202,7 +203,7 @@ So the slicer itself reasserts:
 - nozzle target = first-layer nozzle temp
 - chamber target = chamber temp
 
-Then it waits for the nozzle to be fully at first-layer temperature before printing the front prime line and then continuing with the rest of the print.
+Then it waits for the nozzle to be fully at first-layer temperature before calling `LINE_PURGE`, which places the purge line near the detected print area using `exclude_object` bounds.
 
 ## What `HOTENDTEMP` And `PURGETEMP` Mean In This Profile
 
@@ -213,6 +214,6 @@ In the Orca and QIDIStudio start gcode:
 - `PURGETEMP` is the first-layer nozzle temperature of the first used filament
 - `PURGETEMP` controls the later wait inside `START_PRINT_FILAMENT_PREP`
 - `PURGETEMP` also sets the post-flush cooldown threshold through `PURGETEMP - 30`
-- the slicer then uses that same first-layer nozzle temperature for the front prime line
+- the slicer then uses that same first-layer nozzle temperature for the adaptive `LINE_PURGE`
 
 For deeper QIDI reverse-engineering, see [QIDI Box Implementation Notes](box_print_start_notes.md#L1-L40).
