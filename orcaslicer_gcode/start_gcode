@@ -26,44 +26,29 @@ SET_PRINT_STATS_INFO TOTAL_LAYER=[total_layer_count]
 T[initial_tool]
 ; Set bed target temperature (do not wait).
 M140 S[bed_temperature_initial_layer_single]
-; Set nozzle target temperature (do not wait).
-M104 S[nozzle_temperature_initial_layer]
 ; Set chamber target temperature (do not wait).
 M141 S[chamber_temperature]
-; Move to the front-edge prime area.
-G0 X195 Y1 F20000
-; Move to a safe Z height before probing and priming.
-G0 Z10 F480
-; Pause 1 second to let temperatures and mechanics settle.
-G4 P1000
-; Take one probe sample at this location.
-probe samples=1
-; Switch to relative coordinates for local moves.
-G91
-; Lift 5 mm in relative mode.
-G0 Z5 F480
-; Return to absolute coordinates.
+; Use absolute coordinates for the front load line.
 G90
-; Move to the front-edge purge start point.
-G1 X194 Y1 F20000
-; Drop to the first-layer purge height.
-G1 Z{initial_layer_print_height} F480
-; Wait for nozzle to be fully back at first-layer temperature.
+; Move to the centered front-edge load-line start point.
+G1 Z5 F1200
+G1 X155 Y0 F20000
+; Wait for nozzle to be fully back at first-layer temperature at the line start.
 M109 S[nozzle_temperature_initial_layer]
+; Drop to the load-line height.
+G1 Z{initial_layer_print_height} F1200
 ; Use relative extrusion for the purge line.
 M83
 ; Reset extruder position before priming.
 G92 E0
-; Build nozzle pressure before the line starts.
-G1 E6 F{min(1200, max(120, filament_max_volumetric_speed[initial_no_support_extruder]*60/2/2.5043))}
+; Lightly load the nozzle before the line starts.
+G1 E2 F300
 ; Run part cooling during the purge to help the strand release cleanly.
 M106 S200
-; Draw one continuous front-edge purge line.
-G1 X154 E20 F{min(12000, max(1200, filament_max_volumetric_speed[initial_no_support_extruder]*60/2/2.5043))}
-; Slow slightly for the tail to finish the line cleanly.
-G1 F6000
-; Add a short tail move to reduce stringing at line end.
-G1 X149 E0.8
+; Draw one centered light front-edge load line.
+G1 X235 E4.989 F6000
+; Lift off the line cleanly instead of dragging a tail.
+G1 Z1 F1200
 ; Turn the part cooling fan back off after the purge.
 M106 S0
 ; Reset extruder position for the print proper.

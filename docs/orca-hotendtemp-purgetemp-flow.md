@@ -19,9 +19,9 @@ The slicer startup temperature flow is:
 4. QIDI box-start logic uses `HOTENDTEMP = nozzle_temperature_range_high[initial_tool]`
 5. visible rear flush uses that same `HOTENDTEMP`
 6. the macro cools down over the waste chute with staged wipe passes
-7. the macro returns the nozzle to `PURGETEMP = nozzle_temperature_initial_layer`
-8. slicer gcode reasserts first-layer nozzle temperature
-9. slicer gcode waits at first-layer nozzle temperature
+7. the macro returns without doing the final first-layer nozzle heat-up
+8. slicer gcode moves to the front load-line start position
+9. slicer gcode heats to and waits at first-layer nozzle temperature there
 10. slicer gcode runs the front prime line
 
 ## Actual Slicer Entry Point
@@ -95,17 +95,11 @@ In that path it:
 4. waits for bed and chamber targets
 5. runs `Z_TILT_ADJUST` and `G29_ZSAFE`
 6. moves to the rear purge area
-7. waits for `M109 S{purgetemp}`
+7. returns without performing the final first-layer heat-up
 
 Key point:
 
-- in the reuse path, the final nozzle wait inside the macro is `PURGETEMP`
-
-With the current slicer start gcode, that means it waits for:
-
-- `PURGETEMP = [nozzle_temperature_initial_layer]`
-
-before returning to slicer gcode.
+- in the reuse path, the final first-layer nozzle heat-up is deferred until the slicer is already parked at the front load-line start position
 
 ### 4. `START_PRINT_FILAMENT_PREP` Fresh Load Path
 
@@ -179,29 +173,22 @@ M191 S{chambertemp}
 
 So the bed and chamber are brought back to the slicer-provided targets before the rest of the prep finishes.
 
-#### 4.5 Final wait inside prep returns to `PURGETEMP`
+#### 4.5 Prep leaves final nozzle heat-up to the slicer
 
-Near the end of the fresh-load branch, the macro does:
+Near the end of the fresh-load branch, the macro no longer restores `PURGETEMP` before returning.
 
-```gcode
-M109 S{purgetemp}
-```
-
-So before `START_PRINT_FILAMENT_PREP` returns to the slicer, the nozzle is brought back up to:
-
-- `PURGETEMP = [nozzle_temperature_initial_layer]`
+The slicer now performs the entire final first-layer heat-up at the front load-line start position, which prevents the nozzle from sitting at the rear park position while it climbs from the cleanup temperature to print temperature.
 
 ### 5. Slicer Prime-Line Block After Macro Return
 
 [`orcaslicer_gcode/start_gcode`](../orcaslicer_gcode/start_gcode#L20-L50)
 
-After `START_PRINT_FILAMENT_PREP` returns, the slicer continues with the front prime line.
+After `START_PRINT_FILAMENT_PREP` returns, the slicer continues with a centered light front load line at `Y0`.
 
 Relevant temperature lines are:
 
 ```gcode
 M140 S[bed_temperature_initial_layer_single]
-M104 S[nozzle_temperature_initial_layer]
 M141 S[chamber_temperature]
 ...
 M109 S[nozzle_temperature_initial_layer]
@@ -210,10 +197,11 @@ M109 S[nozzle_temperature_initial_layer]
 So the slicer itself reasserts:
 
 - bed target = first-layer bed temp
-- nozzle target = first-layer nozzle temp
 - chamber target = chamber temp
 
-Then it waits for the nozzle to be fully at first-layer temperature before printing the front prime line and then continuing with the rest of the print.
+Then it moves to the front load-line start position, waits there for the nozzle to reach first-layer temperature, drops to line height, and prints the lighter front load line. That keeps the long heat-up off the rear park position and avoids oozing during a late move to the front.
+
+The slicer no longer performs the old single `probe samples=1` tap before this line; the active startup path already handled `Z_TILT_ADJUST` and `G29_ZSAFE` inside `START_PRINT_FILAMENT_PREP`.
 
 ## What `HOTENDTEMP` And `PURGETEMP` Mean In This Profile
 
