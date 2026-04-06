@@ -145,11 +145,14 @@ After that flush, the macro keeps the nozzle over the waste chute, aims for the 
 G1 E-0.2 F1800
 M104 S{km.start_extruder_probing_temp if km.start_extruder_probing_temp > 0 else 140}
 TEMPERATURE_WAIT SENSOR=extruder MAXIMUM={purgetemp}
-_START_PRINT_TRASH_WIPE
+CLEAR_OOZE
+CLEAR_FLUSH
 TEMPERATURE_WAIT SENSOR=extruder MAXIMUM={purgetemp - 30}
-_START_PRINT_TRASH_WIPE
+CLEAR_OOZE
+CLEAR_FLUSH
 TEMPERATURE_WAIT SENSOR=extruder MAXIMUM={km.start_extruder_probing_temp if km.start_extruder_probing_temp > 0 else 140}
-_START_PRINT_TRASH_WIPE
+CLEAR_OOZE
+CLEAR_FLUSH
 ```
 
 With the current slicer profile for typical materials:
@@ -161,6 +164,8 @@ With the current slicer profile for typical materials:
 - the third chute wipe happens after cooling to 140C
 
 Only after those chute-side wipe passes does it move to the bed scrape area.
+
+Those repeated cleanup passes use the same vendor-provided `CLEAR_OOZE` and `CLEAR_FLUSH` primitives that QIDI already uses after the main rear purge, instead of a repo-local custom wipe path.
 
 #### 4.4 Bed and chamber settle back to slicer targets
 
