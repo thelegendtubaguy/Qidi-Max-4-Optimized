@@ -30,11 +30,15 @@ M140 S[bed_temperature_initial_layer_single]
 M141 S[chamber_temperature]
 ; Use absolute coordinates for the front load line.
 G90
-; Move to the centered front-edge load-line start point.
+; Move to a standby point 8mm left of the centered front-edge load-line start.
 G1 Z5 F1200
-G1 X155 Y0 F20000
-; Wait for nozzle to be fully back at first-layer temperature at the line start.
+G1 X147 Y0 F20000
+; Wait for nozzle to be fully back at first-layer temperature over the lead-in zone.
 M109 S[nozzle_temperature_initial_layer]
+; Lower near the bed before moving onto the actual line start.
+G1 Z0.5 F900
+; Slide onto the actual line start before extrusion begins.
+G1 X155 F12000
 ; Drop to the load-line height.
 G1 Z{initial_layer_print_height} F1200
 ; Use relative extrusion for the purge line.
@@ -49,7 +53,9 @@ M106 S200
 G1 X230 E4.88 F6000
 ; Taper the last 5mm so the strand breaks onto the line instead of stringing forward.
 G1 X235 E0.11 F6000
-; Lift off after the tapered finish.
+; Relieve pressure before the nozzle lifts and the startup setup block runs.
+G1 E-0.2 F1800
+; Lift off after the tapered finish and pressure relief.
 G1 Z1 F1200
 ; Turn the part cooling fan back off after the purge.
 M106 S0
