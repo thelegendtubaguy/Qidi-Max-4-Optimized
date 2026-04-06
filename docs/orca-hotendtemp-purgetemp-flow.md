@@ -87,19 +87,31 @@ If the machine is reusing already-loaded filament, the macro takes the `reuse_lo
 
 This reuse behavior is enabled by default in [`config/klipper-macros-qd/globals.cfg`](../config/klipper-macros-qd/globals.cfg#L66-L68).
 
+Reuse is now gated by more than just "same tool". The shortcut only runs when all of these still match the retained end-of-print state:
+
+- requested tool index
+- current `value_t<tool>` slot mapping
+- `last_load_slot`
+- `slot_sync`
+- the saved `filament_slotN` value for that slot
+- the saved `vendor_slotN` value for that slot
+
 In that path it:
 
 1. computes `preheat_temp`
 2. sets the nozzle target with `M104 S{preheat_temp}`
 3. reheats bed and chamber if needed
 4. waits for bed and chamber targets
-5. runs `Z_TILT_ADJUST` and `G29_ZSAFE`
-6. moves to the rear purge area
-7. returns without performing the final first-layer heat-up
+5. moves to the waste chute, waits for `preheat_temp`, and does a wipe-only cleanup with `CLEAR_OOZE` and `CLEAR_FLUSH`
+6. runs `Z_TILT_ADJUST` and `G29_ZSAFE`
+7. moves to the rear purge area
+8. returns without performing the final first-layer heat-up
 
 Key point:
 
 - in the reuse path, the final first-layer nozzle heat-up is deferred until the slicer is already parked at the front load-line start position
+- unlike the fresh-load path, the reuse path now only performs chute-side wipe cleanup; it does not do the later nozzle-on-bed scrape sequence
+- if any retained slot or metadata check no longer matches, the macro falls back to the normal fresh-load path instead of trusting the already-loaded filament
 
 ### 4. `START_PRINT_FILAMENT_PREP` Fresh Load Path
 
