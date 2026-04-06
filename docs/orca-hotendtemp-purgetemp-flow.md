@@ -206,6 +206,8 @@ So the slicer itself reasserts:
 
 Then it moves to the front load-line start position, waits there for the nozzle to reach first-layer temperature, drops to line height, and prints the lighter front load line. That keeps the long heat-up off the rear park position and avoids oozing during a late move to the front.
 
+After the main stroke, the slicer now uses a short lower-flow finishing segment over the last `5mm` of the line before lifting Z. That keeps the total line length unchanged while tapering pressure down onto the bed instead of carrying a wisp into the first travel toward the part.
+
 The slicer no longer performs the old single `probe samples=1` tap before this line; the active startup path already handled `Z_TILT_ADJUST` and `G29_ZSAFE` inside `START_PRINT_FILAMENT_PREP`.
 
 ## What `HOTENDTEMP` And `PURGETEMP` Mean In This Profile
