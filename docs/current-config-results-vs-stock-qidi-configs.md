@@ -9,6 +9,8 @@ For stock baselines and firmware-version snapshots, see `https://github.com/thel
 - Axis-specific homing no longer silently no-ops: `G28 X` and `G28 Y` run dedicated single-axis routines, and `G28 Z` now uses a safe Z-only path when XY is known or falls back to full home otherwise.
 - Bed mesh flow now supports a Z-safe path (`G29_ZSAFE`) that skips redundant XY re-home when XY is already homed.
 - Nozzle cleaning now uses tunable purge volumes with lower defaults (`prime=4mm`, `purge=50mm`, `retract=4mm`), reducing filament waste while keeping the wipe/cool routine.
+- Paused-print recovery now uses a tunable waste-chute purge length (`resume_purge_length=100mm`) instead of the stock fixed `250mm` resume purge.
+- Paused-print recovery now restores a tunable idle timeout (`resume_idle_timeout=43200s`) instead of leaving the 72-hour pause timeout in place.
 - Multi-color/toolchange flow is more controllable: `CUT_FILAMENT_TC` adds a wrapper for cutter mode selection, and startup box flush is now optional (`start_box_flush_after_load`) instead of always forced.
 - End-of-print cooling is improved with a timed chamber/exhaust fan cooldown macro (`END_FAN_COOLDOWN`), so post-print heat is evacuated without leaving fans running indefinitely.
 - Electronics cooling was strengthened by increasing board fan run speed (`0.6` to `0.9`) and adding a controller fan idle timeout.
@@ -26,4 +28,5 @@ For stock baselines and firmware-version snapshots, see `https://github.com/thel
 | Preheat stabilization | `start_bed_heat_delay` reduced from `2000` to `1000` | `~1.0s` | When bed is not already at target |
 | Filament cut cycle (`CUT_FILAMENT_1`) | Multiple waits reduced plus faster cutter exit move | `~3.1s` per cut | Print start/toolchange cut |
 | Nozzle clean (`CLEAR_NOZZLE` defaults) | Prime/purge defaults changed from `5/250` to `4/50` mm | `~40.8s` per default clean | Any default `CLEAR_NOZZLE` call |
+| Pause resume | `resume_purge_length` reduced from stock `250` to `100` mm at `F300` | `~30s` per resume | After manual pause resumes |
 | Startup box flush | Flush after load is now optional (`start_box_flush_after_load`) | Variable, often `10s+` | If disabled |
