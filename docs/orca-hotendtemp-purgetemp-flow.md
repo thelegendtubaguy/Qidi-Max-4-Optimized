@@ -162,7 +162,7 @@ CLEAR_FLUSH
 TEMPERATURE_WAIT SENSOR=extruder MAXIMUM={purgetemp - 30}
 CLEAR_OOZE
 CLEAR_FLUSH
-TEMPERATURE_WAIT SENSOR=extruder MAXIMUM={km.start_extruder_probing_temp if km.start_extruder_probing_temp > 0 else 140}
+TEMPERATURE_WAIT SENSOR=extruder MAXIMUM={(km.start_extruder_probing_temp if km.start_extruder_probing_temp > 0 else 140) + 10}
 CLEAR_OOZE
 CLEAR_FLUSH
 ```
@@ -173,7 +173,8 @@ With the current slicer profile for typical materials:
 - the macro first does a small `0.2mm` retract to relieve nozzle pressure over the chute
 - the first chute wipe happens after cooling back to first-layer nozzle temperature
 - the second chute wipe happens after cooling to `first_layer_temp - 30C`
-- the third chute wipe happens after cooling to 140C
+- the nozzle target is still set to 140C for probing and later cleanup
+- the third chute wipe happens after cooling to 150C, so the toolhead can leave the chute sooner while the nozzle continues cooling toward 140C
 
 Only after those chute-side wipe passes does it move to the bed scrape area.
 
