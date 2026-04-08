@@ -8,6 +8,12 @@ Opinionated and tuned configs to make your QIDI Max 4 run the way it should.
 For stock QIDI-shipped configs and firmware-version snapshots, see [Qidi-Max4-Defaults](https://github.com/thelegendtubaguy/Qidi-Max4-Defaults).
 
 > [!WARNING]
+> If you use this current configuration, the files included on the printer will not work.  I may fix this in the future.
+
+> [!WARNING]
+> If you update the printer's firmware, it will wipe these changes away.
+
+> [!WARNING]
 > These configurations were created and tested using a printer with a single Qidi box.  They likely work with no Qidi box and multiple Qidi boxes, just something to keep in mind.
 
 ## What's in this repo

@@ -43,6 +43,7 @@
    - This applies to matching files under `orcaslicer_gcode/` and `qidistudio_gcode/`.
    - Preserve the slicer-specific variable syntax and placeholders each slicer requires.
    - When one slicer's custom G-code behavior changes, update the other slicer's equivalent file so the two flows still behave the same unless the user explicitly wants them to diverge.
+   - Exception: do not add polar cooler controls to `qidistudio_gcode/` unless the user explicitly asks for that divergence to be removed.
 
 ## Fast repo orientation
 

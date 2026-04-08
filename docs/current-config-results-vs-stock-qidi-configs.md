@@ -32,7 +32,7 @@ For stock baselines and firmware-version snapshots, see `https://github.com/thel
 | Homing (`G28` full XYZ) | Homing settle waits moved to shorter globals (`400/200ms` class waits to `50/20ms`) | `~1.95s` per full home | Print/calibration homing |
 | Bed mesh save (`g29`/`g29_zsafe`) | Post-mesh wait reduced from `G4 P5000` to `G4 P500` | `~4.5s` | When a mesh is recalculated |
 | Preheat stabilization | `start_bed_heat_delay` reduced from `2000` to `1000` | `~1.0s` | When bed is not already at target |
-| Filament cut cycle (`CUT_FILAMENT_1`) | Multiple waits reduced plus faster cutter exit move | `~3.1s` per cut | Print start/toolchange cut |
+| Filament cut cycle (`CUT_FILAMENT_1`) | Skips stock's final `G4 P2000` dwell and keeps a faster cutter exit move | `~1.9s` per cut | Print start/toolchange cut |
 | Nozzle clean (`CLEAR_NOZZLE` defaults) | Prime/purge defaults changed from `5/250` to `4/50` mm | `~40.8s` per default clean | Any default `CLEAR_NOZZLE` call |
 | Pause resume | `resume_purge_length` reduced from stock `250` to `100` mm at `F300` | `~30s` per resume | After manual pause resumes |
 | Startup box flush | Flush after load is now optional (`start_box_flush_after_load`) | Variable, often `10s+` | If disabled |

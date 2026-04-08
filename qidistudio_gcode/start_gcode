@@ -18,8 +18,6 @@ _PRINT_START_HOME
 START_PRINT_FILAMENT_PREP EXTRUDER=[initial_no_support_extruder] HOTENDTEMP={nozzle_temperature_range_high[initial_tool]} PURGETEMP=[nozzle_temperature_initial_layer] BEDTEMP=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperatures]
 
 ;===== PRINT_START =====
-; Turn on Polar cooler, comment out if you don't want this
-M106 P4 S255
 ; Set total layer count for progress reporting.
 SET_PRINT_STATS_INFO TOTAL_LAYER=[total_layer_count]
 ; Select the initial tool.
