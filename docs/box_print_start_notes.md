@@ -802,6 +802,7 @@ which maps to the `Polar_cooler` output.
 Best current interpretation:
 
 - `M1004` is a cooling aid before the delayed cleanup sequence
+- in this repo it respects saved `enable_polar_cooler` and defaults off if that value is unset
 - it is not itself the thing that clears flush/ooze state
 
 ### `cmd_BOX_PRINT_START` size and significance

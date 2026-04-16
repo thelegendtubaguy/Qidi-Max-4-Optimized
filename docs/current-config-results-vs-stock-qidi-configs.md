@@ -15,6 +15,7 @@ For stock baselines and firmware-version snapshots, see `https://github.com/thel
 - Fresh-load startup still targets `140C` before probing, but it now leaves the waste chute for the bed-scrape phase once the nozzle cools to `150C` instead of hard-waiting to `140C` first.
 - Retained-tool startup reuse now does a chute-side wipe-only cleanup before probing, without re-running the later nozzle-on-bed scrape path.
 - Retained-tool startup reuse is now guarded by slot mapping, sync state, and saved slot material/vendor IDs instead of trusting only the last retained tool index.
+- Rear cleanup polar-cooler use now honors the saved `enable_polar_cooler` flag and defaults off when that value is unset.
 - Paused-print recovery now uses a tunable waste-chute purge length (`resume_purge_length=100mm`) instead of the stock fixed `250mm` resume purge.
 - Paused-print recovery now restores a tunable idle timeout (`resume_idle_timeout=43200s`) instead of leaving the 72-hour pause timeout in place.
 - Multi-color/toolchange flow is more controllable: `CUT_FILAMENT_TC` adds a wrapper for cutter mode selection, and startup box flush is now optional (`start_box_flush_after_load`) instead of always forced.
