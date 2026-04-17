@@ -15,9 +15,11 @@ For stock baselines and firmware-version snapshots, see `https://github.com/thel
 - Fresh-load startup still targets `140C` before probing, but it now leaves the waste chute for the bed-scrape phase once the nozzle cools to `150C` instead of hard-waiting to `140C` first.
 - Retained-tool startup reuse now does a chute-side wipe-only cleanup before probing, without re-running the later nozzle-on-bed scrape path.
 - Retained-tool startup reuse is now guarded by slot mapping, sync state, and saved slot material/vendor IDs instead of trusting only the last retained tool index.
+- Stock slicer G-code keeps the stock-named startup macros and stock machine files remain compatible; the repo's custom slicer packs opt into separate `OPTIMIZED_*` macros.
+- Rear cleanup polar-cooler use now honors the saved `enable_polar_cooler` flag and defaults off when that value is unset.
 - Paused-print recovery now uses a tunable waste-chute purge length (`resume_purge_length=100mm`) instead of the stock fixed `250mm` resume purge.
 - Paused-print recovery now restores a tunable idle timeout (`resume_idle_timeout=43200s`) instead of leaving the 72-hour pause timeout in place.
-- Multi-color/toolchange flow is more controllable: `CUT_FILAMENT_TC` adds a wrapper for cutter mode selection, and startup box flush is now optional (`start_box_flush_after_load`) instead of always forced.
+- Multi-color/toolchange flow is more controllable: `OPTIMIZED_CUT_FILAMENT` adds a wrapper for cutter mode selection, and startup box flush is now optional (`start_box_flush_after_load`) instead of always forced.
 - End-of-print cooling is improved with a timed chamber/exhaust fan cooldown macro (`END_FAN_COOLDOWN`), so post-print heat is evacuated without leaving fans running indefinitely.
 - Electronics cooling was strengthened by increasing board fan run speed (`0.6` to `0.9`) and adding a controller fan idle timeout.
 - Slicer integration is explicit in-repo: custom G-code packs for OrcaSlicer and QIDI Studio are included and aligned with the current macros.

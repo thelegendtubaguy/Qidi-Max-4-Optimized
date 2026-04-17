@@ -12,10 +12,10 @@ CLEAR_PAUSE
 M140 S[bed_temperature_initial_layer_single]
 M141 S[chamber_temperature]
 G29.0
-_PRINT_START_HOME
+OPTIMIZED_PRINT_START_HOME
 
 ;===== BOX_PREPAR =====
-START_PRINT_FILAMENT_PREP EXTRUDER=[initial_no_support_extruder] HOTENDTEMP={nozzle_temperature_range_high[initial_tool]} PURGETEMP=[nozzle_temperature_initial_layer] BEDTEMP=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperature]
+OPTIMIZED_START_PRINT_FILAMENT_PREP EXTRUDER=[initial_no_support_extruder] HOTENDTEMP={nozzle_temperature_range_high[initial_tool]} PURGETEMP=[nozzle_temperature_initial_layer] BEDTEMP=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperature]
 
 ;===== PRINT_START =====
 ; Turn on Polar cooler, comment out if you don't want this

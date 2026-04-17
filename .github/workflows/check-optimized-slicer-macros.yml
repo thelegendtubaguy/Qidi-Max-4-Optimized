@@ -1,0 +1,21 @@
+name: Check Optimized Slicer Macros
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check-optimized-slicer-macros:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Validate optimized slicer macro references
+        run: python3 scripts/check_optimized_slicer_macros.py
