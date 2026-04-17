@@ -7,8 +7,8 @@ Opinionated and tuned configs to make your QIDI Max 4 run the way it should.
 
 For stock QIDI-shipped configs and firmware-version snapshots, see [Qidi-Max4-Defaults](https://github.com/thelegendtubaguy/Qidi-Max4-Defaults).
 
-> [!WARNING]
-> If you use this current configuration, the files included on the printer will not work.  I may fix this in the future.
+> [!NOTE]
+> Stock slicer G-code and stock machine files remain compatible with the current config changes. The repo's custom slicer G-code packs are optional and opt in to the optimized flow through separate `OPTIMIZED_*` macros.
 
 > [!WARNING]
 > If you update the printer's firmware, it will wipe these changes away.
@@ -22,10 +22,11 @@ For stock QIDI-shipped configs and firmware-version snapshots, see [Qidi-Max4-De
 - `docs/`: repo-local technical notes, flow documentation, and reference notes.
 - `orcaslicer_gcode/`: OrcaSlicer custom G-code snippets for this machine.
 - `qidistudio_gcode/`: QIDI Studio custom G-code snippets for this machine.
+- `scripts/`: local formatting and validation helpers used by this repo.
 
 ## Documentation
 
-- [Temperature Flow From Orca And QIDIStudio Start G-Code](docs/orca-hotendtemp-purgetemp-flow.md): temperature timeline from the OrcaSlicer and QIDIStudio start gcode through the active box-prep and prime-line sequence.
+- [Temperature Flow From The Optimized Orca And QIDIStudio Start G-Code](docs/orca-hotendtemp-purgetemp-flow.md): temperature timeline for the repo's optimized slicer packs through the active box-prep and prime-line sequence.
 - [QIDI Box Implementation Notes](docs/box_print_start_notes.md): reverse-engineering notes for QIDI's vendor-implemented `BOX_PRINT_START` and related box internals.
 - [Current Config Results Vs Stock QIDI Configs](docs/current-config-results-vs-stock-qidi-configs.md): summary of behavior changes and estimated time impact versus the stock configs shipped by QIDI.
 
@@ -35,12 +36,15 @@ _There will be a scripted installer in the future if you'd rather wait for that_
 
 - Review changes between your configs and what's present in `config` and merge intentionally rather than copying everything blindly onto a printer.
 - Expect some values to remain machine-specific, especially offsets, saved state, and hardware integration details.
-- Copy over the slicer gcode for either Orca (`orcaslicer_gcode/`) or QIDIStudio (`qidistudio_gcode/`) into your printer's machine gcode inside the slicer.  Both Orca and QIDIStudio changes should behave the same way, even though some syntax differs.
+- If you keep the stock slicer machine G-code, the stock-named Klipper macro flow will continue to work.
+- If you want the optimized start, end, and toolchange flow, copy over the slicer G-code for either Orca (`orcaslicer_gcode/`) or QIDI Studio (`qidistudio_gcode/`) into your slicer's machine settings. Both packs are kept functionally in sync even though their placeholder syntax differs.
 
-## Formatting
+## Validation
 
 - Use `python3 scripts/format_klipper_configs.py` to format editable Klipper config files in `config/`.
 - The formatter intentionally skips `config/fluidd.cfg` and `config/saved_variables.cfg`, and preserves the auto-generated `SAVE_CONFIG` block.
+- Use `python3 scripts/check_optimized_slicer_macros.py` to verify that the optimized OrcaSlicer and QIDI Studio G-code packs only reference commands and macros that exist in this repo.
+- GitHub Actions runs both checks on pull requests.
 
 ## Important notes
 
