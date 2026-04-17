@@ -1,13 +1,13 @@
-# Temperature Flow From Orca And QIDIStudio Start G-Code
+# Temperature Flow From The Optimized Orca And QIDIStudio Start G-Code
 
-This note traces the actual startup temperature flow used by the Orca and QIDIStudio gcode in this repository.
+This note traces the actual startup temperature flow used by the optimized Orca and QIDIStudio gcode packs in this repository.
 
 For this discussion, Orca and QIDIStudio behave the same way and we'll only point to one of them for examples. Their start-gcode files are effectively identical for temperature flow. The only relevant difference here is the chamber placeholder name: Orca uses `[chamber_temperature]` and QIDIStudio uses `[chamber_temperatures]`.
 
 The startup flow is split across:
 
 - [`orcaslicer_gcode/start_gcode`](../orcaslicer_gcode/start_gcode#L12-L50)
-- [`config/klipper-macros-qd/filament.cfg`](../config/klipper-macros-qd/filament.cfg#L78-L189) via `START_PRINT_FILAMENT_PREP`
+- [`config/klipper-macros-qd/filament.cfg`](../config/klipper-macros-qd/filament.cfg#L120-L239) via `OPTIMIZED_START_PRINT_FILAMENT_PREP`
 
 ## Summary
 
@@ -15,7 +15,7 @@ The slicer startup temperature flow is:
 
 1. bed starts heating to first-layer bed temp
 2. chamber starts heating to chamber temp
-3. `START_PRINT_FILAMENT_PREP` begins the box/material prep path
+3. `OPTIMIZED_START_PRINT_FILAMENT_PREP` begins the box/material prep path
 4. QIDI box-start logic uses `HOTENDTEMP = nozzle_temperature_range_high[initial_tool]`
 5. visible rear flush uses that same `HOTENDTEMP`
 6. the macro cools down over the waste chute with staged wipe passes
@@ -31,7 +31,7 @@ The slicer start gcode in [`orcaslicer_gcode/start_gcode`](../orcaslicer_gcode/s
 ```gcode
 M140 S[bed_temperature_initial_layer_single]
 M141 S[chamber_temperature]
-START_PRINT_FILAMENT_PREP EXTRUDER=[initial_no_support_extruder] HOTENDTEMP={nozzle_temperature_range_high[initial_tool]} PURGETEMP=[nozzle_temperature_initial_layer] BEDTEMP=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperature]
+OPTIMIZED_START_PRINT_FILAMENT_PREP EXTRUDER=[initial_no_support_extruder] HOTENDTEMP={nozzle_temperature_range_high[initial_tool]} PURGETEMP=[nozzle_temperature_initial_layer] BEDTEMP=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperature]
 ...
 M104 S[nozzle_temperature_initial_layer]
 ...
@@ -74,12 +74,12 @@ At this point:
 The next notable call is:
 
 ```gcode
-START_PRINT_FILAMENT_PREP EXTRUDER=[initial_no_support_extruder] HOTENDTEMP={nozzle_temperature_range_high[initial_tool]} PURGETEMP=[nozzle_temperature_initial_layer] BEDTEMP=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperature]
+OPTIMIZED_START_PRINT_FILAMENT_PREP EXTRUDER=[initial_no_support_extruder] HOTENDTEMP={nozzle_temperature_range_high[initial_tool]} PURGETEMP=[nozzle_temperature_initial_layer] BEDTEMP=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperature]
 ```
 
 This is the handoff from slicer start gcode into the Klipper macro layer for startup filament prep.
 
-### 3. `START_PRINT_FILAMENT_PREP` Reuse Path
+### 3. `OPTIMIZED_START_PRINT_FILAMENT_PREP` Reuse Path
 
 [`config/klipper-macros-qd/filament.cfg`](../config/klipper-macros-qd/filament.cfg#L78-L120)
 
@@ -113,7 +113,7 @@ Key point:
 - unlike the fresh-load path, the reuse path now only performs chute-side wipe cleanup; it does not do the later nozzle-on-bed scrape sequence
 - if any retained slot or metadata check no longer matches, the macro falls back to the normal fresh-load path instead of trusting the already-loaded filament
 
-### 4. `START_PRINT_FILAMENT_PREP` Fresh Load Path
+### 4. `OPTIMIZED_START_PRINT_FILAMENT_PREP` Fresh Load Path
 
 [`config/klipper-macros-qd/filament.cfg`](../config/klipper-macros-qd/filament.cfg#L121-L189)
 
@@ -138,10 +138,10 @@ So the QIDI box-start path is driven from the slicer's configured high-end nozzl
 Immediately after `BOX_PRINT_START`, the macro calls:
 
 ```gcode
-EXTRUSION_AND_FLUSH HOTENDTEMP={hotendtemp} CHAMBER={chambertemp}
+OPTIMIZED_EXTRUSION_AND_FLUSH HOTENDTEMP={hotendtemp} CHAMBER={chambertemp}
 ```
 
-Inside `EXTRUSION_AND_FLUSH`:
+Inside `OPTIMIZED_EXTRUSION_AND_FLUSH`:
 
 ```gcode
 M109 S{hotendtemp}
@@ -201,7 +201,7 @@ The slicer now performs the entire final first-layer heat-up at the front load-l
 
 [`orcaslicer_gcode/start_gcode`](../orcaslicer_gcode/start_gcode#L20-L50)
 
-After `START_PRINT_FILAMENT_PREP` returns, the slicer continues with a centered light front load line at `Y0`.
+After `OPTIMIZED_START_PRINT_FILAMENT_PREP` returns, the slicer continues with a centered light front load line at `Y0`.
 
 Relevant temperature lines are:
 
@@ -221,16 +221,16 @@ Then it moves to a front standby point `8mm` left of the actual load-line start 
 
 After the main stroke, the slicer now uses a short lower-flow finishing segment over the last `5mm` of the line, then applies a small `0.2mm` retract before lifting Z. That keeps the total line length unchanged while tapering pressure down onto the bed and relieving nozzle pressure before the post-line setup commands run.
 
-The slicer no longer performs the old single `probe samples=1` tap before this line; the active startup path already handled `Z_TILT_ADJUST` and `G29_ZSAFE` inside `START_PRINT_FILAMENT_PREP`.
+The slicer no longer performs the old single `probe samples=1` tap before this line; the active startup path already handled `Z_TILT_ADJUST` and `G29_ZSAFE` inside `OPTIMIZED_START_PRINT_FILAMENT_PREP`.
 
 ## What `HOTENDTEMP` And `PURGETEMP` Mean In This Profile
 
 In the Orca and QIDIStudio start gcode:
 
-- `HOTENDTEMP` is the value passed into `START_PRINT_FILAMENT_PREP` for the box-prep flow
+- `HOTENDTEMP` is the value passed into `OPTIMIZED_START_PRINT_FILAMENT_PREP` for the box-prep flow
 - `HOTENDTEMP` is the highest nozzle temp of all filaments in use
 - `PURGETEMP` is the first-layer nozzle temperature of the first used filament
-- `PURGETEMP` controls the later wait inside `START_PRINT_FILAMENT_PREP`
+- `PURGETEMP` controls the later wait inside `OPTIMIZED_START_PRINT_FILAMENT_PREP`
 - `PURGETEMP` sets the first two staged post-flush cleanup thresholds: `PURGETEMP` and `PURGETEMP - 30`
 - the slicer then uses that same first-layer nozzle temperature for the front prime line
 

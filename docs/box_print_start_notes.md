@@ -784,7 +784,7 @@ In visible config, they are always called as a pair, always in this order:
 
 Visible call sites:
 
-- `config/klipper-macros-qd/filament.cfg` after `M1004` and `G4 P5000` inside `EXTRUSION_AND_FLUSH`
+- `config/klipper-macros-qd/filament.cfg` after `M1004` and `G4 P5000` inside `OPTIMIZED_EXTRUSION_AND_FLUSH`
 - `config/box.cfg` after unload, small extrusion, and heater-off inside `UNLOAD_FILAMENT`
 
 That placement still supports the idea that they are post-purge/post-unload cleanup motions.
@@ -802,6 +802,7 @@ which maps to the `Polar_cooler` output.
 Best current interpretation:
 
 - `M1004` is a cooling aid before the delayed cleanup sequence
+- in this repo it respects saved `enable_polar_cooler` and defaults off if that value is unset
 - it is not itself the thing that clears flush/ooze state
 
 ### `cmd_BOX_PRINT_START` size and significance
@@ -863,7 +864,7 @@ Best current active local call path:
   - `M109 S{hotendtemp}`
   - related sensor/init helpers
 - low-level execution in `box_stepper.so`
-- optional visible `EXTRUSION_AND_FLUSH` after `BOX_PRINT_START` returns
+- optional visible stock `EXTRUSION_AND_FLUSH` or optimized `OPTIMIZED_EXTRUSION_AND_FLUSH` after `BOX_PRINT_START` returns
 
 ### State that `BOX_PRINT_START` reads
 
@@ -1541,7 +1542,7 @@ If the goal is to own the sequence instead of using `BOX_PRINT_START`, the clean
    - `EXTRUDER_UNLOAD SLOT=<old-slot>` if needed
    - `EXTRUDER_LOAD SLOT=<new-slot>`
    - `SLOT_RFID_READ SLOT=<slot>` if verification is wanted
-   - `EXTRUSION_AND_FLUSH ...` or a custom purge sequence
+   - `OPTIMIZED_EXTRUSION_AND_FLUSH ...` or a custom purge sequence
    - optional `CLEAR_FLUSH`, `CLEAR_OOZE`, `CLEAR_RUNOUT_NUM`
 
 ## What is still unresolved

@@ -1,0 +1,21 @@
+name: Format Klipper Configs
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  format-klipper-configs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Verify Klipper config formatting
+        run: python3 scripts/format_klipper_configs.py --check --diff
