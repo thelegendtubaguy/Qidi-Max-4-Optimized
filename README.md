@@ -49,6 +49,7 @@ _There will be a scripted installer in the future if you'd rather wait for that_
 ## Important notes
 
 - Main printer and box MCU serial identifiers are redacted where applicable.
+- If you need to recover your own machine's specific device IDs, inspect `/dev/serial/by-id` on the printer with `ls -l /dev/serial/by-id/` and use the matching entries.
 - On-device, `config/fluidd.cfg` is read-only; behavior changes should be implemented in other files under `config/`.
 - Vendor-specific features and macros are present, including `multi_color_controller`, `box_config`, `probe_air`, and `closed_loop`.
 - This machine uses nozzle contact probing via `probe_air`, so `SCREWS_TILT_CALCULATE` can use the direct screw XY positions in `config/printer.cfg`.
