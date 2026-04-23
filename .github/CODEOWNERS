@@ -1,0 +1,3 @@
+# GitHub CODEOWNERS uses GitHub usernames or teams, not email addresses.
+# Changes under .github/ require review from @thelegendtubaguy when branch protection enables code owner review.
+.github/** @thelegendtubaguy

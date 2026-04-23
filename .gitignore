@@ -1,3 +1,6 @@
 *.DS_Store
 .ruff_cache/
+__pycache__/
 tmp/
+build/
+dist/

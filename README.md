@@ -1,31 +1,33 @@
 # Qidi Max 4 Optimized
 
-Opinionated and tuned configs to make your QIDI Max 4 run the way it should.
+An opinionated QIDI Max 4 Klipper and slicer configuration.
 
-> [!NOTE]
-> If you want to help support content like this, consider subscribing over on [YouTube](https://youtube.com/@TubaMakes)!
+## Install
 
-For stock QIDI-shipped configs and firmware-version snapshots, see [Qidi-Max4-Defaults](https://github.com/thelegendtubaguy/Qidi-Max4-Defaults).
+1. On the printer, run the repo installer command for this repository.
+2. In your slicer, replace the machine G-code with the files from this repo:
+   - OrcaSlicer: `orcaslicer_gcode/`
+   - QIDI Studio: `qidistudio_gcode/`
+3. Use the slicer pack that matches your slicer. OrcaSlicer and QIDI Studio use different placeholder syntax.
 
-> [!NOTE]
-> Stock slicer G-code and stock machine files remain compatible with the current config changes. The repo's custom slicer G-code packs are optional and opt in to the optimized flow through separate `OPTIMIZED_*` macros.
+## Summary
 
-> [!WARNING]
-> If you update the printer's firmware, it will wipe these changes away.
-
-> [!WARNING]
-> These configurations were created and tested using a printer with a single Qidi box.  They likely work with no Qidi box and multiple Qidi boxes, just something to keep in mind.
-
-## What's in this repo
-
-- `config/`: Klipper configuration, macros, machine settings, and included support configs.
-- `docs/`: repo-local technical notes, flow documentation, and reference notes.
-- `orcaslicer_gcode/`: OrcaSlicer custom G-code snippets for this machine.
-- `qidistudio_gcode/`: QIDI Studio custom G-code snippets for this machine.
-- `scripts/`: local formatting and validation helpers used by this repo.
+- Installs optimized Klipper macros for supported QIDI Max 4 firmware and expects the matching slicer machine G-code from this repo.
+- Keeps the OrcaSlicer and QIDI Studio machine G-code packs functionally aligned while preserving each slicer's own variable syntax.
+- Uses the stock QIDI Max 4 defaults repo as the baseline for stock behavior and firmware snapshots: `https://github.com/thelegendtubaguy/Qidi-Max4-Defaults`
 
 ## Documentation
 
+<<<<<<< HEAD
+- [`docs/current_config_results_vs_stock_qidi_configs.md`](docs/current_config_results_vs_stock_qidi_configs.md)
+  - Verified config and behavior differences between this repo and the stock QIDI Max 4 baseline.
+- [`docs/optimized_slicer_start_temperature_flow.md`](docs/optimized_slicer_start_temperature_flow.md)
+  - `HOTENDTEMP` / `PURGETEMP` flow through the optimized slicer start path and the related optimized macros.
+- [`docs/box_print_start_notes.md`](docs/box_print_start_notes.md)
+  - Reverse-engineering notes for `BOX_PRINT_START`, box-side filament prep behavior, and the vendor box stack.
+- [`docs/installer_runtime_contract.md`](docs/installer_runtime_contract.md)
+  - Installer runtime plan, TUI statuses, package version validation, zipped backup flow, and guarded patch reporting.
+=======
 - [Temperature Flow From The Optimized Orca And QIDIStudio Start G-Code](docs/orca-hotendtemp-purgetemp-flow.md): temperature timeline for the repo's optimized slicer packs through the active box-prep and prime-line sequence.
 - [QIDI Box Implementation Notes](docs/box_print_start_notes.md): reverse-engineering notes for QIDI's vendor-implemented `BOX_PRINT_START` and related box internals.
 - [Current Config Results Vs Stock QIDI Configs](docs/current-config-results-vs-stock-qidi-configs.md): summary of behavior changes and estimated time impact versus the stock configs shipped by QIDI.
@@ -53,3 +55,4 @@ _There will be a scripted installer in the future if you'd rather wait for that_
 - On-device, `config/fluidd.cfg` is read-only; behavior changes should be implemented in other files under `config/`.
 - Vendor-specific features and macros are present, including `multi_color_controller`, `box_config`, `probe_air`, and `closed_loop`.
 - This machine uses nozzle contact probing via `probe_air`, so `SCREWS_TILT_CALCULATE` can use the direct screw XY positions in `config/printer.cfg`.
+>>>>>>> 652c2a2c0ea6397351fc97cdf83db589aef9b051

@@ -1,0 +1,114 @@
+name: publish-release-installer
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  publish-release-installer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run installer core tests
+        run: python3 scripts/run_installer_core_tests.py
+      - name: Validate installer compatibility metadata
+        run: python3 scripts/check_installer_known_versions.py
+      - name: Read package version
+        id: version
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          from pathlib import Path
+          from installer.runtime.manifest import load_manifest
+          manifest = load_manifest(Path('installer/package.yaml'))
+          print(f"package_version={manifest.package.version}")
+          PY
+      - name: Verify package version bumped
+        run: |
+          current='${{ steps.version.outputs.package_version }}'
+          git show HEAD^:installer/package.yaml > previous-package.yaml
+          previous=$(python3 - <<'PY'
+          from pathlib import Path
+          from installer.runtime.manifest import load_manifest
+          print(load_manifest(Path('previous-package.yaml')).package.version)
+          PY
+          )
+          rm -f previous-package.yaml
+          if [ "$current" = "$previous" ]; then
+            echo "package.version was not bumped"
+            exit 1
+          fi
+      - name: Verify release tag does not already exist
+        run: |
+          git fetch --tags --force
+          if git rev-parse "v${{ steps.version.outputs.package_version }}" >/dev/null 2>&1; then
+            echo "Tag v${{ steps.version.outputs.package_version }} already exists"
+            exit 1
+          fi
+      - name: Build release installer bundle
+        run: python3 scripts/build_installer_bundle.py --output-dir dist --channel release --smoke-test
+      - name: Create draft release and upload assets
+        id: create_release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = `v${process.env.PACKAGE_VERSION}`;
+            const response = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: tag,
+              draft: true,
+              prerelease: false,
+              target_commitish: context.sha,
+            });
+            core.setOutput('release_id', response.data.id.toString());
+            core.setOutput('upload_url', response.data.upload_url);
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.package_version }}
+      - name: Upload release assets
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          UPLOAD_URL: ${{ steps.create_release.outputs.upload_url }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, urllib.parse, urllib.request
+          upload_url = os.environ['UPLOAD_URL'].split('{', 1)[0]
+          token = os.environ['GITHUB_TOKEN']
+          files = [
+              'dist/qidi-max4-optimized-installer.tar.gz',
+              'dist/qidi-max4-optimized-installer.tar.gz.sha256',
+              'dist/qidi-max4-optimized-installer-${{ steps.version.outputs.package_version }}.tar.gz',
+              'dist/qidi-max4-optimized-installer-${{ steps.version.outputs.package_version }}.tar.gz.sha256',
+          ]
+          for raw_path in files:
+              path = pathlib.Path(raw_path)
+              url = upload_url + '?name=' + urllib.parse.quote(path.name)
+              request = urllib.request.Request(url, method='POST')
+              request.add_header('Authorization', f'Bearer {token}')
+              request.add_header('Content-Type', 'application/octet-stream')
+              with path.open('rb') as handle:
+                  data = handle.read()
+              with urllib.request.urlopen(request, data=data) as response:
+                  response.read()
+          PY
+      - name: Publish release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: Number(process.env.RELEASE_ID),
+              draft: false,
+            });
+        env:
+          RELEASE_ID: ${{ steps.create_release.outputs.release_id }}

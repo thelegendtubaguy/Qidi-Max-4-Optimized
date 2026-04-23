@@ -13,6 +13,7 @@ SECTION_RE = re.compile(r"^\[[^\]]+\]\s*(?:#.*)?$")
 ASSIGN_RE = re.compile(r"^([A-Za-z0-9_][A-Za-z0-9_\-. ]*?)\s*([:=])\s*(.*?)\s*$")
 SAVE_CONFIG_MARKER = "#*# <---------------------- SAVE_CONFIG ---------------------->"
 DEFAULT_EXCLUDES = {"fluidd.cfg", "saved_variables.cfg"}
+FORMAT_DIR = Path("installer") / "klipper" / "tltg-optimized-macros"
 
 
 def normalize_lines(lines: list[str]) -> list[str]:
@@ -77,7 +78,7 @@ def format_text(text: str) -> str:
 
 
 def iter_cfg_files(root: Path) -> list[Path]:
-    config_dir = root / "config"
+    config_dir = root / FORMAT_DIR
     return sorted(
         path for path in config_dir.rglob("*.cfg") if path.name not in DEFAULT_EXCLUDES
     )
@@ -96,13 +97,13 @@ def diff_text(path: Path, before: str, after: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Format editable Klipper config files in this repo."
+        description="Format TLTG optimized Klipper config files in this repo."
     )
     parser.add_argument(
         "paths",
         nargs="*",
         type=Path,
-        help="Optional config files or directories to format. Defaults to config/**/*.cfg.",
+        help="Optional config files or directories to format. Defaults to installer/klipper/tltg-optimized-macros/**/*.cfg.",
     )
     parser.add_argument(
         "--check",
@@ -117,6 +118,7 @@ def main() -> int:
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[1]
+    format_root = (repo_root / FORMAT_DIR).resolve()
 
     if args.paths:
         candidates: list[Path] = []
@@ -131,7 +133,12 @@ def main() -> int:
             elif path.suffix == ".cfg":
                 candidates.append(path)
         files = sorted(
-            {path for path in candidates if path.name not in DEFAULT_EXCLUDES}
+            {
+                path
+                for path in candidates
+                if path.name not in DEFAULT_EXCLUDES
+                and (path == format_root or format_root in path.parents)
+            }
         )
     else:
         files = iter_cfg_files(repo_root)

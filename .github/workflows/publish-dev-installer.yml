@@ -1,0 +1,39 @@
+name: publish-dev-installer
+
+on:
+  push:
+    branches:
+      - dev
+
+permissions:
+  contents: write
+
+jobs:
+  publish-dev-installer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run installer core tests
+        run: python3 scripts/run_installer_core_tests.py
+      - name: Validate installer compatibility metadata
+        run: python3 scripts/check_installer_known_versions.py
+      - name: Capture short sha
+        id: sha
+        run: echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Build dev installer bundle
+        run: python3 scripts/build_installer_bundle.py --output-dir dist --channel dev --build-id '${{ steps.sha.outputs.short_sha }}'
+      - name: Publish dev prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dev-latest
+          name: dev-latest
+          prerelease: true
+          make_latest: false
+          files: |
+            dist/qidi-max4-optimized-installer-dev.tar.gz
+            dist/qidi-max4-optimized-installer-dev.tar.gz.sha256
+            dist/qidi-max4-optimized-installer-dev-${{ steps.sha.outputs.short_sha }}.tar.gz
+            dist/qidi-max4-optimized-installer-dev-${{ steps.sha.outputs.short_sha }}.tar.gz.sha256

@@ -10,8 +10,8 @@ G1 E-{retraction_distances_when_cut[previous_extruder]} F{old_filament_e_feedrat
 G1 E-2 F{old_filament_e_feedrate}
 {endif}
 M400
-OPTIMIZED_CUT_FILAMENT T=[current_extruder]
-MOVE_TO_TRASH
+OPTIMIZED_CUT_FILAMENT
+OPTIMIZED_MOVE_TO_TRASH
 M106 P2 S0
 UNLOAD_T[current_extruder]
 T[next_extruder]

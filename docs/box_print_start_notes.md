@@ -1,60 +1,35 @@
-# QIDI Box Implementation Notes
+# QIDI Box and `BOX_PRINT_START`
 
-This document is a structured dump of what is currently known about the QIDI box implementation, especially:
+## Current config-visible path on this machine
 
-- `BOX_PRINT_START`
-- the local box control stack in Klipper vendor modules
-- the controller/state-machine layer in `multi_color_controller.so`
-- the remote USB JSON protocol used by the second-generation box path
-- RFID reading and material/color/vendor mapping
+### Stock print-start path
 
-This is based on static inspection of the printer-side payloads and client payloads, using:
-
-- `file`
-- `strings`
-- `llvm-nm`
-- `llvm-objdump`
-- `radare2`
-
-This note uses printer-native paths such as `/home/qidi/klipper/...` and `/home/qidi/QIDI_Client/...`.
-
-## Reading this note
-
-Confidence labels used here:
-
-- `CONFIRMED` - directly supported by disassembly, symbols, strings, or visible config
-- `HIGH CONFIDENCE` - not verbatim source, but tightly supported by multiple pieces of evidence
-- `STRONGLY IMPLIED` - likely from control flow and nearby strings, but not fully decompiled to source-equivalent logic
-- `SPECULATIVE` - plausible, but not yet well pinned down
-
-## Executive view
-
-The current best model of the QIDI box stack is:
-
-1. visible Klipper macros trigger high-level vendor commands
-2. `box_extras.so` owns most of the hidden local print-start orchestration
-3. `multi_color_controller.so` provides a broader controller/state-machine layer with both local and remote backends
-4. `box_stepper.so`, `box_rfid.so`, and `box_autofeed.so` implement the real low-level mechanics, RFID, and wrapping/autofeed logic
-5. `/home/qidi/QIDI_Client/bin/qidiclient` is mainly a UI/client process that talks to Moonraker/Klipper and understands the same saved-state/material model
-
-Most important practical conclusion:
-
-- the box can likely be controlled from custom macros without relying on `BOX_PRINT_START`
-- but it cannot be controlled without vendor binaries entirely, because the real feeder, RFID, and autofeed logic live in compiled modules
-
-## Runtime entry points and active path on this machine
-
-### What calls `BOX_PRINT_START`
-
-`config/klipper-macros-qd/start_end.cfg` contains `_PRINT_START_BOX_PREPAR`, which calls:
+`config/klipper-macros-qd/start_end.cfg`:
 
 ```gcode
-BOX_PRINT_START EXTRUDER={EXTRUDER} HOTENDTEMP={HOTENDTEMP}
+BOX_PRINT_START EXTRUDER={EXTRUDER} HOTENDTEMP={HOTEND}
+M400
+EXTRUSION_AND_FLUSH HOTEND={HOTEND}
 ```
 
-That happens during print start, before later preheat/probing phases.
+This happens in `_print_start_box_prepar` before later preheat/probing phases.
 
-### Why this machine is on the local box path
+### Optimized print-start path in this repo
+
+`installer/klipper/tltg-optimized-macros/filament.cfg`:
+
+- reuse branch: does not call `BOX_PRINT_START`
+- non-reuse branch: calls `BOX_PRINT_START`
+
+```gcode
+BOX_PRINT_START EXTRUDER={tool} HOTENDTEMP={hotendtemp}
+M400
+OPTIMIZED_EXTRUSION_AND_FLUSH HOTENDTEMP={hotendtemp} CHAMBER={chambertemp}
+```
+
+The optimized start path bypasses `BOX_PRINT_START` in the reuse branch and calls it in the non-reuse branch.
+
+## Active box stack on this machine
 
 `config/printer.cfg` includes `config/box.cfg` and declares `[multi_color_controller]`.
 
@@ -65,26 +40,31 @@ That happens during print start, before later preheat/probing phases.
 - `[box_autofeed]`
 - `[mcu mcu_box1]`
 
-`config/box.cfg` also defines `T0`..`T15` and `UNLOAD_T0`..`UNLOAD_T15` wrappers that call:
+`config/box.cfg` also defines:
 
-- `EXTRUDER_LOAD`
-- `EXTRUDER_UNLOAD`
+- `T0`..`T15` wrappers around `EXTRUDER_LOAD SLOT={slot}`
+- `UNLOAD_T0`..`UNLOAD_T15` wrappers around `EXTRUDER_UNLOAD SLOT={slot}`
+- `UNLOAD_FILAMENT`, which uses:
+  - `CUT_FILAMENT`
+  - `MOVE_TO_TRASH`
+  - `UNLOAD_T{T}`
+  - `CLEAR_OOZE`
+  - `CLEAR_FLUSH`
 
-That is strong evidence that this printer is using the local MCU-backed box path, not only the higher-level `multi_color_controller` abstraction.
+This printer uses the local MCU-backed box path.
 
 ## What `BOX_PRINT_START` is not
 
-- it is not a normal `[gcode_macro ...]` in this config repo
-- it is not defined in these visible Python files:
+- not a visible `[gcode_macro ...]` in repo config
+- not defined in the visible Python files:
+  - `/home/qidi/klipper/klippy/extras/box_config.py`
   - `/home/qidi/klipper/klippy/extras/color_feeder.py`
   - `/home/qidi/klipper/klippy/extras/feed_slot.py`
-  - `/home/qidi/klipper/klippy/extras/box_config.py`
+- not a client-side gcode template found in `qidiclient`
 
-## Relevant file and module inventory
+## Relevant printer-side vendor modules
 
-### Printer-side Klipper vendor modules
-
-Active box-related files under `/home/qidi/klipper/klippy/extras/`:
+Under `/home/qidi/klipper/klippy/extras/`:
 
 - `box_autofeed.so`
 - `box_detect.so`
@@ -97,45 +77,105 @@ Active box-related files under `/home/qidi/klipper/klippy/extras/`:
 - `color_feeder.py`
 - `feed_slot.py`
 
-All compiled vendor modules examined here are:
+The compiled modules examined for this note are `aarch64` ELF binaries with debug info present.
 
-- ELF 64-bit
-- `aarch64`
-- dynamically linked
-- built with debug info present
-- not stripped
+## Module roles
 
-### Client-side files
+### `box_extras.so`
 
-The main QIDI client process is:
+Local high-level orchestration layer.
 
-- `/home/qidi/QIDI_Client/bin/qidiclient`
+Recovered commands include:
 
-`/home/qidi/QIDI_Client/bin/start.sh` launches:
+- `cmd_BOX_PRINT_START`
+- `cmd_INIT_BOX_STATE`
+- `cmd_INIT_RFID_READ`
+- `cmd_CLEAR_FLUSH`
+- `cmd_CLEAR_OOZE`
+- `cmd_CLEAR_RUNOUT_NUM`
+- `cmd_TIGHTEN_FILAMENT`
+- `cmd_RELOAD_ALL`
+- `cmd_CUT_FILAMENT`
+- `cmd_AUTO_RELOAD_FILAMENT`
+- `cmd_RETRY`
+- `cmd_RUN_STEPPER`
+- `cmd_ENABLE_BOX_DRY`
+- `cmd_DISABLE_BOX_DRY`
+- `cmd_TRY_RESUME_PRINT`
+- `cmd_RESUME_PRINT_1`
+- `cmd_disable_box_heater`
 
-```text
-taskset -c 0 /home/qidi/QIDI_Client/bin/qidiclient
-```
+`ToolChange` commands:
 
-`/home/qidi/QIDI_Client/bin/tuning.sh` also treats `qidiclient` as a pinned, performance-managed process alongside `klippy`, `moonraker`, `nginx`, and `ustreamer`.
+- `cmd_TOOL_CHANGE_START`
+- `cmd_TOOL_CHANGE_END`
+- `cmd_CLEAR_TOOLCHANGE_STATE`
 
-## Layered architecture
+### `box_stepper.so`
 
-Best current architecture model:
+Low-level feeder / slot / extruder mechanics layer.
 
-1. Klipper macros in `config/`
-2. high-level local orchestration in `box_extras.so`
-3. controller/state-machine layer in `multi_color_controller.so`
-4. low-level mechanics and sensing in:
-   - `box_stepper.so`
-   - `box_rfid.so`
-   - `box_autofeed.so`
+Recovered handlers include:
 
-`box_detect.so` appears separate. It looks like detection/config glue, not the core material-prep path.
+- `cmd_SLOT_UNLOAD`
+- `cmd_EXTRUDER_LOAD`
+- `cmd_EXTRUDER_UNLOAD`
+- `cmd_SLOT_PROMPT_MOVE`
+- `cmd_SLOT_RFID_READ`
+- `cmd_DIS_STEP`
 
-## `box_detect.so`
+Other recovered names:
 
-`box_detect.so` exports a `BoxDetect` class with methods such as:
+- `slot_load`
+- `slot_sync`
+- `init_slot_sync`
+- `switch_next_slot`
+- `flush_all_filament`
+- `sync_unbind_extruder`
+- `disable_stepper`
+
+### `box_rfid.so`
+
+Low-level RFID reader path.
+
+Recovered names include:
+
+- `BoxRFID`
+- `read_card`
+- `read_card_from_slot`
+- `_schedule_rfid_read`
+- `start_rfid_read`
+- `stop_read`
+
+FM17550-related strings indicate an MCU-attached, callback-driven reader path.
+
+### `box_autofeed.so`
+
+Autofeed / wrapping-detection / assist path.
+
+Recovered commands include:
+
+- `MCB_CONFIG`
+- `MCB_AUTO_START`
+- `MCB_AUTO_ABORT`
+- `SET_LIMIT_A`
+- `cmd_query`
+
+Related names include:
+
+- `_select_slot`
+- `_get_slot_stepper`
+- `limit_a_event`
+- `auto_start`
+- `auto_abort`
+- `wrapping_detection`
+- `wrapping_operate`
+
+### `box_detect.so`
+
+Box MCU detection and config-file update plumbing, not the main material-prep path.
+
+Recovered names include:
 
 - `get_config_mcu_serials`
 - `get_check_serials_id`
@@ -143,21 +183,11 @@ Best current architecture model:
 - `_update_config_file`
 - `_request_restart`
 
-Strings reference:
-
-- `/home/qidi/QIDI_Client/tools/cfg/*.cfg`
-- `/home/qidi/QIDI_Client/tools/mcu...`
-
-Best current conclusion:
-
-- `box_detect.so` is box MCU detection and config-file update plumbing
-- it is not the main print-start/material-prep implementation
-
 ## `multi_color_controller.so`
 
-`multi_color_controller.so` is much broader than a single print-start helper.
+General controller/state-machine layer, not just a print-start helper.
 
-### Major classes
+Recovered classes include:
 
 - `UnifiedState`
 - `TaskQueueManager`
@@ -166,23 +196,7 @@ Best current conclusion:
 - `RemoteAdapter`
 - `MultiColorController`
 
-This is a general multi-color state machine and UI/status bridge, not just a startup helper.
-
-### Local vs remote backend split
-
-Embedded descriptions are revealing:
-
-- `LocalAdapter` - direct control of existing Klipper components
-- `RemoteAdapter` - communicates with the second-generation box
-
-Best current interpretation:
-
-- local backend: use Klipper/vendor commands already present on the printer
-- remote backend: speak a USB JSON protocol to a second-generation box controller
-
-### Controller command surface
-
-Confirmed controller handler names:
+Recovered handlers include:
 
 - `cmd_query_multi_color`
 - `cmd_multi_color_load`
@@ -192,9 +206,7 @@ Confirmed controller handler names:
 - `cmd_multi_color_read_rfid`
 - `cmd_multi_color_sync`
 - `cmd_multi_color_config`
-- `cmd_set_filament_dry`
 - `cmd_multi_color_box_unload`
-- `cmd_multi_color_init_rfid`
 - `cmd_multi_color_reload_all`
 - `cmd_multi_color_auto_reload`
 - `cmd_multi_color_retry`
@@ -214,9 +226,7 @@ Confirmed controller handler names:
 - `cmd_reset_save_variables`
 - `cmd_user_confirm_continue`
 
-### Controller state model
-
-Confirmed state-field vocabulary includes:
+Recovered state vocabulary includes:
 
 - `main_status`
 - `sub_status`
@@ -233,22 +243,20 @@ Confirmed state-field vocabulary includes:
 - `is_waiting_user`
 - `flow_id`
 
-### Controller/local wrapper print-start path
+### Local vs remote backend split
 
-`MultiColorController.cmd_multi_color_print_start` parses `EXTRUDER` and `HOTENDTEMP` and then dispatches to an adapter print-start path.
+Recovered descriptions explicitly refer to:
 
-Best current interpretation:
+- `LocalAdapter` - direct control of existing Klipper components
+- `RemoteAdapter` - communicates with the second-generation box
 
-- `LocalAdapter.print_start` formats a local Klipper gcode equivalent to `BOX_PRINT_START EXTRUDER=... HOTENDTEMP=...`
-- `RemoteAdapter.print_start` builds a remote JSON command with action `print_start` and params equivalent to `extruder` and `hotendtemp`
+Active path on this printer: local MCU-backed.
 
-## Remote USB JSON protocol (`RemoteAdapter`)
+## Remote USB JSON path
 
-### Transport model
+The second-generation remote path uses newline-delimited JSON over USB serial.
 
-`RemoteAdapter` clearly contains serial/JSON transport logic.
-
-Relevant strings include:
+Strings in `multi_color_controller.so` include:
 
 - `/dev/ttyACM*`
 - `/dev/ttyUSB*`
@@ -256,61 +264,29 @@ Relevant strings include:
 - `dumps`
 - `loads`
 - `Serial`
-- `serial`
 - `baudrate`
 - `timeout`
 - `write_timeout`
 - `readline`
 - `in_waiting`
-- `encode`
-- `decode`
-- `strip`
-- `command_queue`
-- `response_queue`
 - `_send_command`
 - `_process_message`
 - `_send_heartbeat`
 - `_find_box_port`
 
-Best current conclusion:
-
-- the second-generation box path uses newline-delimited JSON over USB serial
-- the controller scans `/dev/ttyACM*` and `/dev/ttyUSB*`
-- the remote protocol is implemented in `multi_color_controller.so`, not in `qidiclient`
-
-### Confirmed literal frame
-
-One exact frame is present in the binary:
+A literal frame present in the binary:
 
 ```json
 {"cmd":"ping"}\n
 ```
 
-The literal `pong` is also present.
-
-### Best current command frame shape
-
-Not fully proven byte-for-byte, but the strongest current model is:
+General frame model:
 
 ```json
-{"cmd_id":"...","action":"load_filament","params":{...}}\n
+{"cmd_id":"...","action":"print_start","params":{...}}\n
 ```
 
-because the same code path contains:
-
-- `cmd_id`
-- `action`
-- `params`
-- `command`
-- `response`
-- `event_type`
-- `result`
-- `results`
-- `success`
-
-### Confirmed remote action names
-
-Best current set of action-like strings:
+Recovered action-like strings include:
 
 - `load_filament`
 - `unload_filament`
@@ -338,157 +314,19 @@ Best current set of action-like strings:
 - `clear_ooze`
 - `cut_filament`
 
-### Best current action-to-parameter map
+## `qidiclient`
 
-Confirmed or strongly implied:
+Main process:
 
-- `load_filament` -> `slot`
-- `unload_filament` -> `slot`
-- `swap_filament` -> `from_slot`, `to_slot`
-- `read_rfid` -> `slot`
-- `sync_to_extruder` -> `slot`
-- `unsync_from_extruder` -> no required parameter known
-- `box_unload` -> `slot`
-- `init_rfid` -> no required parameter known
-- `reload_all` -> `first`
-- `auto_reload` -> no required parameter known
-- `retry` -> likely `rfid`
-- `tighten` -> `tool`
-- `print_start` -> `extruder`, `hotendtemp`
-- `try_resume` -> no required parameter known
-- `resume_print` -> likely `temp`
-- `disable_heater` -> no required parameter known
-- `clear_runout` -> no required parameter known
-- `clear_flush` -> no required parameter known
-- `clear_ooze` -> no required parameter known
-- `cut_filament` -> `tool`
+- `/home/qidi/QIDI_Client/bin/qidiclient`
 
-Still less certain:
+Launch script:
 
-- `set_temp` -> likely `temp_params`
-- `init_mapping` -> likely `mapping`
-- some commands may accept additional optional fields merged into `params`
-
-One useful detail:
-
-- slot-bearing remote methods appear to normalize `slotN` strings into numeric slot indexes before sending them onward
-
-### `cmd_id`
-
-Best current reconstruction:
-
-```python
-cmd_id = f"cmd_{int(time.time() * 1000)}_{hash(threading.current_thread().ident) % 10000:05d}"
+```text
+taskset -c 0 /home/qidi/QIDI_Client/bin/qidiclient
 ```
 
-This is reconstructed, not verbatim source, but strongly supported by the arithmetic and string fragments in the binary.
-
-### Inbound message classes
-
-Confirmed message/category strings include:
-
-- `command_response`
-- `status_update`
-- `connected`
-- `loaded`
-- `drying_started`
-- `drying_stopped`
-- `pong`
-
-Best current event labels additionally include:
-
-- `filament_runout`
-- `filament_loaded`
-- `filament_unloaded`
-- `operation_error`
-
-### Inbound schema model
-
-Best current high-level model:
-
-- `_process_message` parses a JSON line
-- branches on at least `command_response` and `status_update`
-- passes a selected `response` object into `_update_state_from_response`
-- stores replies in `response_queue` keyed by `cmd_id`
-
-Best current response payload model:
-
-```json
-{
-  "response": {
-    "slot_states": [
-      {
-        "slot_num": 1,
-        "slot_state": "LOADED",
-        "slot_name": "...",
-        "slot_sync": "slot-1",
-        "slot_info": {"...": "..."}
-      }
-    ],
-    "drying_states": [
-      {
-        "drying_state": "...",
-        "dry_state": "..."
-      }
-    ],
-    "box_status": "...",
-    "main_status": "...",
-    "sub_status": "...",
-    "operation_progress": "...",
-    "operation_error": "...",
-    "target_slot": "..."
-  }
-}
-```
-
-Highest-confidence field path:
-
-- `response.slot_states[]`
-
-Observed state/enum vocabulary includes:
-
-- `LOADED`
-- `EMPTY`
-- `ERROR`
-- `PENDING`
-- `UNKNOWN`
-- `IN_FEEDER`
-- `WAIT_USER`
-
-### `RemoteAdapter.connect`
-
-Best current reconstruction:
-
-1. check `self.port`
-2. if missing, call `_find_box_port()` and store the result
-3. if still missing, return early
-4. open `serial.Serial(self.port, baudrate=self.baudrate, timeout=1, write_timeout=1)`
-5. store the serial object
-6. set `self.connected = True`
-7. start a `_communication_loop` thread
-8. start a `_send_heartbeat` thread
-
-### `_communication_loop`
-
-Best current reconstruction:
-
-- runs while connected
-- uses the stored serial object
-- checks something consistent with `in_waiting > 0`
-- accumulates text into a buffer
-- splits on newline boundaries
-- strips complete lines
-- parses JSON
-- dispatches into `_process_message`
-- exits on disconnect/error rather than reconnecting in-loop
-
-## `/home/qidi/QIDI_Client/`
-
-### What the client appears to do
-
-`qidiclient` looks Moonraker/Klipper-facing, not like the component that directly emits the USB JSON box protocol.
-
-Useful strings include:
+Useful strings show it is primarily a Moonraker/Klipper-facing UI/client process:
 
 - `org.qidi.moonraker`
 - `org.qidi.klipper`
@@ -498,412 +336,63 @@ Useful strings include:
 - `Updated klipper state: {}`
 - `Failed to parse klipper state from response`
 
-Best current conclusion:
+It also contains awareness of:
 
-- `qidiclient` is mainly a UI/client integration layer
-- the USB serial JSON box protocol is concentrated in `multi_color_controller.so`
+- `/home/qidi/printer_data/config/box.cfg`
+- `/home/qidi/printer_data/config/officiall_filas_list.cfg`
+- save-variable names such as `enable_box`, `last_load_slot`, `slot_sync`, `filament_slot16`, `color_slot16`, `vendor_slot16`
+- client-side `MULTI_COLOR_*` gcode templates for manual UI flows
 
-### Client box config awareness
+`BOX_PRINT_START` was not found in `qidiclient`.
+`MULTI_COLOR_PRINT_START` was not found in `qidiclient`.
 
-`qidiclient` contains an embedded `/home/qidi/printer_data/config/box.cfg` template including:
-
-- `[box_config box{B}]`
-- `[box_extras]`
-- `[box_autofeed]`
-- `/dev/serial/by-id/usb-Klipper_QIDI_BOX_*`
-- `/dev/serial/by-id/usb-Klipper_QIDI_MAX4-BOX-*`
-
-So the client is involved in box config creation/repair.
-
-### Client save-variable awareness
-
-`qidiclient` contains these variable names:
-
-- `enable_box`
-- `last_load_slot`
-- `slot_sync`
-- `filament_slot16`
-- `color_slot16`
-- `vendor_slot16`
-- `box_extras`
-- `box_stepper slot`
-
-### Client-side gcode templates
-
-Recovered client-side templates include:
-
-- `MULTI_COLOR_LOAD SLOT=slot`
-- `MULTI_COLOR_UNLOAD SLOT=slot`
-- `MULTI_COLOR_BOX_UNLOAD SLOT=slot`
-- `SAVE_VARIABLE VARIABLE=enable_box VALUE=`
-- `SAVE_VARIABLE VARIABLE=filament_slot`
-- `SET_HEATER_TEMPERATURE HEATER=heater_box`
-
-Important negative finding:
-
-- `BOX_PRINT_START` was not found in `qidiclient`
-- `MULTI_COLOR_PRINT_START` was not found in `qidiclient`
-
-Best current conclusion:
-
-- the client likely drives lower-level or mid-level `MULTI_COLOR_*` box actions for manual UI flows
-- print-start material preparation still appears to enter from Klipper macros through `BOX_PRINT_START`
-
-### Client UI strings that line up with low-level mechanics
-
-- `cut_off_filament`
-- `pull_back_filament`
-- `send_new_filament_to_extruder`
-- `wash_away_old_filament`
-- `eject_filament`
-- `bit_in_filament`
-- `ejecting_filament_in_progress`
-
-### Client error catalog value
-
-The client ships localized error JSON for the box path. Useful examples:
-
-- `QDE_004_019` - RFID read failed; check PTFE tube installation
-- `QDE_004_022` - auto-loading failed; no replaceable slot found
-- `QDE_004_023` - auto-loading failed; filament may be blocked
-- `QDE_004_024` - load filament failed; filament failed to enter the extruder
-
-## `box_stepper.so`
-
-`box_stepper.so` appears to be the real per-slot mechanics layer.
-
-### Confirmed command handlers
-
-- `cmd_SLOT_UNLOAD`
-- `cmd_EXTRUDER_LOAD`
-- `cmd_EXTRUDER_UNLOAD`
-- `cmd_SLOT_PROMPT_MOVE`
-- `cmd_SLOT_RFID_READ`
-- `cmd_DIS_STEP`
-
-### Other confirmed methods/concepts
-
-- `slot_load`
-- `slot_sync`
-- `init_slot_sync`
-- `switch_next_slot`
-- `flush_all_filament`
-- `runout_button_callback`
-- `get_mcu_endstops`
-- `disable_stepper`
-
-### Embedded tuning names
-
-Recovered tuning-like names include:
-
-- `slot_load_length_1`..`slot_load_length_4`
-- `slot_unload_length_1`
-- `extruder_load_length_1`
-- `extruder_unload_length_1`
-- `extruder_unload_length_2`
-- `multi_extruder_load_length_1`..`_3`
-- `multi_extruder_unload_length_1`..`_2`
-- `hub_load_length`
-- `multi_extruder_load_speed_1`..`_3`
-- `multi_extruder_unload_speed_1`..`_2`
-- `multi_extruder_load_accel`
-- `multi_extruder_unload_accel`
-- `shake_for_load_toolhead`
-- `shake_for_unload_toolhead`
-
-### Useful error messages
-
-Recovered examples:
-
-- `QDE_004_001` - slot loading failure
-- `QDE_004_002` - extruder already loaded, cannot load another slot
-- `QDE_004_003` - slot unloading failure
-- `QDE_004_004` - please unload extruder first
-- `QDE_004_005` - please load filament to a given slot first
-- `QDE_004_006` - extruder loading failure
-- `QDE_004_007` - extruder not loaded
-- `QDE_004_008` - extruder unloading failure
-- `QDE_004_009` - extruder unloading failure
-- `QDE_004_011` - filament already loaded, unload first
-- `QDE_004_016` - filament exhausted, load the named slot
-- `QDE_004_017` - filament flush failed
-- `QDE_004_020` - filament unloaded unexpectedly, reload
-- `QDE_004_022` - no replaceable slot found
-- `QDE_004_025` - extruder unloading failure
-
-Best current conclusion:
-
-- most of the real safety logic for direct load/unload already lives in `box_stepper.so`
-
-## `box_extras.so`
-
-`box_extras.so` appears to be the high-level local QIDI orchestration layer.
-
-### Classes
-
-- `BoxButton`
-- `BoxEndstop`
-- `BoxExtras`
-- `BoxOutput`
-- `ToolChange`
-
-### `BoxExtras` commands
-
-- `cmd_BOX_PRINT_START`
-- `cmd_INIT_BOX_STATE`
-- `cmd_INIT_RFID_READ`
-- `cmd_CLEAR_FLUSH`
-- `cmd_CLEAR_OOZE`
-- `cmd_CLEAR_RUNOUT_NUM`
-- `cmd_TIGHTEN_FILAMENT`
-- `cmd_RELOAD_ALL`
-- `cmd_CUT_FILAMENT`
-- `cmd_AUTO_RELOAD_FILAMENT`
-- `cmd_RETRY`
-- `cmd_RUN_STEPPER`
-- `cmd_ENABLE_BOX_DRY`
-- `cmd_DISABLE_BOX_DRY`
-- `cmd_TRY_RESUME_PRINT`
-- `cmd_RESUME_PRINT_1`
-- `cmd_disable_box_heater`
-
-### `ToolChange` commands
-
-- `cmd_TOOL_CHANGE_START`
-- `cmd_TOOL_CHANGE_END`
-- `cmd_CLEAR_TOOLCHANGE_STATE`
-
-### Important embedded strings
-
-Recovered gcode/script fragments include:
-
-- `EXTRUDER_LOAD SLOT={init_load_slot}`
-- `EXTRUDER_UNLOAD SLOT={unload_slot}`
-- `RUN_STEPPER STEPPER=`
-- `MOVE_TO_TRASH`
-- `M109 S{hotendtemp}`
-- `CUT_FILAMENT_1`
-- `DISABLE_ALL_SENSOR`
-- `SET_HEATER_TEMPERATURE HEATER=heater_box`
-- `ENABLE_BOX_DRY BOX=`
-- `DISABLE_BOX_DRY BOX=`
-
-Best current conclusion:
-
-- `cmd_BOX_PRINT_START` is not a tiny pass-through
-- it builds and runs substantial internal gcode scripts
-
-### `CLEAR_FLUSH` and `CLEAR_OOZE`
-
-These two commands are now much better understood.
-
-#### What they are not
-
-- they are not persisted save-variable clears
-- they are not large orchestration handlers like `cmd_BOX_PRINT_START`
-- they are not implemented by `M1004`
-
-#### Local implementation in `box_extras.so`
-
-Both local handlers are tiny wrappers that resolve `self.gcode` and then call:
-
-- `self.gcode.run_script_from_command(...)`
-
-with a fixed embedded script string.
-
-Best current reconstruction:
-
-```python
-def cmd_CLEAR_FLUSH(self, gcmd):
-    self.gcode.run_script_from_command(
-        "M204 S10000\nG1 X180 F10000\nMOVE_TO_TRASH"
-    )
-```
-
-```python
-def cmd_CLEAR_OOZE(self, gcmd):
-    self.gcode.run_script_from_command(
-        "M204 S10000\n"
-        "G1 X163 F8000\n"
-        "G1 X145 F5000\n"
-        "G1 X163 F8000\n"
-        "G1 X145 F5000\n"
-        "G1 X175 F6000\n"
-        "G1 X163\n"
-        "G1 X175\n"
-        "G1 X163\n"
-        "G1 X175\n"
-        "G1 X163\n"
-    )
-```
-
-That means these commands do issue real motion locally.
-
-Best current physical interpretation:
-
-- `CLEAR_FLUSH` performs a fast X move and then sends the toolhead to the trash position
-- `CLEAR_OOZE` performs a short nozzle-wipe style X oscillation sequence
-
-So despite the names sounding like hidden-state resets, the local implementations are actual canned cleanup motions.
-
-#### Controller-layer behavior
-
-`multi_color_controller.so` contains:
-
-- `cmd_multi_color_clear_flush`
-- `cmd_multi_color_clear_ooze`
-- `LocalAdapter.clear_flush`
-- `LocalAdapter.clear_ooze`
-- `RemoteAdapter.clear_flush`
-- `RemoteAdapter.clear_ooze`
-
-Best current controller model:
-
-- controller handlers are thin wrappers
-- local adapter emits `CLEAR_FLUSH` or `CLEAR_OOZE`
-- remote adapter sends remote actions `clear_flush` or `clear_ooze`
-- controller code appears to unpack a `(success, message)` style result and report it
-
-I do not currently have proof that the controller wrappers themselves mutate `UnifiedState` directly.
-
-#### Best current semantic meaning
-
-These commands now look like cleanup primitives for vendor-managed purge/wipe phases:
-
-- `CLEAR_FLUSH` is most likely the cleanup motion for the flush/purge phase, probably corresponding to the vendor wipe/old-filament-removal stage
-- `CLEAR_OOZE` is most likely the cleanup motion for residual nozzle ooze/drip, implemented as a short wipe pattern
-
-They may still also act as implicit acknowledgements of hidden vendor state, but the strongest direct evidence now is the local motion scripts above.
-
-#### Macro placement
-
-In visible config, they are always called as a pair, always in this order:
-
-- `CLEAR_OOZE`
-- `CLEAR_FLUSH`
-
-Visible call sites:
-
-- `config/klipper-macros-qd/filament.cfg` after `M1004` and `G4 P5000` inside `OPTIMIZED_EXTRUSION_AND_FLUSH`
-- `config/box.cfg` after unload, small extrusion, and heater-off inside `UNLOAD_FILAMENT`
-
-That placement still supports the idea that they are post-purge/post-unload cleanup motions.
-
-#### `M1004`
-
-`M1004` is not one of the hidden box cleanup handlers.
-
-In this repo, `M1004` is a normal macro in `config/klipper-macros-qd/qd_macro.cfg` that drives:
-
-- `M106 P4`
-
-which maps to the `Polar_cooler` output.
-
-Best current interpretation:
-
-- `M1004` is a cooling aid before the delayed cleanup sequence
-- in this repo it respects saved `enable_polar_cooler` and defaults off if that value is unset
-- it is not itself the thing that clears flush/ooze state
-
-### `cmd_BOX_PRINT_START` size and significance
-
-Recovered symbol sizes:
-
-- `box_extras.BoxExtras.cmd_BOX_PRINT_START` - about `0x3260`
-- `multi_color_controller.MultiColorController.cmd_multi_color_print_start` - about `0x0d6c`
-- `multi_color_controller.LocalAdapter.print_start` - about `0x0e94`
-
-Best current conclusion:
-
-- `cmd_BOX_PRINT_START` owns a lot of real sequencing itself
-- it does not look like a trivial one-line delegate
-
-### Decoded Cython slots around `cmd_BOX_PRINT_START`
-
-Recovered mstate slot meanings:
-
-- `+0x1508` -> `slot16`
-- `+0xf40` -> `gcode`
-- `+0xfe0` -> `get_value_by_key`
-- `+0x1198` -> `lookup_object`
-- `+0x1408` -> `run_script_from_command`
-- `+0x15f0` -> `temp`
-- `+0x1660` -> `unload_slot`
-- `+0x1080` -> `init_load_slot`
-- `+0xb48` -> `box_stepper`
-- `+0x840` -> `MOVE_TO_TRASH\nM109 S`
-- `+0x16a8` -> `value_t`
-
-### Small helper behavior
-
-Best current helper models:
-
-- `get_value_by_key` -> effectively `self.save_variables.allVariables.get(key, default)`
-- `get_key_by_value` -> reverse lookup over saved variables, with optional filtering by allowed keys
-- `search_index_by_value` -> reverse-maps a stored value back to a generated slot-style key such as `slotN`
-
-Best current conclusion:
-
-- `cmd_BOX_PRINT_START` is reading state from the QIDI `save_variables` model, not hard-coding slot mappings
+Print-start material preparation enters through Klipper/vendor command paths.
 
 ## `BOX_PRINT_START` behavior
 
-### Call path
+### Local call path
 
-Best current active local call path:
+```text
+macro/slicer call
+-> BOX_PRINT_START EXTRUDER=... HOTENDTEMP=...
+-> box_extras.BoxExtras.cmd_BOX_PRINT_START
+-> hidden local script selection/orchestration
+-> lower-level feeder/extruder work in box_stepper.so
+-> later visible purge/cleanup path
+```
 
-- `config/klipper-macros-qd/start_end.cfg:_print_start_box_prepar`
-- clear retry/toolchange/runout state
-- `BOX_PRINT_START EXTRUDER=... HOTENDTEMP=...`
-- `box_extras.BoxExtras.cmd_BOX_PRINT_START`
-- hidden scripted orchestration using:
-  - `EXTRUDER_UNLOAD`
-  - `EXTRUDER_LOAD`
-  - `CUT_FILAMENT` / `CUT_FILAMENT_1`
-  - `MOVE_TO_TRASH`
-  - `M109 S{hotendtemp}`
-  - related sensor/init helpers
-- low-level execution in `box_stepper.so`
-- optional visible stock `EXTRUSION_AND_FLUSH` or optimized `OPTIMIZED_EXTRUSION_AND_FLUSH` after `BOX_PRINT_START` returns
+Later visible purge/cleanup is:
 
-### State that `BOX_PRINT_START` reads
+- stock path: `EXTRUSION_AND_FLUSH`
+- optimized path: `OPTIMIZED_EXTRUSION_AND_FLUSH`
 
-Best current proven read chain:
+### State it reads
 
-- target slot -> `get_value_by_key("value_t<EXTRUDER>", "slot16")`
-- current slot -> `get_value_by_key("last_load_slot", "slot16")`
-- nearby sync state -> `get_value_by_key("slot_sync", "slot-1")`
+State reads visible from recovered strings and call structure:
+
+- target slot -> `value_t<EXTRUDER>`
+- current slot -> `last_load_slot`
+- sync state -> `slot_sync`
+
+Meaning:
+
+- target slot = what the requested tool should use
+- current slot = last loaded slot
+- sync state = whether the loaded path is bound/trusted
 
 ### High-level branch map
 
-Best current high-level branch map:
+Branch model:
 
-- if `target_slot == slot16`: special direct-feed/sentinel path
+- if `target_slot == slot16`: special direct-feed sentinel path
 - else if there is no active loaded path: load-only family
 - else if `target_slot == current_slot`: same-slot path
-- else: unload-before-load path, with an extra gated choice between:
-  - plain unload-before-load
-  - cut-then-unload-before-load
+- else: unload-before-load family
+  - with an additional gated choice between plain unload and cut-then-unload
 
-### Current best branch/predicate interpretation
+### Recovered script/template families
 
-Best current interpretation of key business-logic probes:
-
-- one early boolean is most likely a filament-sensor-style `filament_detected` probe
-- a later boolean on a looked-up `box_stepper<slot>` object is most likely a loaded-filament state such as `filament_present`
-- a saved-variable-driven branch compares `slot_sync` against `last_load_slot`
-
-The `slot_sync` branch is best understood as sync-state validation:
-
-- it uses `get_value_by_key("slot_sync", "slot-1")`
-- it happens only after `target_slot == current_slot`
-- if `slot_sync != current_slot`, the code appears to take a same-slot reload/resync path instead of trusting the already-loaded state
-
-### Concrete script/template families
-
-Recovered main template families:
-
-#### Load-only
+#### Load-only family
 
 ```text
 MOVE_TO_TRASH
@@ -911,7 +400,7 @@ M109 S{temp}
 EXTRUDER_LOAD SLOT={init_load_slot}
 ```
 
-#### Unload-only
+#### Unload-only family
 
 ```text
 MOVE_TO_TRASH
@@ -920,7 +409,7 @@ M400
 EXTRUDER_UNLOAD SLOT={unload_slot}
 ```
 
-#### Cut-then-unload
+#### Cut-then-unload family
 
 ```text
 MOVE_TO_TRASH
@@ -931,12 +420,9 @@ MOVE_TO_TRASH
 EXTRUDER_UNLOAD SLOT={unload_slot}
 ```
 
-Best current reading:
+The unload families appear to run before the later load step.
 
-- the unload families are not the final load step themselves
-- the code appears to run one unload family first, then reuse the load-only family afterward
-
-#### Additional prelude templates
+### Additional preludes
 
 Sensor-disable prelude:
 
@@ -956,122 +442,109 @@ M83
 G1 E-60 F300
 ```
 
-### `slot16` special path
+### `slot16`
 
-Best current understanding of the `target_slot == slot16` path:
+`slot16` is not a no-op and not just a normal slot.
 
-- it is not a no-op
-- it is not an immediate load-only fast path
-- it executes a short special gcode-side prelude first
-- it then falls back into the shared `BOX_PRINT_START` state machine
+Reading of the `slot16` path:
 
-What that first special block does not seem to do:
+- it is a direct-feed sentinel path
+- it triggers a distinct prelude before common logic continues
+- it does not look like a simple ordinary `EXTRUDER_LOAD SLOT=slot16` path
 
-- no `box_stepper<slot>` lookup
-- no direct formatting of the recovered load/unload templates
-- no direct use of `init_load_slot` / `unload_slot` formatter keys in that first block
+Visible macro evidence for `slot16` as the direct-feed/sentinel path:
 
-Best current conclusion:
+- `E_UNLOAD SLOT=16` in `config/klipper-macros-qd/filament.cfg`
+- `E_LOAD SLOT=16 S={hotendtemp}` in `config/klipper-macros-qd/filament.cfg`
 
-- `slot16` triggers a distinct direct-feed prelude, then common logic still decides later handling
+### What `cmd_BOX_PRINT_START` clearly owns
 
-### What is definitely inside `cmd_BOX_PRINT_START`
+- slot resolution from saved variables
+- temperature-gated load/unload orchestration
+- script/template selection
+- gating around loaded-state / recognition / retry conditions
 
-- heat/load/unload orchestration
-- target/current slot resolution from saved variables
-- conditional script selection
-- temperature-gating logic
-- filament-recognition/error gating around loaded state
+### Unresolved
 
-### What is not yet proven inside `cmd_BOX_PRINT_START`
+- exact truthiness gates for every branch
+- exact first special prelude used by the `slot16` path
+- exact predicate choosing plain unload vs cut-then-unload
+- whether `SLOT_RFID_READ` is called directly inside `cmd_BOX_PRINT_START`
+- whether `cmd_BOX_PRINT_START` writes saved variables directly
 
-- direct `SLOT_RFID_READ` invocation
-- direct `BoxRFID` low-level calls
-- direct `SAVE_VARIABLE` writes
-- exact placement of `CUT_FILAMENT_1` and `DISABLE_ALL_SENSOR` in every branch
-- exact predicate that chooses plain unload vs cut-then-unload
+## `CLEAR_FLUSH` and `CLEAR_OOZE`
 
-### Additional error clues in `box_extras.so`
+These are not visible config macros. They are vendor commands implemented in `box_extras.so`.
 
-Recovered examples:
+They are not:
 
-- `QDE_004_010` - current feeding status is incorrect; exit filament from extruder first
-- `QDE_004_021` - unable to recognize loaded filament
-- `The temperature at the hot end is unstable. Wait for the temperature to stabilize before trying again.`
-- `No step to retry`
-- `Invalid retry_step format`
+- save-variable cleanup helpers
+- `M1004`
+- large orchestration handlers like `cmd_BOX_PRINT_START`
 
-Best current conclusion:
+### Local implementation shape
 
-- `box_extras.so` owns retry state, recognition checks, and temperature gating around print start
+Recovered local behavior is small and motion-oriented.
 
-### What `cmd_BOX_PRINT_START` probably does not write
+Approximate local `CLEAR_FLUSH` behavior:
 
-Current best reading:
+```python
+self.gcode.run_script_from_command(
+    "M204 S10000\nG1 X180 F10000\nMOVE_TO_TRASH"
+)
+```
 
-- it reads `save_variables`
-- it does not appear to directly write `SAVE_VARIABLE`
-- state resets like `load_retry_num`, `retry_step`, and runout counters happen in `_PRINT_START_BOX_PREPAR`, not inside `cmd_BOX_PRINT_START`
+Approximate local `CLEAR_OOZE` behavior:
 
-## `box_autofeed.so`
+```python
+self.gcode.run_script_from_command(
+    "M204 S10000\n"
+    "G1 X163 F8000\n"
+    "G1 X145 F5000\n"
+    "G1 X163 F8000\n"
+    "G1 X145 F5000\n"
+    "G1 X175 F6000\n"
+    "G1 X163\n"
+    "G1 X175\n"
+    "G1 X163\n"
+    "G1 X175\n"
+    "G1 X163\n"
+)
+```
 
-`box_autofeed.so` appears to handle wrapping detection and limit-sensor-driven assist behavior.
+Behavior implied by the recovered local scripts:
 
-### Command surface
+- `CLEAR_FLUSH` = flush cleanup move that ends by sending the toolhead back to the trash/wipe position
+- `CLEAR_OOZE` = short X-axis wipe pattern for residual ooze
 
-- `MCB_CONFIG`
-- `MCB_AUTO_START`
-- `MCB_AUTO_ABORT`
-- `SET_LIMIT_A`
-- `cmd_query`
+### Current visible placement in this repo
 
-### Related methods
+Current visible call sites include:
 
-- `_select_slot`
-- `_get_slot_stepper`
-- `_get_slot_enable_pin_params`
-- `qd_get_slot_enable_pin_params`
-- `limit_a_event`
-- `auto_start`
-- `auto_abort`
-- `wrapping_detection`
-- `wrapping_operate`
+- `installer/klipper/tltg-optimized-macros/filament.cfg`
+  - after `OPTIMIZED_M1004` + `G4 P5000` inside `OPTIMIZED_EXTRUSION_AND_FLUSH`
+  - during staged post-flush cleanup in `OPTIMIZED_START_PRINT_FILAMENT_PREP`
+  - after `OPTIMIZED_UNLOAD_FILAMENT`
+- `config/box.cfg`
+  - after unload / short extrusion / heater-off inside `UNLOAD_FILAMENT`
 
-### Useful message
+## `M1004`
 
-- `QDE_004_013` - detected wrapping filament, please check the filament
+In this repo, `M1004` is a normal visible macro in `config/klipper-macros-qd/qd_macro.cfg` that drives:
 
-## `box_rfid.so`
+- `M106 P4`
 
-`box_rfid.so` appears to be the low-level RFID reader module.
+In the optimized layer, `OPTIMIZED_M1004` does the same thing but defaults the polar cooler off when the saved variable is unset.
 
-### Class and methods
+`M1004` is a polar-cooler helper, not a hidden vendor cleanup primitive.
 
-- `BoxRFID`
-- `_build_config`
-- `read_card`
-- `read_card_from_slot`
-- `_schedule_rfid_read`
-- `start_rfid_read`
-- `stop_read`
+## RFID, material, color, vendor mapping
 
-### Low-level reader clues
+### Low-level reader side
 
-Recovered FM17550-related strings:
+The low-level reader lives in `box_rfid.so`.
 
-- `config_fm17550 oid=`
-- `query_fm17550 oid=%d rest_ticks=0`
-- `fm17550_read_card`
-- `fm17550_read_card_cb oid=%c`
-- `fm17550_read_card_return oid=%c status=%c data=%*s`
-
-Best current conclusion:
-
-- RFID is handled by an MCU-attached FM17550 reader path with asynchronous callback-style reads
-
-### Best current raw return schema
-
-Best current conservative model for `read_card()` / `read_card_from_slot()` return values:
+Raw return model:
 
 ```python
 {
@@ -1080,183 +553,41 @@ Best current conservative model for `read_card()` / `read_card_from_slot()` retu
 }
 ```
 
-Best current conclusions:
+### Lookup database
 
-- `read_card` appears to return the raw FM17550 result object
-- `read_card_from_slot` appears to be a thin proxy returning the same shape
-- later code parses `data` into higher-level material/color/vendor meaning
+Actual local lookup DB used by both printer-side and client-side code:
 
-### Parsing clues
+- `config/officiall_filas_list.cfg`
 
-Recovered parsing-related strings include:
+Material, color, and vendor IDs are resolved through `config/officiall_filas_list.cfg`.
 
-- `split`
-- `filament_`
-- `color_`
-- `vendor_`
-- `Unrecognized label read in %s`
-- `%s did not recognize the filament`
+Mapping flow:
 
-Best current inference:
-
-- the reader path recognizes symbolic labels like `filament_`, `color_`, and `vendor_`
-- values are most likely numeric IDs, not final human-readable names
-
-### Relationship to print start
-
-Current best understanding:
-
-- `cmd_BOX_PRINT_START` is not yet proven to call `BoxRFID` methods directly
-- explicit RFID control is more likely through:
-  - `cmd_INIT_RFID_READ` in `box_extras.so`
-  - `cmd_SLOT_RFID_READ` in `box_stepper.so`
-- print start probably consumes recognition results indirectly rather than doing raw RFID I/O inline
-
-### `cmd_INIT_RFID_READ`
-
-Best current understanding:
-
-- `cmd_INIT_RFID_READ` is a high-level slot-scan/init routine in `box_extras.so`
-- it does not appear to be the low-level FM17550 parser
-- it likely iterates slots, initializes per-slot RFID/material state, and hands later mapping/persistence off to higher-level code
-
-## RFID/material/color/vendor mapping
-
-### What was not found
-
-No static raw RFID UID table or direct tag-value-to-material/color/vendor mapping table was found in:
-
-- `box_rfid.so`
-- `multi_color_controller.so`
-- `qidiclient`
-- client `access/` assets
-- client `resource/` assets
-
-### Actual local lookup database
-
-The real material/color/vendor lookup database is:
-
-- `/home/qidi/printer_data/config/officiall_filas_list.cfg`
-
-This path is referenced by both:
-
-- `/home/qidi/klipper/klippy/extras/multi_color_controller.so`
-- `/home/qidi/QIDI_Client/bin/qidiclient`
-
-### Best current mapping model
-
-Best current interpretation:
-
-1. `box_rfid.so` reads a spool tag and yields data corresponding to `filament_`, `color_`, and `vendor_`
-2. higher-level code maps those numeric IDs through `officiall_filas_list.cfg`
-3. results are persisted in saved variables such as:
+1. RFID path yields identifiers corresponding to material/color/vendor
+2. higher-level code resolves those IDs through `officiall_filas_list.cfg`
+3. results are stored in save variables such as:
    - `filament_slotN`
    - `color_slotN`
    - `vendor_slotN`
 
 ### `MaterialDatabase`
 
-`multi_color_controller.so` appears to own the config-backed material lookup layer through:
+`multi_color_controller.so` contains a config-backed lookup layer with methods like:
 
 - `MaterialDatabase.load_config`
 - `MaterialDatabase.get_fila_dict`
 - `MaterialDatabase.get_color_val`
 - `MaterialDatabase.get_vendor_val`
 
-Best current source-equivalent model:
-
-- load `/home/qidi/printer_data/config/officiall_filas_list.cfg` with `ConfigParser`
-- build in-memory dictionaries for:
-  - filament records from `[filaN]`
-  - color records from `[colordict]`
-  - vendor records from `[vendor_list]`
-- expose thin `dict.get(...)` lookup helpers for those maps
-
-Observed edge cases:
-
-- color `0` behaves like `unset` because `[colordict]` has no `0` entry
-- vendor `0` is valid and maps to `Generic`
-- missing IDs generally look like `None`
-
-### What `officiall_filas_list.cfg` contains
-
-Best current summary:
-
-- `[filaN]` sections with fields such as:
-  - `filament`
-  - `type`
-  - `min_temp`
-  - `max_temp`
-  - `box_min_temp`
-  - `box_max_temp`
-- `[colordict]` mapping numeric IDs to hex colors
-- `[vendor_list]` mapping numeric IDs to vendor names
-
-Recovered vendor examples:
-
-- `0=Generic`
-- `1=QIDI`
-- `2=Polymaker`
-- `3=Elegoo`
-- `4=Bambu`
-- `5=Sunlu`
-- `6=Ziro`
-
-Recovered filament examples:
-
-- `PLA Rapido`
-- `PLA Basic`
-- `PETG Basic`
-- `PA-CF`
-- `PPS-CF`
-
-### Current saved-variable examples on this machine
-
-Best current examples of resolved slot meaning:
-
-- `slot0` -> `PLA Basic`, black, `Generic`
-- `slot1` -> `PPS-CF`, black, `Generic`
-- `slot2` -> `PLA Basic`, red, `Generic`
-- `slot3` -> `PLA Basic`, yellow, `Generic`
-- `slot16` -> `PLA Rapido`, vendor `QIDI`, color effectively unset
-
-### Persistence model for RFID-derived values
-
-Best current conclusion:
-
-- RFID read/init itself does not appear to automatically persist the full triplet
-- persistence is more likely a separate explicit save-variable path
-
-Best current write sequence:
-
-1. `MULTI_COLOR_INIT_RFID`
-2. `MULTI_COLOR_READ_RFID SLOT=<n>`
-3. resolve the RFID result into material/color/vendor IDs
-4. explicit save calls for:
-   - `filament_slot<n>`
-   - `color_slot<n>`
-   - `vendor_slot<n>`
-
-Current best state-write interpretation:
-
-- `cmd_BOX_PRINT_START` itself appears to read `save_variables`, not write them directly
-- `slot_sync` writes appear to happen in lower-level `box_stepper.so` paths such as `slot_sync()` and `sync_unbind_extruder()`
-- `last_load_slot` is more likely updated after successful load flows in higher-level controller code, not directly inside `cmd_BOX_PRINT_START`
-
 ### Drying metadata
 
-Drying recommendations do not appear to be carried as per-tag RFID metadata in the recovered assets.
+Drying presets appear separate from RFID data and live in:
 
-Best current conclusion:
+- `config/drying.conf`
 
-- drying presets live separately in `/home/qidi/printer_data/config/drying.conf`
-- they are keyed by material type rather than raw RFID value
+## Saved-variable model and sentinels
 
-## Saved-variable model and special sentinels
-
-QIDI extends Klipper `save_variables` with box-specific fields.
-
-Important defaults in `/home/qidi/klipper/klippy/extras/save_variables.py` include:
+Important QIDI box-related save-variable extensions include:
 
 - `box_count`
 - `enable_box`
@@ -1272,32 +603,48 @@ Important defaults in `/home/qidi/klipper/klippy/extras/save_variables.py` inclu
 - `color_slot16`
 - `vendor_slot16`
 
-These are directly relevant to `BOX_PRINT_START` because it resolves target/current state through:
+Sentinel meanings:
 
-- `value_t*`
-- `last_load_slot`
+- `slot16` = direct-feed / non-box sentinel path
+- `slot-1` = unsynced / no active sync target sentinel
+
+These matter directly to `BOX_PRINT_START` branch selection.
+
+## Sync semantics
+
+`slot_sync` is not just metadata.
+
+Observed branch behavior:
+
+- if `target_slot == current_slot` but `slot_sync != current_slot`, print start does not trust the already-loaded path
+- same-slot state can still trigger reload/resync behavior
+
+Recovered lower-level sync methods in `box_stepper.so`:
+
 - `slot_sync`
+- `init_slot_sync`
+- `sync_unbind_extruder`
 
-### Sentinel meanings
+Recovered method names imply:
 
-Best current interpretation:
+- `slot_sync` = bind/sync operation between slot and extruder path
+- `sync_unbind_extruder` = unbind path
+- both persisted `slot_sync` and in-memory sync state matter
 
-- `slot16` - special non-box/direct-feed sentinel
-- `slot-1` - special "no active sync target" sentinel
+Recovered controller-side sync surface:
 
-Current machine examples in `config/saved_variables.cfg`:
+- `cmd_multi_color_sync`
+- `sync_to_extruder`
+- `unsync_from_extruder`
 
-- `last_load_slot = 'slot16'`
-- `slot_sync = 'slot-1'`
+Controller-side operation names imply:
 
-Visible macro evidence that `slot16` is a real direct-feed path:
+- `sync_to_extruder(slot)` binds a slot to the active extruder path
+- `unsync_from_extruder()` clears that binding and returns toward the unsynced sentinel state
 
-- `E_UNLOAD SLOT=16` in `M603`
-- `E_LOAD SLOT=16 S={hotendtemp}` in `M604`
+## Commands visible in config and usable from custom macros
 
-## Commands and control points useful for direct macros
-
-### Already used in visible config
+### Already visible in config
 
 - `BOX_PRINT_START EXTRUDER=<tool> HOTENDTEMP=<temp>`
 - `EXTRUDER_LOAD SLOT=slotN`
@@ -1312,7 +659,7 @@ Visible macro evidence that `slot16` is a real direct-feed path:
 - `CLEAR_FLUSH`
 - `CLEAR_OOZE`
 
-### Present in binaries but not yet exercised here from custom macros
+### Present in binaries but not central to the current custom flow here
 
 - `SLOT_UNLOAD SLOT=slotN`
 - `SLOT_RFID_READ SLOT=slotN`
@@ -1328,257 +675,79 @@ Visible macro evidence that `slot16` is a real direct-feed path:
 - `TIGHTEN_FILAMENT`
 - `TOOL_CHANGE_START`
 - `TOOL_CHANGE_END`
-- `CLEAR_TOOLCHANGE_STATE`
 - `MCB_CONFIG SLOT=slotN`
 - `MCB_AUTO_START`
 - `MCB_AUTO_ABORT`
 - `SET_LIMIT_A`
 
-### Hidden controller entry points that may still be useful
+## What can be bypassed and what cannot
 
-If the goal is to use the controller layer but not `BOX_PRINT_START`, useful confirmed controller entry points include:
+### Can be bypassed
 
-- `cmd_multi_color_load`
-- `cmd_multi_color_unload`
-- `cmd_multi_color_swap`
-- `cmd_multi_color_box_unload`
-- `cmd_multi_color_reload_all`
-- `cmd_multi_color_auto_reload`
-- `cmd_multi_color_retry`
-- `cmd_multi_color_print_start`
-- `cmd_multi_color_try_resume`
-- `cmd_multi_color_resume_print`
-- `cmd_multi_color_set_temp`
-- `cmd_multi_color_clear_runout`
-- `cmd_multi_color_clear_flush`
-- `cmd_multi_color_clear_ooze`
-- `cmd_multi_color_cut_filament`
-- `cmd_multi_color_sync`
-- `cmd_multi_color_dry`
-- `cmd_multi_color_disable_heater`
-- `cmd_query_save_variables`
-- `cmd_set_save_variable`
-- `cmd_reset_save_variables`
-- `cmd_user_confirm_continue`
-
-### Controller-side argument clues
-
-Recovered argument requirements include:
-
-- `cmd_multi_color_load` / `cmd_multi_color_unload` / `cmd_multi_color_box_unload` use `SLOT`
-- `cmd_multi_color_swap` requires `FROM` and `TO`
-- `cmd_multi_color_sync` uses `ACTION`, and starting sync requires `SLOT`
-- `cmd_multi_color_set_temp` requires temperature parameters
-- `cmd_multi_color_print_start` uses `EXTRUDER` and `HOTENDTEMP`
-- `cmd_multi_color_cut_filament` uses `T`
-- `cmd_multi_color_tighten` uses `T`
-- `cmd_set_save_variable` uses `VARIABLE` and `VALUE`
-- `cmd_multi_color_config` appears to accept `MODE`, `PORT`, and `BAUDRATE`
-
-Recovered validation strings include:
-
-- `必须指定SLOT参数` - must specify `SLOT`
-- `启动同步必须指定SLOT参数` - starting sync must specify `SLOT`
-- `必须指定FROM和TO参数` - must specify `FROM` and `TO`
-- `必须指定T参数（工具号）` - must specify `T`
-- `未指定温度参数` - no temperature parameter specified
-- `未知的ACTION参数:` - unknown `ACTION` parameter
-
-### `sync_to_extruder` and `unsync_from_extruder`
-
-These are real first-class controller operations, not just UI bookkeeping.
-
-Best current cross-stack meaning:
-
-- `sync_to_extruder` means bind a specific slot to the active extruder path
-- `unsync_from_extruder` means clear that binding and return to an unsynced sentinel state
-
-The strongest current evidence is that `slot_sync` is both:
-
-- a persisted software record of the active bound slot
-- a real control input used by print-start logic to decide whether an already-loaded path can be trusted
-
-#### Controller entry behavior
-
-`cmd_multi_color_sync` appears to be the public controller entry point.
-
-Best current command model:
-
-- sync uses an `ACTION`-driven branch
-- starting sync requires `SLOT`
-- unsync does not appear to require `SLOT`
-
-#### Local adapter behavior
-
-Best current local model:
-
-- `LocalAdapter.sync_to_extruder(slot)` calls a one-argument local hardware-facing sync primitive
-- on success, it appears to persist sync state, most likely `save_variable("slot_sync", slot)`
-- `LocalAdapter.unsync_from_extruder()` is a zero-argument local unbind path
-- it appears to call a local unsync primitive, then a local follow-up helper, then return success/failure
-
-The strongest current inference is that the local sync primitive is either:
-
-- `box_stepper.slot_sync(slot)`
-
-or a very thin wrapper around it.
-
-The local unsync primitive looks like a higher-level path that likely reaches the lower-level unbind logic indirectly.
-
-#### Remote adapter behavior
-
-Best current remote model:
-
-- `RemoteAdapter.sync_to_extruder(slot)` builds a remote command dict and sends it over USB JSON
-- that payload contains a fixed command string for `sync_to_extruder`
-- the provided `slotN` string is normalized to a numeric slot value before send
-- `RemoteAdapter.unsync_from_extruder()` is a zero-argument remote action
-- it builds a remote command dict, adds a generated command id, sends it, and evaluates the reply
-
-Best current remote payload model:
-
-```json
-{"command":"sync_to_extruder","slot":N,"cmd_id":"..."}
-```
-
-and:
-
-```json
-{"command":"unsync_from_extruder","cmd_id":"..."}
-```
-
-The exact field names beyond the command string and slot are still not fully pinned down, but the shape above is strongly supported.
-
-## Lower-level sync implementation in `box_stepper.so`
-
-### Relevant methods
-
-- `BoxExtruderStepper.slot_sync`
-- `BoxExtruderStepper.init_slot_sync`
-- `BoxExtruderStepper.sync_unbind_extruder`
-
-### Best current behavior model
-
-`slot_sync` is not just a boolean.
-
-Best current combined model:
-
-- persisted `save_variables.slot_sync` holds a slot-name token such as `slot0` or the unsynced sentinel `slot-1`
-- `box_stepper.so` also maintains a separate in-memory boolean sync flag
-- together they represent a real binding between a feeder slot and the extruder path
-
-#### `BoxExtruderStepper.slot_sync`
-
-Best current understanding:
-
-- takes a slot-related argument and an optional extra argument
-- builds a `slot` token string internally
-- flips an internal sync boolean `True` or `False` on different paths
-- likely performs the actual bind/rebind work between the active slot and the extruder path
-- likely updates persisted `slot_sync` state through a helper path
-
-#### `BoxExtruderStepper.init_slot_sync`
-
-Best current understanding:
-
-- startup/reconciliation-style method
-- likely restores or validates sync bookkeeping from current slot/object state and saved state
-- does not look like the full load/unload path
-
-#### `BoxExtruderStepper.sync_unbind_extruder`
-
-Best current understanding:
-
-- returns early if the internal sync flag is not set
-- otherwise clears the same internal sync flag
-- then runs cleanup helpers
-- likely tears down the active sync binding and resets persisted sync state toward the unsynced sentinel
-
-### Why sync matters to `BOX_PRINT_START`
-
-`BOX_PRINT_START` reads:
-
-- target slot from `value_t<EXTRUDER>`
-- current slot from `last_load_slot`
-- sync state from `slot_sync`
-
-Best current implication:
-
-- if `target_slot == current_slot` but `slot_sync != current_slot`, print start does not trust the already-loaded path
-- instead, it takes a same-slot reload/resync path
-
-So sync is not just bookkeeping. It materially affects whether the printer trusts the current filament path.
-
-## Practical direct-control conclusion
-
-Best current practical answer:
-
-- it is likely possible to bypass `BOX_PRINT_START` and much of `multi_color_controller` by building custom macros around lower-level vendor commands
-- it is not realistic to avoid vendor binaries entirely, because the real feeder, RFID, and autofeed logic live in compiled modules
-
-What can likely be bypassed:
+Higher-level sequencing in this repo already bypasses:
 
 - `BOX_PRINT_START`
-- most of `MultiColorController.cmd_multi_color_print_start`
-- some retry/resume orchestration
+- much of the higher-level `MultiColorController` print-start wrapper logic
+- some vendor retry/resume orchestration
 
-What cannot currently be bypassed in practice:
+### Cannot realistically be bypassed
+
+Physical box mechanics depend on vendor binaries:
 
 - `box_stepper.so`
 - `box_rfid.so`
 - `box_autofeed.so`
-- parts of `box_extras.so`
+- at least some vendor logic in `box_extras.so`
 
-## Best direct-macro strategy
+## Custom macro path without `BOX_PRINT_START`
 
-If the goal is to own the sequence instead of using `BOX_PRINT_START`, the cleanest path is probably:
+Sequence:
 
-1. keep QIDI's low-level box binaries
-2. stop calling `BOX_PRINT_START` for the custom flow
-3. build custom macros around a subset of:
-   - `INIT_BOX_STATE`
-   - `INIT_RFID_READ`
-   - optional `CUT_FILAMENT_1` or `CUT_FILAMENT T=<tool>`
-   - `EXTRUDER_UNLOAD SLOT=<old-slot>` if needed
-   - `EXTRUDER_LOAD SLOT=<new-slot>`
-   - `SLOT_RFID_READ SLOT=<slot>` if verification is wanted
-   - `OPTIMIZED_EXTRUSION_AND_FLUSH ...` or a custom purge sequence
-   - optional `CLEAR_FLUSH`, `CLEAR_OOZE`, `CLEAR_RUNOUT_NUM`
+1. keep QIDI low-level box binaries
+2. do not call `BOX_PRINT_START` in the custom path
+3. build custom macros around selected lower-level commands
 
-## What is still unresolved
+Useful building blocks:
 
-The static reversing has gotten far, but the remaining gaps are mostly in exact branch detail and runtime payloads.
+- `INIT_BOX_STATE`
+- `INIT_RFID_READ`
+- optional `CUT_FILAMENT_1` or `CUT_FILAMENT T=<tool>`
+- `EXTRUDER_UNLOAD SLOT=<old-slot>` if needed
+- `EXTRUDER_LOAD SLOT=<new-slot>`
+- optional `SLOT_RFID_READ SLOT=<slot>` if verification is needed
+- `OPTIMIZED_EXTRUSION_AND_FLUSH ...` or another custom purge sequence
+- optional `CLEAR_FLUSH`, `CLEAR_OOZE`, `CLEAR_RUNOUT_NUM`
 
-Most important unresolved items:
+## Highest-value unresolved questions
 
-- the exact remaining truthiness gates inside `cmd_BOX_PRINT_START`
-- the exact special gcode/method used in the first `slot16` prelude block
-- the exact predicate that selects plain unload vs cut-then-unload
+- exact remaining gates inside `cmd_BOX_PRINT_START`
+- exact first `slot16` prelude block
+- exact predicate for plain unload vs cut-then-unload
 - whether `SLOT_RFID_READ` is ever called directly inside `cmd_BOX_PRINT_START`
-- the exact raw RFID `data` payload format beyond `status` + `data`
-- whether raw card UIDs are used at all, or whether cards directly encode structured numeric IDs
+- exact raw RFID `data` format beyond `status` + `data`
+- whether raw tag UIDs are used directly at all, or whether tags already encode structured material/color/vendor IDs
 
-## Best next evidence source
-
-The next highest-value move is probably not more static disassembly.
-
-Best next step would be live capture or runtime traces while running:
+Next evidence source: runtime capture while executing:
 
 1. `BOX_PRINT_START`
 2. `MULTI_COLOR_READ_RFID`
 3. `INIT_RFID_READ`
 
-That would likely settle the remaining open questions faster than more static reversing.
+## Files referenced here
 
-## Files referenced in this note
+Current repo files:
 
-- `config/box.cfg`
 - `config/printer.cfg`
+- `config/box.cfg`
 - `config/klipper-macros-qd/start_end.cfg`
 - `config/klipper-macros-qd/filament.cfg`
-- `config/saved_variables.cfg`
+- `installer/klipper/tltg-optimized-macros/filament.cfg`
 - `config/officiall_filas_list.cfg`
 - `config/drying.conf`
+- `config/saved_variables.cfg`
+
+Vendor/client/runtime paths referenced by reversing work:
+
 - `/home/qidi/klipper/klippy/extras/box_config.py`
 - `/home/qidi/klipper/klippy/extras/box_extras.so`
 - `/home/qidi/klipper/klippy/extras/multi_color_controller.so`
