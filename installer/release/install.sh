@@ -15,6 +15,7 @@ mode="install"
 plain_arg=""
 debug_arg=""
 dry_run_arg=""
+demo_tui_arg=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -41,6 +42,9 @@ while [ "$#" -gt 0 ]; do
     --dry-run)
       dry_run_arg="--dry-run"
       ;;
+    --demo-tui)
+      demo_tui_arg="--demo-tui"
+      ;;
     *)
       echo "Unsupported argument: $1" >&2
       exit 1
@@ -58,5 +62,8 @@ if [ -n "$debug_arg" ]; then
 fi
 if [ -n "$dry_run_arg" ]; then
   set -- "$@" "$dry_run_arg"
+fi
+if [ -n "$demo_tui_arg" ]; then
+  set -- "$@" "$demo_tui_arg"
 fi
 exec "$@"

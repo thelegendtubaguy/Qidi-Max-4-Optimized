@@ -8,7 +8,8 @@ from pathlib import Path
 
 from .backup import BackupArchiveError
 from .compatibility import CompatibilityValidationError, load_supported_upgrade_sources, validate_manifest_compatibility
-from .errors import InstallerError
+from .demo import resolve_demo_tui_delay_seconds, run_demo
+from .errors import InstallerError, OperationCancelled
 from .locking import acquire
 from .manifest import ManifestValidationError, load_manifest
 from .models import RuntimePaths
@@ -50,11 +51,28 @@ def main(
         event="cli.start",
         mode=args.mode,
         dry_run=args.dry_run,
+        demo_tui=args.demo_tui,
         printer_data_root=paths.printer_data_root,
         bundle_root=bundle_root,
     )
 
     try:
+        if args.demo_tui:
+            delay_seconds = resolve_demo_tui_delay_seconds(environ=env)
+            reporter.debug(
+                event="cli.demo_tui.start",
+                mode=args.mode,
+                delay_seconds=delay_seconds,
+            )
+            run_demo(args.mode, reporter, delay_seconds=delay_seconds)
+            reporter.debug(
+                event="cli.complete",
+                mode=args.mode,
+                return_code=0,
+                action="demo-tui",
+            )
+            return 0
+
         if args.mode == "clear-recovery-sentinel":
             with acquire(paths.lock_path):
                 reporter.debug(
@@ -120,10 +138,31 @@ def main(
                 sentinel_path=paths.recovery_sentinel_path,
             )
             if args.mode == "install":
-                run_install(paths, manifest, reporter, dry_run=args.dry_run)
+                run_install(
+                    paths,
+                    manifest,
+                    reporter,
+                    dry_run=args.dry_run,
+                    input_stream=input_stream,
+                )
             else:
-                run_uninstall(paths, manifest, compatibility, reporter, dry_run=args.dry_run)
+                run_uninstall(
+                    paths,
+                    manifest,
+                    compatibility,
+                    reporter,
+                    dry_run=args.dry_run,
+                    input_stream=input_stream,
+                )
         reporter.debug(event="cli.complete", mode=args.mode, return_code=0)
+        return 0
+    except OperationCancelled as exc:
+        reporter.debug(
+            event="cli.complete",
+            mode=args.mode,
+            return_code=0,
+            action="cancelled",
+        )
         return 0
     except (
         ManifestValidationError,
@@ -176,10 +215,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--plain", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--demo-tui", action="store_true")
     parser.add_argument("--backup")
     args = parser.parse_args(argv)
     if args.dry_run and args.mode not in {"install", "uninstall"}:
         parser.error("--dry-run is only supported with install and uninstall.")
+    if args.demo_tui and args.mode not in {"install", "uninstall"}:
+        parser.error("--demo-tui is only supported with install and uninstall.")
+    if args.demo_tui and args.dry_run:
+        parser.error("--demo-tui cannot be combined with --dry-run.")
     if args.backup and args.mode != "restore-backup":
         parser.error("--backup is only supported with restore-backup.")
     return args

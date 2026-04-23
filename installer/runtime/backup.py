@@ -8,10 +8,10 @@ import tempfile
 import zipfile
 
 from .fs_atomic import atomic_delete, atomic_write_bytes, fsync_directory
+from .naming import UNINSTALL_BACKUP_LABEL_PREFIX
 
 
 UNKNOWN_FIRMWARE_TOKEN = "unknown-firmware"
-UNINSTALL_BACKUP_LABEL_PREFIX = "before-uninstall"
 INSTALLER_BACKUP_RETENTION = 3
 BACKUP_TIMESTAMP_FORMAT = "%Y%m%dT%H%M%SZ"
 BACKUP_DISPLAY_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S UTC"

@@ -13,8 +13,9 @@ from .backup import (
 )
 from .compatibility import CompatibilityValidationError, allowed_target_tuples_for_version
 from .ensure_lines import has_active_line, remove_active_line
-from .errors import InstalledPackageValidationError
+from .errors import InstalledPackageValidationError, OperationCancelled
 from .firmware import detect_firmware_version_best_effort
+from .interaction import confirm_yes, maybe_restart_klipper
 from .fs_atomic import atomic_write_text
 from .mirror import detect_uninstall_managed_tree_drift, remove_tree
 from .models import (
@@ -43,6 +44,7 @@ def run_uninstall(
     reporter,
     *,
     dry_run: bool = False,
+    input_stream=None,
     urlopen=urllib.request.urlopen,
     disk_usage=shutil.disk_usage,
 ) -> UninstallResult:
@@ -136,6 +138,16 @@ def run_uninstall(
         drift_records=len(managed_tree_drift),
     )
 
+    if not dry_run and not confirm_yes(
+        reporter=reporter,
+        input_stream=input_stream,
+        question=messages.UNINSTALL_CONFIRMATION_PROMPT,
+        instruction=messages.UNINSTALL_CONFIRMATION_INSTRUCTION,
+        cancel_message=messages.UNINSTALL_CANCELLED,
+    ):
+        reporter.debug(event="uninstall.cancelled", dry_run=False)
+        raise OperationCancelled(messages.UNINSTALL_CANCELLED)
+
     reporter.status(messages.CREATING_BACKUP)
     started_at = utc_now()
     backup_label = build_uninstall_backup_label(
@@ -211,6 +223,8 @@ def run_uninstall(
         include_line=include_line,
         plan=plan,
         backup_zip_path=backup_zip_path,
+        input_stream=input_stream,
+        urlopen=urlopen,
     )
 
 
@@ -255,6 +269,8 @@ def _execute_uninstall(
     include_line: EnsureLineSpec,
     plan: UninstallPlan,
     backup_zip_path,
+    input_stream,
+    urlopen,
 ) -> UninstallResult:
     managed_tree_root = paths.printer_data_root / state.managed_tree.root
     include_line_path = paths.printer_data_root / include_line.file
@@ -344,6 +360,12 @@ def _execute_uninstall(
     reporter.emit_uninstall_success(
         patch_results=result.patch_results,
         managed_tree_drift=result.managed_tree_drift,
+    )
+    maybe_restart_klipper(
+        reporter=reporter,
+        input_stream=input_stream,
+        moonraker_query_url=paths.moonraker_url,
+        urlopen=urlopen,
     )
     reporter.debug(
         event="uninstall.complete",

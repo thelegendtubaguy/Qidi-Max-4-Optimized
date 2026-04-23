@@ -33,7 +33,7 @@ jobs:
           prerelease: true
           make_latest: false
           files: |
-            dist/qidi-max4-optimized-installer-dev.tar.gz
-            dist/qidi-max4-optimized-installer-dev.tar.gz.sha256
-            dist/qidi-max4-optimized-installer-dev-${{ steps.sha.outputs.short_sha }}.tar.gz
-            dist/qidi-max4-optimized-installer-dev-${{ steps.sha.outputs.short_sha }}.tar.gz.sha256
+            dist/tltg-optimized-macros-dev.tar.gz
+            dist/tltg-optimized-macros-dev.tar.gz.sha256
+            dist/tltg-optimized-macros-dev-${{ steps.sha.outputs.short_sha }}.tar.gz
+            dist/tltg-optimized-macros-dev-${{ steps.sha.outputs.short_sha }}.tar.gz.sha256

@@ -40,6 +40,8 @@ Adds optimized-only knobs that do not exist in stock `config/klipper-macros-qd/g
 - `variable_z_home_randomize_enable: True`
 - `variable_z_home_randomize_radius: 6`
 - `variable_move_to_z_travel_speed_xy: 40000`
+- Adds `[delayed_gcode _tltg_optimized_startup_banner]` with `initial_duration: 6`.
+- `_tltg_optimized_startup_banner` emits `TLTG Optimized Configs Installed` to the Klipper console after startup.
 
 ### `installer/klipper/tltg-optimized-macros/kinematics.cfg` -> runtime `config/tltg-optimized-macros/kinematics.cfg`
 

@@ -15,8 +15,9 @@ from .backup import (
     utc_now,
 )
 from .ensure_lines import ensure_line_after
-from .errors import PreviousPackageValidationError, UnsupportedFirmwareError
+from .errors import OperationCancelled, PreviousPackageValidationError, UnsupportedFirmwareError
 from .firmware import detect_firmware_version
+from .interaction import confirm_yes, maybe_restart_klipper
 from .fs_atomic import atomic_write_text
 from .mirror import (
     collect_source_hashes,
@@ -49,6 +50,7 @@ def run_install(
     reporter,
     *,
     dry_run: bool = False,
+    input_stream=None,
     urlopen=urllib.request.urlopen,
     disk_usage=shutil.disk_usage,
     backup_history_chooser=random.choice,
@@ -95,6 +97,16 @@ def run_install(
         urlopen=urlopen,
         disk_usage=disk_usage,
     )
+
+    if not dry_run and not confirm_yes(
+        reporter=reporter,
+        input_stream=input_stream,
+        question=messages.INSTALL_CONFIRMATION_PROMPT,
+        instruction=messages.INSTALL_CONFIRMATION_INSTRUCTION,
+        cancel_message=messages.INSTALL_CANCELLED,
+    ):
+        reporter.debug(event="install.cancelled", dry_run=False)
+        raise OperationCancelled(messages.INSTALL_CANCELLED)
 
     reporter.status(messages.CREATING_BACKUP)
     started_at = utc_now()
@@ -174,6 +186,8 @@ def run_install(
         started_at=started_at,
         plan=plan,
         backup_zip_path=backup_zip_path,
+        input_stream=input_stream,
+        urlopen=urlopen,
     )
 
 
@@ -231,6 +245,8 @@ def _execute_install(
     started_at,
     plan: InstallPlan,
     backup_zip_path,
+    input_stream,
+    urlopen,
 ) -> InstallResult:
     state_path = paths.printer_data_root / manifest.state_file
     journal = RollbackJournal(
@@ -349,6 +365,12 @@ def _execute_install(
     reporter.emit_install_success(
         patch_results=result.patch_results,
         managed_tree_drift=result.managed_tree_drift,
+    )
+    maybe_restart_klipper(
+        reporter=reporter,
+        input_stream=input_stream,
+        moonraker_query_url=paths.moonraker_url,
+        urlopen=urlopen,
     )
     reporter.debug(
         event="install.complete",

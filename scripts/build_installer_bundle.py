@@ -17,8 +17,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from installer.runtime.compatibility import load_supported_upgrade_sources, validate_manifest_compatibility
 from installer.runtime.manifest import load_manifest
-
-BUNDLE_ROOT_NAME = "qidi-max4-optimized-installer"
+from installer.runtime.naming import BUNDLE_NAME_PREFIX, BUNDLE_ROOT_NAME
 ALLOWED_FILES = [
     "installer/package.yaml",
     "installer/supported_upgrade_sources.yaml",
@@ -106,12 +105,12 @@ def main(argv: list[str] | None = None) -> int:
 
 def bundle_names(*, channel: str, package_version: str, build_id: str | None) -> tuple[str, str]:
     if channel == "release":
-        stable = "qidi-max4-optimized-installer.tar.gz"
-        versioned = f"qidi-max4-optimized-installer-{package_version}.tar.gz"
+        stable = f"{BUNDLE_NAME_PREFIX}.tar.gz"
+        versioned = f"{BUNDLE_NAME_PREFIX}-{package_version}.tar.gz"
         return stable, versioned
     trace = build_id or git_short_sha()
-    stable = "qidi-max4-optimized-installer-dev.tar.gz"
-    traceable = f"qidi-max4-optimized-installer-dev-{trace}.tar.gz"
+    stable = f"{BUNDLE_NAME_PREFIX}-dev.tar.gz"
+    traceable = f"{BUNDLE_NAME_PREFIX}-dev-{trace}.tar.gz"
     return stable, traceable
 
 

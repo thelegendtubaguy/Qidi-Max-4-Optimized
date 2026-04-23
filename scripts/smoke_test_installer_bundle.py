@@ -17,8 +17,16 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from installer.runtime.naming import (
+    BUNDLE_ROOT_NAME,
+    INSTALL_BACKUP_LABEL_PREFIX,
+    UNINSTALL_BACKUP_LABEL_PREFIX,
+)
+
 FIXTURE_ROOT = REPO_ROOT / "installer/tests/fixtures/runtime/base"
-BUNDLE_ROOT_NAME = "qidi-max4-optimized-installer"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -50,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(dry_run_install.stdout + dry_run_install.stderr)
         if (dry_run_install_printer_root / "config/tltg_optimized_state.yaml").exists():
             raise SystemExit("install dry-run smoke test unexpectedly created state file")
-        if list(dry_run_install_printer_root.glob("before-optimize-*.zip")):
+        if list(dry_run_install_printer_root.glob(f"{INSTALL_BACKUP_LABEL_PREFIX}-*.zip")):
             raise SystemExit("install dry-run smoke test unexpectedly created a backup zip")
         if "Dry-run summary:" not in dry_run_install.stdout:
             raise SystemExit("install dry-run smoke test did not emit the dry-run summary")
@@ -61,6 +69,7 @@ def main(argv: list[str] | None = None) -> int:
             [str(bundle_root / "install.sh"), "--plain"],
             cwd=bundle_root,
             env=plain_env,
+            input_text="yes\nno\n",
         )
         if install.returncode != 0:
             raise SystemExit(install.stdout + install.stderr)
@@ -76,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(uninstall_dry_run.stdout + uninstall_dry_run.stderr)
         if not (plain_printer_root / "config/tltg_optimized_state.yaml").exists():
             raise SystemExit("uninstall dry-run smoke test unexpectedly removed state file")
-        if list(plain_printer_root.glob("before-uninstall-*.zip")):
+        if list(plain_printer_root.glob(f"{UNINSTALL_BACKUP_LABEL_PREFIX}-*.zip")):
             raise SystemExit("uninstall dry-run smoke test unexpectedly created a backup zip")
         if "Dry-run summary:" not in uninstall_dry_run.stdout:
             raise SystemExit("uninstall dry-run smoke test did not emit the dry-run summary")
@@ -85,6 +94,7 @@ def main(argv: list[str] | None = None) -> int:
             [str(bundle_root / "install.sh"), "--uninstall", "--plain"],
             cwd=bundle_root,
             env=plain_env,
+            input_text="yes\nno\n",
         )
         if uninstall.returncode != 0:
             raise SystemExit(uninstall.stdout + uninstall.stderr)
@@ -98,6 +108,7 @@ def main(argv: list[str] | None = None) -> int:
             [str(bundle_root / "install.sh")],
             cwd=bundle_root,
             env=rich_env,
+            input_text="yes\nno\n",
         )
         if rich_install.returncode != 0:
             raise SystemExit(rich_install.stdout)
@@ -106,16 +117,37 @@ def main(argv: list[str] | None = None) -> int:
         if not (rich_printer_root / "config/tltg_optimized_state.yaml").exists():
             raise SystemExit("rich install smoke test did not create state file")
 
+        demo_printer_root = prepare_printer_root(workspace / "demo-printer")
+        demo_env = build_env(demo_printer_root, moonraker_url=url)
+        demo_env["TERM"] = "xterm-256color"
+        demo_env["TLTG_OPTIMIZED_DEMO_TUI_DELAY_SECONDS"] = "0.05"
+        rich_demo = run_command_with_pty(
+            [str(bundle_root / "install.sh"), "--demo-tui"],
+            cwd=bundle_root,
+            env=demo_env,
+        )
+        if rich_demo.returncode != 0:
+            raise SystemExit(rich_demo.stdout)
+        if "QIDI Max 4 Optimized installer" not in rich_demo.stdout:
+            raise SystemExit("demo TUI smoke test did not render the live TUI")
+        if "Installed." not in rich_demo.stdout:
+            raise SystemExit("demo TUI smoke test did not emit the install success line")
+        if (demo_printer_root / "config/tltg_optimized_state.yaml").exists():
+            raise SystemExit("demo TUI smoke test unexpectedly created state file")
+        if list(demo_printer_root.glob(f"{INSTALL_BACKUP_LABEL_PREFIX}-*.zip")):
+            raise SystemExit("demo TUI smoke test unexpectedly created a backup zip")
+
         restore_printer_root = prepare_printer_root(workspace / "restore-printer")
         restore_env = build_env(restore_printer_root, moonraker_url=url)
         restore_install = run_command(
             [str(bundle_root / "install.sh"), "--plain"],
             cwd=bundle_root,
             env=restore_env,
+            input_text="yes\nno\n",
         )
         if restore_install.returncode != 0:
             raise SystemExit(restore_install.stdout + restore_install.stderr)
-        restore_backups = sorted(restore_printer_root.glob("before-optimize-*.zip"))
+        restore_backups = sorted(restore_printer_root.glob(f"{INSTALL_BACKUP_LABEL_PREFIX}-*.zip"))
         if len(restore_backups) != 1:
             raise SystemExit("restore helper smoke test did not create the expected install backup zip")
         restore_backup = restore_backups[0]
@@ -168,6 +200,7 @@ def main(argv: list[str] | None = None) -> int:
                 [str(bundle_root / "install.sh")],
                 cwd=bundle_root,
                 env=fallback_env,
+                input_text="yes\nno\n",
             )
             if fallback_install.returncode != 0:
                 raise SystemExit(fallback_install.stdout)
@@ -242,7 +275,7 @@ def run_command(args: list[str], *, cwd: Path, env: dict[str, str], input_text: 
     )
 
 
-def run_command_with_pty(args: list[str], *, cwd: Path, env: dict[str, str]):
+def run_command_with_pty(args: list[str], *, cwd: Path, env: dict[str, str], input_text: str | None = None):
     master_fd, slave_fd = pty.openpty()
     try:
         process = subprocess.Popen(
@@ -257,6 +290,9 @@ def run_command_with_pty(args: list[str], *, cwd: Path, env: dict[str, str]):
         )
     finally:
         os.close(slave_fd)
+
+    if input_text:
+        os.write(master_fd, input_text.encode("utf-8"))
 
     chunks: list[bytes] = []
     try:

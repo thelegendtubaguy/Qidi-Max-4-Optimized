@@ -12,9 +12,10 @@
 ## Current Baseline
 
 - `installer/runtime/` provides install, uninstall, dry-run, recovery-sentinel-clear, debug, backup-retention, rollback-diagnostics, and restore-helper flows.
-- `installer/release/install.sh` launches `python3 -I -S installer/runtime/bootstrap.py <mode>` from the extracted bundle root and supports `--plain`, `--debug`, `--dry-run`, `--uninstall`, and `--clear-recovery-sentinel`.
+- `installer/release/install.sh` launches `python3 -I -S installer/runtime/bootstrap.py <mode>` from the extracted bundle root and supports `--plain`, `--debug`, `--dry-run`, `--demo-tui`, `--uninstall`, and `--clear-recovery-sentinel`.
 - `installer/release/restore.sh` launches `python3 -I -S installer/runtime/bootstrap.py restore-backup` from the extracted bundle root and supports interactive backup selection plus `--backup <path>`.
 - `installer/runtime/reporter.py` provides the current rich TUI path for install and uninstall plus plain fallback; restore-helper UX remains plain terminal I/O.
+- `installer/runtime/demo.py` provides the no-op TUI preview path for install and uninstall; the per-screen delay defaults to `5` seconds and `TLTG_OPTIMIZED_DEMO_TUI_DELAY_SECONDS` shortens it for smoke tests.
 - `installer/runtime/vendor/` vendors the required pure-Python runtime dependencies.
 - `scripts/build_installer_bundle.py` builds the self-contained release bundle and includes `restore.sh`.
 - `scripts/check_installer_known_versions.py` validates `installer/package.yaml` against `installer/supported_upgrade_sources.yaml`.

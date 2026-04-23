@@ -6,6 +6,7 @@ import unittest
 from installer.runtime.cli import resolve_runtime_paths
 from installer.runtime.compatibility import load_supported_upgrade_sources
 from installer.runtime.manifest import load_manifest
+from installer.runtime.naming import INSTALL_BACKUP_LABEL_PREFIX, UNINSTALL_BACKUP_LABEL_PREFIX
 from installer.runtime.reporter import PlainReporter
 from installer.runtime.runner import run_install
 from installer.runtime.uninstall import run_uninstall
@@ -34,11 +35,9 @@ class DryRunFlowTests(unittest.TestCase):
         self.assertTrue(result.dry_run)
         self.assertIsNone(result.backup_zip_path)
         self.assertFalse((paths.config_root / "tltg_optimized_state.yaml").exists())
-        self.assertFalse(list(printer_root.glob("before-optimize-*.zip")))
+        self.assertFalse(list(printer_root.glob(f"{INSTALL_BACKUP_LABEL_PREFIX}-*.zip")))
         output = stream.getvalue()
         self.assertIn("stage 1/5", output)
-        self.assertIn("preflight counters:", output)
-        self.assertIn("install counters:", output)
         self.assertIn("Dry-run summary:", output)
         self.assertIn("Dry-run complete. No changes made.", output)
 
@@ -64,10 +63,9 @@ class DryRunFlowTests(unittest.TestCase):
         self.assertIsNone(result.backup_zip_path)
         self.assertTrue((paths.config_root / "tltg_optimized_state.yaml").exists())
         self.assertTrue((paths.config_root / "tltg-optimized-macros").exists())
-        self.assertFalse(list(printer_root.glob("before-uninstall-*.zip")))
+        self.assertFalse(list(printer_root.glob(f"{UNINSTALL_BACKUP_LABEL_PREFIX}-*.zip")))
         output = stream.getvalue()
         self.assertIn("stage 1/5", output)
-        self.assertIn("uninstall counters:", output)
         self.assertIn("Dry-run summary:", output)
         self.assertIn("Dry-run complete. No changes made.", output)
 

@@ -86,27 +86,20 @@ class PlainReporter:
         lines: tuple[int, int],
         patch_targets: tuple[int, int],
     ) -> None:
-        self.line(
-            format_counter_line(
-                "preflight counters",
-                {
-                    "files": files,
-                    "sections": sections,
-                    "lines": lines,
-                    "patch_targets": patch_targets,
-                },
-            )
-        )
+        return
 
     def emit_install_counters(self, **counters: tuple[int, int]) -> None:
-        self.line(format_counter_line("install counters", counters))
+        return
 
     def emit_uninstall_counters(self, **counters: tuple[int, int]) -> None:
-        self.line(format_counter_line("uninstall counters", counters))
+        return
 
     def line(self, message: str = "") -> None:
         self.stream.write(f"{message}\n")
         self.stream.flush()
+
+    def prepare_for_prompt(self) -> None:
+        return
 
     def emit_error(self, error: Exception) -> None:
         self.line(getattr(error, "message", str(error)))
@@ -132,7 +125,6 @@ class PlainReporter:
                     ),
                 )
             )
-        self.line(messages.RESTART_KLIPPER_TO_APPLY)
 
     def emit_uninstall_success(
         self, *, patch_results: tuple[PatchResult, ...], managed_tree_drift: tuple[DriftRecord, ...]
@@ -148,7 +140,6 @@ class PlainReporter:
                     ),
                 )
             )
-        self.line(messages.RESTART_KLIPPER_TO_APPLY)
 
     def emit_install_dry_run(self, *, plan: InstallPlan) -> None:
         self.line("Dry-run summary:")
@@ -200,7 +191,6 @@ class RichReporter:
         self.state.current_status = message
         self.state.stage_index = STATUS_STAGE_INDEX.get(message)
         self._refresh_live()
-        self._print_lines(format_status_lines(message))
 
     def debug(self, *, event: str, **fields) -> None:
         if not self.debug_enabled:
@@ -215,27 +205,13 @@ class RichReporter:
         lines: tuple[int, int],
         patch_targets: tuple[int, int],
     ) -> None:
-        counters = {
-            "files": files,
-            "sections": sections,
-            "lines": lines,
-            "patch_targets": patch_targets,
-        }
-        self.state.preflight_counters = dict(counters)
-        self._refresh_live()
-        self._print_lines((format_counter_line("preflight counters", counters),))
+        return
 
     def emit_install_counters(self, **counters: tuple[int, int]) -> None:
-        self.state.operation_counter_label = "install counters"
-        self.state.operation_counters = dict(counters)
-        self._refresh_live()
-        self._print_lines((format_counter_line("install counters", counters),))
+        return
 
     def emit_uninstall_counters(self, **counters: tuple[int, int]) -> None:
-        self.state.operation_counter_label = "uninstall counters"
-        self.state.operation_counters = dict(counters)
-        self._refresh_live()
-        self._print_lines((format_counter_line("uninstall counters", counters),))
+        return
 
     def emit_error(self, error: Exception) -> None:
         self._stop_live()
@@ -262,7 +238,6 @@ class RichReporter:
                     ),
                 )
             )
-        self._print_line(messages.RESTART_KLIPPER_TO_APPLY)
 
     def emit_uninstall_success(
         self, *, patch_results: tuple[PatchResult, ...], managed_tree_drift: tuple[DriftRecord, ...]
@@ -279,7 +254,6 @@ class RichReporter:
                     ),
                 )
             )
-        self._print_line(messages.RESTART_KLIPPER_TO_APPLY)
 
     def emit_install_dry_run(self, *, plan: InstallPlan) -> None:
         self._stop_live()
@@ -339,22 +313,13 @@ class RichReporter:
             bullet_table.expand = False
             for row in group.rows:
                 bullet_table.add_row("•", row)
-            self.console.print(bullet_table, highlight=False)
+            self.console.print(bullet_table, markup=False, highlight=False)
+
+    def prepare_for_prompt(self) -> None:
+        self._stop_live()
 
     def _render_live(self):
-        renderables = [self._render_status_panel()]
-        if self.state.preflight_counters:
-            renderables.append(
-                self._render_counter_panel("preflight counters", self.state.preflight_counters)
-            )
-        if self.state.operation_counter_label and self.state.operation_counters:
-            renderables.append(
-                self._render_counter_panel(
-                    self.state.operation_counter_label,
-                    self.state.operation_counters,
-                )
-            )
-        return self.rich.Group(*renderables)
+        return self.rich.Group(self._render_status_panel())
 
     def _render_status_panel(self):
         table = self.rich.Table.grid(padding=(0, 1))
@@ -370,14 +335,6 @@ class RichReporter:
             title="QIDI Max 4 Optimized installer",
             border_style="cyan",
         )
-
-    def _render_counter_panel(self, title: str, counters: dict[str, tuple[int, int]]):
-        table = self.rich.Table(box=self.rich.box.SIMPLE_HEAVY, expand=True)
-        table.add_column("counter")
-        table.add_column("progress", justify="right")
-        for name, value in counters.items():
-            table.add_row(name, f"{value[0]}/{value[1]}")
-        return self.rich.Panel(table, title=title, border_style="blue")
 
 
 

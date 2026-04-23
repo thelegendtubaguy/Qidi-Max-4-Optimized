@@ -32,9 +32,8 @@ class InstallFlowTests(unittest.TestCase):
         self.assertTrue((paths.config_root / "tltg-optimized-macros").exists())
         output = stream.getvalue()
         self.assertIn("stage 1/5", output)
-        self.assertIn("preflight counters:", output)
-        self.assertIn("install counters:", output)
         self.assertIn("Installed.", output)
+        self.assertIn("Restart Klipper to apply changes.", output)
         self.assertTrue(result.backup_zip_path.exists())
 
     def test_missing_patch_target_fails_closed(self):

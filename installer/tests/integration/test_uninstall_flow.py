@@ -51,8 +51,8 @@ class UninstallFlowTests(unittest.TestCase):
         self.assertIn("homing_speed: 50", printer_cfg)
         output = stream.getvalue()
         self.assertIn("stage 1/5", output)
-        self.assertIn("uninstall counters:", output)
         self.assertIn("Uninstalled.", output)
+        self.assertIn("Restart Klipper to apply changes.", output)
         self.assertTrue(result.backup_zip_path.exists())
 
     def test_uninstall_fails_closed_when_markers_exist_without_valid_state(self):

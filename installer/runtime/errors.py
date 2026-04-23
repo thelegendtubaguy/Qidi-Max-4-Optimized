@@ -68,6 +68,10 @@ class RecoverySentinelClearError(InstallerError):
     pass
 
 
+class OperationCancelled(InstallerError):
+    pass
+
+
 @dataclass(frozen=True)
 class RollbackFailureDetails:
     backup_label: Optional[str]

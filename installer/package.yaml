@@ -16,7 +16,7 @@ firmware:
 
 backup:
   source_directory: "config"
-  label_prefix: "before-optimize"
+  label_prefix: "tltg-optimized-macros-before-optimize"
 
 state:
   record_file: "config/tltg_optimized_state.yaml"

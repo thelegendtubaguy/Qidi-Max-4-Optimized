@@ -84,10 +84,10 @@ jobs:
           upload_url = os.environ['UPLOAD_URL'].split('{', 1)[0]
           token = os.environ['GITHUB_TOKEN']
           files = [
-              'dist/qidi-max4-optimized-installer.tar.gz',
-              'dist/qidi-max4-optimized-installer.tar.gz.sha256',
-              'dist/qidi-max4-optimized-installer-${{ steps.version.outputs.package_version }}.tar.gz',
-              'dist/qidi-max4-optimized-installer-${{ steps.version.outputs.package_version }}.tar.gz.sha256',
+              'dist/tltg-optimized-macros.tar.gz',
+              'dist/tltg-optimized-macros.tar.gz.sha256',
+              'dist/tltg-optimized-macros-${{ steps.version.outputs.package_version }}.tar.gz',
+              'dist/tltg-optimized-macros-${{ steps.version.outputs.package_version }}.tar.gz.sha256',
           ]
           for raw_path in files:
               path = pathlib.Path(raw_path)
