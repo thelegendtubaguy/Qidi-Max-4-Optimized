@@ -8,43 +8,59 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CONFIG_DIR = REPO_ROOT / "config"
-OPTIMIZED_SLICER_DIRS = [
-    REPO_ROOT / "orcaslicer_gcode",
-    REPO_ROOT / "qidistudio_gcode",
-]
+OPTIMIZED_MACRO_DIR = REPO_ROOT / "installer" / "klipper" / "tltg-optimized-macros"
 
 GCODE_MACRO_RE = re.compile(r"^\[gcode_macro\s+([^\]]+)\]\s*$", re.IGNORECASE)
 COMMAND_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_.]*)(?=$|[\s\[])")
 CONTROL_BLOCK_RE = re.compile(r"\{(?:if|else|elsif|endif)\b[^}]*\}", re.IGNORECASE)
 NUMERIC_SUFFIX_RE = re.compile(r"^(.*?)(\d+)$")
 
-ALLOWED_NON_MACRO_COMMANDS = {
+ALLOWED_EXTERNAL_COMMANDS = {
+    "CLEAR_PAUSE",
+    "DISABLE_ALL_SENSOR",
     "DISABLE_BOX_HEATER",
+    "ENABLE_ALL_SENSOR",
     "G0",
     "G1",
     "G2",
+    "G29.0",
     "G4",
     "G90",
     "G92",
     "M82",
     "M83",
+    "M1002",
+    "M104",
     "M106",
     "M107",
+    "M109",
+    "M109.0",
+    "M109.1",
+    "M140",
+    "M141",
     "M204",
     "M220",
     "M221",
     "M400",
+    "PAUSE",
+    "PRINT_END",
     "SET_INPUT_SHAPER",
     "SET_PRINT_MAIN_STATUS",
+    "SET_PRINT_STATS_INFO",
+    "TIMELAPSE_TAKE_FRAME",
     "TOOL_CHANGE_END",
     "TOOL_CHANGE_START",
 }
 
+ALLOWED_EXTERNAL_DYNAMIC_PREFIXES = {
+    "T",
+    "UNLOAD_T",
+}
 
-def iter_macro_names() -> set[str]:
+
+def iter_macro_names(macro_dir: Path = OPTIMIZED_MACRO_DIR) -> set[str]:
     macros: set[str] = set()
-    for path in sorted(CONFIG_DIR.rglob("*.cfg")):
+    for path in sorted(macro_dir.rglob("*.cfg")):
         for line in path.read_text().splitlines():
             match = GCODE_MACRO_RE.match(line.strip())
             if match:
@@ -61,10 +77,14 @@ def build_dynamic_prefixes(macros: set[str]) -> set[str]:
     return prefixes
 
 
-def iter_slicer_files() -> list[Path]:
+def iter_slicer_files(repo_root: Path = REPO_ROOT) -> list[Path]:
     files: list[Path] = []
-    for directory in OPTIMIZED_SLICER_DIRS:
-        files.extend(sorted(directory.glob("*.gcode")))
+    for directory in (
+        repo_root / "orcaslicer_gcode",
+        repo_root / "qidistudio_gcode",
+    ):
+        if directory.exists():
+            files.extend(sorted(directory.glob("*.gcode")))
     return files
 
 
@@ -90,11 +110,22 @@ def is_dynamic_macro_call(
     )
 
 
-def main() -> int:
-    macros = iter_macro_names()
+def is_allowed_external_command(command: str, segment: str, command_end: int) -> bool:
+    if command in ALLOWED_EXTERNAL_COMMANDS:
+        return True
+    return is_dynamic_macro_call(
+        command, segment, command_end, ALLOWED_EXTERNAL_DYNAMIC_PREFIXES
+    )
+
+
+def validate_repo(
+    repo_root: Path = REPO_ROOT,
+) -> tuple[list[str], list[Path], set[str]]:
+    macro_dir = repo_root / "installer" / "klipper" / "tltg-optimized-macros"
+    macros = iter_macro_names(macro_dir)
     dynamic_prefixes = build_dynamic_prefixes(macros)
     failures: list[str] = []
-    checked_files = iter_slicer_files()
+    checked_files = iter_slicer_files(repo_root)
 
     for path in checked_files:
         for line_number, command, segment, command_end in iter_commands(path):
@@ -102,11 +133,17 @@ def main() -> int:
                 continue
             if is_dynamic_macro_call(command, segment, command_end, dynamic_prefixes):
                 continue
-            if command in ALLOWED_NON_MACRO_COMMANDS:
+            if is_allowed_external_command(command, segment, command_end):
                 continue
             failures.append(
-                f"{path.relative_to(REPO_ROOT)}:{line_number}: unknown command '{command}' in '{segment}'"
+                f"{path.relative_to(repo_root)}:{line_number}: unknown command '{command}' in '{segment}'"
             )
+
+    return failures, checked_files, macros
+
+
+def main() -> int:
+    failures, checked_files, macros = validate_repo(REPO_ROOT)
 
     if failures:
         print("Optimized slicer G-code references unknown commands:", file=sys.stderr)
@@ -115,7 +152,7 @@ def main() -> int:
         return 1
 
     print(
-        f"Validated {len(checked_files)} optimized slicer G-code files against {len(macros)} repo macros."
+        f"Validated {len(checked_files)} optimized slicer G-code files against {len(macros)} optimized source macros."
     )
     return 0
 

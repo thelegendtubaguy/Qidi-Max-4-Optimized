@@ -1,0 +1,20 @@
+name: check-installer-bundle
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check-installer-bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run installer core tests
+        run: python3 scripts/run_installer_core_tests.py
+      - name: Validate installer compatibility metadata
+        run: python3 scripts/check_installer_known_versions.py
+      - name: Build and smoke-test installer bundle
+        run: python3 scripts/build_installer_bundle.py --output-dir dist --channel release --smoke-test

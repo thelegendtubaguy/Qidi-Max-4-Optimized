@@ -1,0 +1,473 @@
+from __future__ import annotations
+
+import shutil
+import urllib.request
+
+from . import klipper_cfg, messages, patches
+from .backup import (
+    build_uninstall_backup_label,
+    create_config_backup,
+    list_installer_backups,
+    prune_installer_backups,
+    utc_now,
+)
+from .compatibility import CompatibilityValidationError, allowed_target_tuples_for_version
+from .ensure_lines import has_active_line, remove_active_line
+from .errors import InstalledPackageValidationError, OperationCancelled
+from .firmware import detect_firmware_version_best_effort
+from .interaction import confirm_yes, maybe_restart_klipper
+from .fs_atomic import atomic_write_text
+from .mirror import detect_uninstall_managed_tree_drift, remove_tree
+from .models import (
+    DriftRecord,
+    EnsureLineSpec,
+    IncludeLineIntent,
+    InstalledState,
+    ManagedTreeIntent,
+    Manifest,
+    RuntimePaths,
+    StateFileIntent,
+    UninstallPlan,
+    UninstallResult,
+)
+from .postflight import verify_uninstall_postflight
+from .preflight import run_uninstall_preflight
+from .rollback import RollbackJournal
+from .state_file import StateValidationError, delete_state_file, load_installed_state
+
+
+
+def run_uninstall(
+    paths: RuntimePaths,
+    manifest: Manifest,
+    compatibility,
+    reporter,
+    *,
+    dry_run: bool = False,
+    input_stream=None,
+    urlopen=urllib.request.urlopen,
+    disk_usage=shutil.disk_usage,
+) -> UninstallResult:
+    reporter.debug(
+        event="uninstall.start",
+        dry_run=dry_run,
+        package_version=manifest.package.version,
+    )
+
+    reporter.status(messages.CHECKING_FIRMWARE_VERSION)
+    current_firmware = detect_firmware_version_best_effort(paths.firmware_manifest_path)
+    reporter.debug(
+        event="uninstall.firmware.detected",
+        firmware_version=current_firmware or "unknown-firmware",
+        manifest_path=paths.firmware_manifest_path,
+    )
+
+    reporter.status(messages.CHECKING_INSTALLED_PACKAGE)
+    state_path = paths.printer_data_root / manifest.state_file
+    include_line = manifest.include_line
+    managed_tree_root = paths.printer_data_root / manifest.managed_tree.destination
+    include_line_path = paths.printer_data_root / include_line.file
+
+    non_patch_markers = {
+        "state_file": state_path.exists(),
+        "managed_tree": managed_tree_root.exists(),
+        "include_line": include_line_path.exists()
+        and has_active_line(klipper_cfg.read_text(include_line_path), include_line.line),
+    }
+    reporter.debug(
+        event="uninstall.markers.checked",
+        state_file=non_patch_markers["state_file"],
+        managed_tree=non_patch_markers["managed_tree"],
+        include_line=non_patch_markers["include_line"],
+    )
+
+    state = None
+    state_invalid = False
+    if state_path.exists():
+        try:
+            state = load_installed_state(state_path)
+            _validate_uninstall_ledger(state, compatibility)
+        except (StateValidationError, CompatibilityValidationError):
+            state_invalid = True
+            state = None
+    patch_markers = {}
+    if state is not None:
+        patch_markers = detect_patch_markers(paths=paths, state=state)
+        reporter.debug(
+            event="uninstall.ledger.loaded",
+            package_version=state.package_version,
+            patch_markers=sum(1 for value in patch_markers.values() if value),
+        )
+    elif state_invalid:
+        reporter.debug(event="uninstall.ledger.invalid", state_path=state_path)
+    else:
+        reporter.debug(event="uninstall.ledger.missing", state_path=state_path)
+
+    if not any(non_patch_markers.values()) and not any(patch_markers.values()):
+        reporter.emit_nothing_to_uninstall()
+        reporter.debug(event="uninstall.complete", action="nothing-to-uninstall")
+        return UninstallResult(
+            patch_results=(),
+            managed_tree_drift=(),
+            backup_label=None,
+            backup_zip_path=None,
+        )
+
+    if any(non_patch_markers.values()) and (state is None or state_invalid):
+        raise InstalledPackageValidationError()
+
+    assert state is not None
+
+    reporter.status(messages.PERFORMING_UNINSTALL_PREFLIGHT_CHECKS)
+    run_uninstall_preflight(
+        paths=paths,
+        state=state,
+        include_line_file=include_line.file,
+        state_file_path=manifest.state_file,
+        reporter=reporter,
+        urlopen=urlopen,
+        disk_usage=disk_usage,
+    )
+    managed_tree_drift = detect_uninstall_managed_tree_drift(
+        destination_root=paths.printer_data_root / state.managed_tree.root,
+        printer_data_root=paths.printer_data_root,
+        state=state,
+    )
+    reporter.debug(
+        event="uninstall.managed_tree_drift.detected",
+        drift_records=len(managed_tree_drift),
+    )
+
+    if not dry_run and not confirm_yes(
+        reporter=reporter,
+        input_stream=input_stream,
+        question=messages.UNINSTALL_CONFIRMATION_PROMPT,
+        instruction=messages.UNINSTALL_CONFIRMATION_INSTRUCTION,
+        cancel_message=messages.UNINSTALL_CANCELLED,
+    ):
+        reporter.debug(event="uninstall.cancelled", dry_run=False)
+        raise OperationCancelled(messages.UNINSTALL_CANCELLED)
+
+    reporter.status(messages.CREATING_BACKUP)
+    started_at = utc_now()
+    backup_label = build_uninstall_backup_label(
+        current_firmware=current_firmware,
+        package_version=state.package_version,
+        moment=started_at,
+    )
+    backup_zip_path = None
+    if not dry_run:
+        existing_backups = list_installer_backups(
+            paths.printer_data_root,
+            install_label_prefix=manifest.backup.label_prefix,
+        )
+        reporter.debug(
+            event="uninstall.backups.detected",
+            existing_backups=len(existing_backups),
+            backup_root=paths.backup_root,
+        )
+        backup_zip_path = create_config_backup(
+            printer_data_root=paths.printer_data_root,
+            source_directory=manifest.backup.source_directory,
+            backup_label=backup_label,
+        )
+        pruned_backups = prune_installer_backups(
+            paths.printer_data_root,
+            install_label_prefix=manifest.backup.label_prefix,
+            keep_path=backup_zip_path,
+        )
+        reporter.debug(
+            event="uninstall.backup.created",
+            backup_label=backup_label,
+            backup_zip_path=backup_zip_path,
+            pruned_backups=len(pruned_backups),
+        )
+        if pruned_backups:
+            reporter.debug(
+                event="uninstall.backup.retention.pruned",
+                removed=", ".join(str(path) for path in pruned_backups),
+            )
+
+    reporter.status(messages.UNINSTALLING)
+    plan = build_uninstall_plan(
+        paths=paths,
+        manifest=manifest,
+        state=state,
+        include_line=include_line,
+        backup_label=backup_label,
+        managed_tree_drift=managed_tree_drift,
+    )
+    reporter.debug(
+        event="uninstall.plan.built",
+        patches=len(plan.patch_results),
+        managed_tree_drift=len(plan.managed_tree_drift),
+    )
+    if dry_run:
+        _emit_uninstall_dry_run_counters(reporter, state)
+        result = UninstallResult(
+            patch_results=plan.patch_results,
+            managed_tree_drift=plan.managed_tree_drift,
+            backup_label=plan.backup_label,
+            backup_zip_path=None,
+            dry_run=True,
+        )
+        reporter.emit_uninstall_dry_run(plan=plan)
+        reporter.debug(event="uninstall.complete", dry_run=True, backup_label=plan.backup_label)
+        return result
+
+    return _execute_uninstall(
+        paths=paths,
+        manifest=manifest,
+        reporter=reporter,
+        state=state,
+        include_line=include_line,
+        plan=plan,
+        backup_zip_path=backup_zip_path,
+        input_stream=input_stream,
+        urlopen=urlopen,
+    )
+
+
+
+def build_uninstall_plan(
+    *,
+    paths: RuntimePaths,
+    manifest: Manifest,
+    state: InstalledState,
+    include_line: EnsureLineSpec,
+    backup_label: str,
+    managed_tree_drift: tuple[DriftRecord, ...],
+) -> UninstallPlan:
+    patch_results = _collect_uninstall_patch_results(paths=paths, state=state)
+    include_line_intents = _collect_uninstall_include_line_intents(
+        paths=paths,
+        include_line=include_line,
+    )
+    managed_tree_intent = ManagedTreeIntent(
+        id=manifest.managed_tree.id,
+        source=None,
+        destination=state.managed_tree.root,
+        action="remove",
+    )
+    return UninstallPlan(
+        backup_label=backup_label,
+        managed_tree_intent=managed_tree_intent,
+        include_line_intents=include_line_intents,
+        patch_results=patch_results,
+        managed_tree_drift=managed_tree_drift,
+        state_file_intent=StateFileIntent(path=manifest.state_file, action="delete"),
+    )
+
+
+
+def _execute_uninstall(
+    *,
+    paths: RuntimePaths,
+    manifest: Manifest,
+    reporter,
+    state: InstalledState,
+    include_line: EnsureLineSpec,
+    plan: UninstallPlan,
+    backup_zip_path,
+    input_stream,
+    urlopen,
+) -> UninstallResult:
+    managed_tree_root = paths.printer_data_root / state.managed_tree.root
+    include_line_path = paths.printer_data_root / include_line.file
+    state_path = paths.printer_data_root / manifest.state_file
+    journal = RollbackJournal(
+        paths.recovery_sentinel_path,
+        printer_data_root=paths.printer_data_root,
+        source_directory=manifest.backup.source_directory,
+    )
+    patch_results = []
+    uninstall_counters = _uninstall_counters_template(state)
+    uninstall_counters["managed_tree_drift"][0] = 1
+    try:
+        touched_files = {state_path, include_line_path}
+        touched_files.update(paths.printer_data_root / entry.file for entry in state.patch_ledger)
+        for path in touched_files:
+            journal.track_file(path)
+        journal.track_tree(managed_tree_root)
+        reporter.debug(
+            event="uninstall.rollback.tracking",
+            tracked_files=len(touched_files),
+            tracked_trees=1,
+        )
+
+        for entry in state.patch_ledger:
+            path = paths.printer_data_root / entry.file
+            text = klipper_cfg.read_text(path)
+            resolved = klipper_cfg.resolve_unique_option(text, entry.section, entry.option)
+            result = patches.classify_uninstall_patch(resolved.value, entry)
+            patch_results.append(result)
+            if result.classification == patches.UNINSTALL_REVERTED:
+                new_text = klipper_cfg.set_option_value(
+                    text, entry.section, entry.option, result.expected
+                )
+                journal.note_write()
+                atomic_write_text(path, new_text)
+            uninstall_counters["patches"][0] += 1
+        reporter.emit_uninstall_counters(**_freeze_counters(uninstall_counters))
+
+        if include_line_path.exists():
+            text = klipper_cfg.read_text(include_line_path)
+            new_text = remove_active_line(text, include_line.line)
+            if new_text != text:
+                journal.note_write()
+                atomic_write_text(include_line_path, new_text)
+        uninstall_counters["include_removal"][0] = 1
+        reporter.emit_uninstall_counters(**_freeze_counters(uninstall_counters))
+
+        remove_tree(managed_tree_root, journal)
+        uninstall_counters["managed_tree_removal"][0] = 1
+        reporter.emit_uninstall_counters(**_freeze_counters(uninstall_counters))
+
+        verify_uninstall_postflight(
+            paths=paths,
+            state=state,
+            patch_results=tuple(patch_results),
+            include_line=include_line,
+        )
+        uninstall_counters["postflight"][0] = 1
+        reporter.emit_uninstall_counters(**_freeze_counters(uninstall_counters))
+
+        if state_path.exists():
+            journal.note_write()
+            delete_state_file(state_path)
+        uninstall_counters["state_remove"][0] = 1
+        reporter.emit_uninstall_counters(**_freeze_counters(uninstall_counters))
+    except Exception as exc:
+        reporter.debug(
+            event="uninstall.failure",
+            backup_label=plan.backup_label,
+            error_type=type(exc).__name__,
+            message=getattr(exc, "message", str(exc)),
+            rollback_started=journal.write_started,
+        )
+        if journal.write_started:
+            journal.rollback_or_raise(
+                exc, backup_label=plan.backup_label, backup_zip_path=backup_zip_path
+            )
+        raise
+
+    result = UninstallResult(
+        patch_results=tuple(patch_results),
+        managed_tree_drift=plan.managed_tree_drift,
+        backup_label=plan.backup_label,
+        backup_zip_path=backup_zip_path,
+    )
+    reporter.emit_uninstall_success(
+        patch_results=result.patch_results,
+        managed_tree_drift=result.managed_tree_drift,
+    )
+    maybe_restart_klipper(
+        reporter=reporter,
+        input_stream=input_stream,
+        moonraker_query_url=paths.moonraker_url,
+        urlopen=urlopen,
+    )
+    reporter.debug(
+        event="uninstall.complete",
+        dry_run=False,
+        backup_label=plan.backup_label,
+        backup_zip_path=backup_zip_path,
+        managed_tree_drift=len(result.managed_tree_drift),
+        user_modified_patches=len(
+            [item for item in result.patch_results if item.classification == patches.USER_MODIFIED]
+        ),
+    )
+    return result
+
+
+
+def detect_patch_markers(*, paths: RuntimePaths, state: InstalledState) -> dict[str, bool]:
+    markers = {}
+    for entry in state.patch_ledger:
+        path = paths.printer_data_root / entry.file
+        if not path.exists():
+            markers[entry.id] = False
+            continue
+        try:
+            resolved = klipper_cfg.resolve_unique_option(
+                klipper_cfg.read_text(path), entry.section, entry.option
+            )
+        except klipper_cfg.TargetResolutionError:
+            markers[entry.id] = False
+            continue
+        markers[entry.id] = resolved.value == entry.desired
+    return markers
+
+
+
+def _collect_uninstall_patch_results(
+    *,
+    paths: RuntimePaths,
+    state: InstalledState,
+) -> tuple:
+    results = []
+    for entry in state.patch_ledger:
+        path = paths.printer_data_root / entry.file
+        text = klipper_cfg.read_text(path)
+        resolved = klipper_cfg.resolve_unique_option(text, entry.section, entry.option)
+        results.append(patches.classify_uninstall_patch(resolved.value, entry))
+    return tuple(results)
+
+
+
+def _collect_uninstall_include_line_intents(
+    *,
+    paths: RuntimePaths,
+    include_line: EnsureLineSpec,
+) -> tuple[IncludeLineIntent, ...]:
+    include_line_path = paths.printer_data_root / include_line.file
+    text = klipper_cfg.read_text(include_line_path)
+    return (
+        IncludeLineIntent(
+            id=include_line.id,
+            file=include_line.file,
+            line=include_line.line,
+            after=None,
+            action="remove"
+            if has_active_line(text, include_line.line)
+            else "already_absent",
+        ),
+    )
+
+
+
+def _validate_uninstall_ledger(state: InstalledState, compatibility) -> None:
+    allowed_targets = allowed_target_tuples_for_version(
+        compatibility, state.package_version
+    )
+    for entry in state.patch_ledger:
+        if entry.target_tuple not in allowed_targets:
+            raise CompatibilityValidationError(
+                "Ledger patch target is not allowed for stored installed package version."
+            )
+
+
+
+def _uninstall_counters_template(state: InstalledState) -> dict[str, list[int]]:
+    return {
+        "patches": [0, len(state.patch_ledger)],
+        "include_removal": [0, 1],
+        "managed_tree_drift": [0, 1],
+        "managed_tree_removal": [0, 1],
+        "postflight": [0, 1],
+        "state_remove": [0, 1],
+    }
+
+
+
+def _emit_uninstall_dry_run_counters(reporter, state: InstalledState) -> None:
+    counters = _uninstall_counters_template(state)
+    counters["managed_tree_drift"][0] = counters["managed_tree_drift"][1]
+    for name in ("patches", "include_removal", "managed_tree_removal", "postflight", "state_remove"):
+        counters[name][0] = counters[name][1]
+        reporter.emit_uninstall_counters(**_freeze_counters(counters))
+
+
+
+def _freeze_counters(counters: dict[str, list[int]]) -> dict[str, tuple[int, int]]:
+    return {name: (value[0], value[1]) for name, value in counters.items()}
