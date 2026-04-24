@@ -88,6 +88,7 @@ jobs:
               'dist/tltg-optimized-macros.tar.gz.sha256',
               'dist/tltg-optimized-macros-${{ steps.version.outputs.package_version }}.tar.gz',
               'dist/tltg-optimized-macros-${{ steps.version.outputs.package_version }}.tar.gz.sha256',
+              'installer/release/install-latest.sh',
           ]
           for raw_path in files:
               path = pathlib.Path(raw_path)

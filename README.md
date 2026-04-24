@@ -2,69 +2,30 @@
 
 Optimized Klipper macros and slicer machine G-code for the QIDI Max 4.
 
-This repository is a machine-specific QIDI Max 4 configuration and installer, not a universal profile for every printer.
-
-Current installer support: firmware `01.01.06.02`.
-
 ## Install
 
-These commands assume SSH access to `qidi@<printer-ip>`.
+### Printer Configs
+
+You will need to SSH into the printer `qidi@<printer-ip>`.
 
 From a shell on the printer, fetch the latest published installer from GitHub and run it:
 
 ```bash
-rm -rf ~/tltg-optimized-macros && curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/tltg-optimized-macros.tar.gz | tar -xz -C ~ && ~/tltg-optimized-macros/install.sh --plain
+/bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/install-latest.sh)"
 ```
 
-Dry-run variant:
+If you'd rather do a dry-run before committing to a full install, you can run this:
 
 ```bash
-rm -rf ~/tltg-optimized-macros && curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/tltg-optimized-macros.tar.gz | tar -xz -C ~ && ~/tltg-optimized-macros/install.sh --dry-run --plain
+/bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/install-latest.sh)" -- --dry-run
 ```
 
-`--plain` is the recommended mode for now because it produces cleaner terminal output than the current TUI path.
+Before installing or uninstalling, the installer will run preflight checks to ensure safety.  It will also take a backup of your config directory before installing or uninstalling.  You will be prompted to install or uninstall after the preflight checks.
 
-TUI preview only:
+### Slicer Maching GCode Updates
+You will need to manually copy the machine GCode to your slicer of choice to take advantage of the optimized path.  The stock print path remains in place for backwards compatibility, safety, and general user happiness :)
 
-```bash
-~/tltg-optimized-macros/install.sh --demo-tui
-~/tltg-optimized-macros/install.sh --uninstall --demo-tui
-```
-
-`--demo-tui` renders the normal install or uninstall status screens without touching `/home/qidi/printer_data/config` and waits 5 seconds between screens.
-
-Real install and uninstall runs prompt for confirmation after preflight checks and ask whether to restart Klipper after the changes are written.
-
-Manual copy-and-run flow from another machine:
-
-1. Download the latest release asset: `tltg-optimized-macros.tar.gz`.
-2. Copy it to the printer:
-
-```bash
-PRINTER_HOST=<printer-ip>
-INSTALLER_TARBALL=~/Downloads/tltg-optimized-macros.tar.gz
-scp "$INSTALLER_TARBALL" qidi@"$PRINTER_HOST":~/
-```
-
-3. Extract it on the printer:
-
-```bash
-ssh qidi@"$PRINTER_HOST" 'rm -rf ~/tltg-optimized-macros && tar -xzf ~/tltg-optimized-macros.tar.gz -C ~/'
-```
-
-4. Optional dry run:
-
-```bash
-ssh -t qidi@"$PRINTER_HOST" 'cd ~/tltg-optimized-macros && ./install.sh --dry-run --plain'
-```
-
-5. Install for real:
-
-```bash
-ssh -t qidi@"$PRINTER_HOST" 'cd ~/tltg-optimized-macros && ./install.sh --plain'
-```
-
-6. Replace your slicer machine G-code with the matching pack from this repo:
+Use the pack that matches your slicer. The two packs are functionally aligned, but their placeholder syntax is different due to variable type differences.
    - OrcaSlicer: `orcaslicer_gcode/`
    - QIDI Studio: `qidistudio_gcode/`
 
@@ -81,7 +42,7 @@ If `~/tltg-optimized-macros/` is still present on the printer:
 If you want the same one-line GitHub fetch-and-run flow for uninstall:
 
 ```bash
-rm -rf ~/tltg-optimized-macros && curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/tltg-optimized-macros.tar.gz | tar -xz -C ~ && ~/tltg-optimized-macros/install.sh --uninstall --plain
+/bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/install-latest.sh)" -- --uninstall
 ```
 
 ## If something goes wrong
@@ -108,12 +69,12 @@ If restore completed and the recovery sentinel is still present, clear it with:
 ssh -t qidi@"$PRINTER_HOST" 'cd ~/tltg-optimized-macros && ./install.sh --clear-recovery-sentinel'
 ```
 
-## Technical notes
+## Documentation
 
-- Verified behavior differences versus stock: `docs/current_config_results_vs_stock_qidi_configs.md`
-- QIDI box internals and `BOX_PRINT_START`: `docs/box_print_start_notes.md`
-- Optimized slicer temperature flow: `docs/optimized_slicer_start_temperature_flow.md`
+- [Verified behavior differences versus stock](docs/current_config_results_vs_stock_qidi_configs.md)
+- [QIDI box internals and `BOX_PRINT_START`](docs/box_print_start_notes.md)
+- [Optimized slicer temperature/print flow](docs/optimized_slicer_start_temperature_flow.md)
 
 ## Development
 
-For development documentation, see [DEVELOPMENT.md](DEVELOPMENT.md).
+For development documentation, see [DEVELOPMENT](DEVELOPMENT.md).
