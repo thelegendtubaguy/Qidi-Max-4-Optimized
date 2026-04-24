@@ -2,25 +2,25 @@
 
 ## Install from GitHub
 
-Install the latest dev-branch bundle published to the `dev-latest` prerelease:
+Install the latest dev-branch bundle published to the `dev-latest` prerelease. The bootstrap script is read from the `dev` branch; the `dev-latest` prerelease only needs to carry `tltg-optimized-macros-dev.tar.gz` and its `.sha256` file.
 
 ```bash
-TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/download/dev-latest/tltg-optimized-macros-dev.tar.gz \
-/bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/install-latest.sh)"
+TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/download/dev/tltg-optimized-macros-dev.tar.gz \
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/thelegendtubaguy/Qidi-Max-4-Optimized/dev/installer/release/install-latest.sh)"
 ```
 
 Dry-run the latest dev-branch bundle:
 
 ```bash
-TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/download/dev-latest/tltg-optimized-macros-dev.tar.gz \
-/bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/install-latest.sh)" -- --dry-run
+TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/download/dev/tltg-optimized-macros-dev.tar.gz \
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/thelegendtubaguy/Qidi-Max-4-Optimized/dev/installer/release/install-latest.sh)" -- --dry-run
 ```
 
 And to uninstall from dev:
 
 ```bash
-TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/download/dev-latest/tltg-optimized-macros-dev.tar.gz \
-/bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/install-latest.sh)" -- --uninstall
+TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/download/dev/tltg-optimized-macros-dev.tar.gz \
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/thelegendtubaguy/Qidi-Max-4-Optimized/dev/installer/release/install-latest.sh)" -- --uninstall
 ```
 
 ## Build, copy, and dry-run on a printer
