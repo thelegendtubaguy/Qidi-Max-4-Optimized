@@ -57,10 +57,28 @@ Install statuses and terminal messages:
 - Final install success output lists only the `patches.set_options[]` targets skipped as user-modified.
 - Final install success output lists `Managed tree drift overwritten:` only when existing `config/tltg-optimized-macros/` files differed from the prior installed-state ledger before mirror mode overwrote or removed them.
 - Final install success output does not list `patches.set_options[]` targets that already matched `desired` before the run.
-- After final install success output, the runtime prompts `Would you like me to restart Klipper to apply changes?` and accepts `Y` or `Yes` case-insensitively.
+- After final install success output, install prompts `Would you like to enable hourly automatic optimized config updates using a systemd timer?` when input is interactive.
+- Accepted auto-update confirmation attempts to fetch the latest release `.sha256`; when the fetch succeeds it writes `config/tltg_optimized_auto_update_state.json`, and when the fetch fails it prints `Could not seed the latest release checksum; the first successful timer run will initialize auto-update state without installing.`.
+- Accepted auto-update confirmation runs `sudo -v`, installs `/etc/systemd/system/tltg-optimized-auto-update.service` and `/etc/systemd/system/tltg-optimized-auto-update.timer`, runs `sudo systemctl daemon-reload`, and runs `sudo systemctl enable --now tltg-optimized-auto-update.timer`.
+- Auto-update systemd setup failure prints `Could not enable auto-updates. <reason>` and does not change the successful install result.
+- After the auto-update prompt returns or when auto-update prompting is skipped, the runtime prompts `Would you like me to restart Klipper to apply changes?` and accepts `Y` or `Yes` case-insensitively.
 - Accepted restart confirmation triggers a local Moonraker `POST /printer/restart` request.
 - Failed automatic restart prints `Could not restart Klipper automatically. Restart Klipper to apply changes.` and does not change the successful install result.
 - Any other restart confirmation input returns without restarting and prints `Restart Klipper to apply changes.`.
+- `install.sh --yes` suppresses interactive install confirmation, restart confirmation, and auto-update setup prompts; preflight checks still run.
+
+Auto-update runtime behavior:
+- `auto-update.sh --run` calls installer mode `auto-update-check`.
+- `auto-update-check` fetches the latest release checksum from GitHub and compares it to `config/tltg_optimized_auto_update_state.json latest_checksum`.
+- Checksum fetch failure prints `Auto-update skipped because the latest release checksum could not be fetched.`, exits zero, and does not run the installer.
+- Matching checksums print `Auto-update check: already current.` and do not run the installer.
+- Missing checksum state writes the fetched checksum to `config/tltg_optimized_auto_update_state.json`, prints `Auto-update check: initialized latest release state.`, and does not run the installer.
+- Changed checksums query local Moonraker `print_stats.state`; `printing` or `paused` prints `Auto-update skipped because a print is active or paused.` and does not run the installer.
+- Unknown printer state prints `Auto-update skipped because printer state could not be determined.` and does not run the installer.
+- Idle changed checksums fetch `install-latest.sh` from GitHub and run it as `/bin/sh <downloaded-script> --yes --plain`; the child installer still performs firmware, package-version, target, Moonraker idle, and free-space preflight checks before writing.
+- Successful auto-update writes the new checksum to `config/tltg_optimized_auto_update_state.json` and prints `Auto-update complete.`.
+- `auto-update.sh --enable-systemd` installs and enables the systemd service/timer through sudo without running the main install flow.
+- `auto-update.sh --disable-systemd` disables `tltg-optimized-auto-update.timer`, removes the service/timer unit files from `/etc/systemd/system/`, reloads systemd, and removes `config/tltg_optimized_auto_update_state.json`.
 
 Uninstall statuses and terminal messages:
 - Status `checking firmware version` covers best-effort current firmware detection from `/home/qidi/update/firmware_manifest.json` for audit/reporting during uninstall.
@@ -81,7 +99,9 @@ Uninstall statuses and terminal messages:
 - Final uninstall success returns `Uninstalled.` after uninstall postflight succeeds and `config/tltg_optimized_state.yaml` is deleted.
 - Final uninstall success output lists only guarded patch targets preserved as user-modified.
 - Final uninstall success output lists managed-tree drift only when `config/tltg-optimized-macros/` contained local modifications before removal.
-- After final uninstall success output, the runtime prompts `Would you like me to restart Klipper to apply changes?` and accepts `Y` or `Yes` case-insensitively.
+- After final uninstall success output, uninstall removes `/etc/systemd/system/tltg-optimized-auto-update.service` and `/etc/systemd/system/tltg-optimized-auto-update.timer` through sudo when either unit file exists.
+- Auto-update removal failure prints `Could not disable auto-updates. <reason>` and does not change the successful uninstall result.
+- After auto-update removal returns or when no auto-update unit is installed, the runtime prompts `Would you like me to restart Klipper to apply changes?` and accepts `Y` or `Yes` case-insensitively.
 - Accepted restart confirmation triggers a local Moonraker `POST /printer/restart` request.
 - Failed automatic restart prints `Could not restart Klipper automatically. Restart Klipper to apply changes.` and does not change the successful uninstall result.
 - Any other restart confirmation input returns without restarting and prints `Restart Klipper to apply changes.`.
@@ -158,10 +178,14 @@ Required install flow:
 41. Trigger automatic rollback on any failure after the first runtime write, not only on postflight failure.
 42. Leave the previous `config/tltg_optimized_state.yaml` content unchanged when the run stops before install postflight completion.
 43. Print `Installed.`, then the final user-modified patch report, then `Managed tree drift overwritten:` when present.
-44. Prompt `Would you like me to restart Klipper to apply changes?` and accept only `Y` or `Yes` case-insensitively.
-45. During accepted restart confirmation, request local Moonraker `POST /printer/restart`.
-46. Print `Could not restart Klipper automatically. Restart Klipper to apply changes.` when the restart request fails.
-47. Print `Restart Klipper to apply changes.` and exit without restarting when the restart confirmation input is anything else.
+44. Prompt for auto-update setup when input is interactive.
+45. During accepted auto-update setup confirmation, attempt to fetch and store the latest release checksum, authenticate with sudo, install the systemd service/timer units, reload systemd, and enable/start `tltg-optimized-auto-update.timer`.
+46. Continue systemd timer setup when the initial checksum seed fails; the first successful timer check initializes `config/tltg_optimized_auto_update_state.json` without installing.
+47. Treat auto-update setup failure as non-fatal after install success.
+48. Prompt `Would you like me to restart Klipper to apply changes?` and accept only `Y` or `Yes` case-insensitively.
+49. During accepted restart confirmation, request local Moonraker `POST /printer/restart`.
+50. Print `Could not restart Klipper automatically. Restart Klipper to apply changes.` when the restart request fails.
+51. Print `Restart Klipper to apply changes.` and exit without restarting when the restart confirmation input is anything else.
 
 Approved install backup-history message pool:
 - `Change your mind, huh?`
@@ -214,10 +238,12 @@ Required uninstall flow:
 33. Trigger automatic rollback on any failure after the first uninstall write, not only on uninstall postflight failure.
 34. Keep `config/tltg_optimized_state.yaml` unchanged when uninstall stops before uninstall postflight completion.
 35. Print `Uninstalled.`, then preserved user-modified patch targets, then managed-tree drift when present.
-36. Prompt `Would you like me to restart Klipper to apply changes?` and accept only `Y` or `Yes` case-insensitively.
-37. During accepted restart confirmation, request local Moonraker `POST /printer/restart`.
-38. Print `Could not restart Klipper automatically. Restart Klipper to apply changes.` when the restart request fails.
-39. Print `Restart Klipper to apply changes.` and exit without restarting when the restart confirmation input is anything else.
+36. Remove the auto-update systemd service/timer after successful uninstall when either unit file exists.
+37. Treat auto-update removal failure as non-fatal after uninstall success.
+38. Prompt `Would you like me to restart Klipper to apply changes?` and accept only `Y` or `Yes` case-insensitively.
+39. During accepted restart confirmation, request local Moonraker `POST /printer/restart`.
+40. Print `Could not restart Klipper automatically. Restart Klipper to apply changes.` when the restart request fails.
+41. Print `Restart Klipper to apply changes.` and exit without restarting when the restart confirmation input is anything else.
 
 Patch semantics:
 - Manifest validation requires every `installer/package.yaml patches.set_options[]` block to provide exactly one matching `variants[]` entry for every `installer/package.yaml firmware.supported[]` value.

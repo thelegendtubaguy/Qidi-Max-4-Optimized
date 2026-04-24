@@ -75,6 +75,28 @@ class CliTests(unittest.TestCase):
         self.assertIn("Would you like us to take a backup of your configs and proceed with installation?", output)
         self.assertIn("Installation cancelled.", output)
 
+    def test_install_prompts_auto_updates_before_restart(self):
+        printer_root = copy_base_runtime()
+        stream = io.StringIO()
+        with moonraker_server("standby") as url:
+            rc = main(
+                ["install", "--plain"],
+                stream=stream,
+                input_stream=io.StringIO("yes\nno\nno\n"),
+                bundle_root=REPO_ROOT,
+                environ=build_env(printer_root, moonraker_url=url),
+            )
+
+        self.assertEqual(rc, 0)
+        output = stream.getvalue()
+        auto_prompt_index = output.index(
+            "Would you like to enable hourly automatic optimized config updates using a systemd timer?"
+        )
+        restart_prompt_index = output.index("Would you like me to restart Klipper to apply changes?")
+        self.assertLess(auto_prompt_index, restart_prompt_index)
+        self.assertIn("Auto-updates not enabled.", output)
+        self.assertIn("Restart Klipper to apply changes.", output)
+
     def test_uninstall_cancellation_returns_zero_without_writing(self):
         printer_root = copy_base_runtime()
         manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
@@ -102,6 +124,40 @@ class CliTests(unittest.TestCase):
         output = stream.getvalue()
         self.assertIn("Are you sure you want to uninstall?", output)
         self.assertIn("Uninstall cancelled.", output)
+
+    def test_uninstall_disables_auto_updates_before_restart_prompt(self):
+        printer_root = copy_base_runtime()
+        manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
+        with moonraker_server("standby") as url:
+            paths = resolve_runtime_paths(
+                bundle_root=REPO_ROOT,
+                environ=build_env(printer_root, moonraker_url=url),
+            )
+            run_install(paths, manifest, PlainReporter(io.StringIO()))
+
+        def fake_disable_auto_updates(*, paths, reporter, require_sudo):
+            reporter.line("Auto-updates disabled.")
+
+        stream = io.StringIO()
+        with moonraker_server("standby") as url:
+            with patch("installer.runtime.uninstall.auto_updates_configured", return_value=True), patch(
+                "installer.runtime.uninstall.disable_auto_updates",
+                side_effect=fake_disable_auto_updates,
+            ):
+                rc = main(
+                    ["uninstall", "--plain"],
+                    stream=stream,
+                    input_stream=io.StringIO("yes\nno\n"),
+                    bundle_root=REPO_ROOT,
+                    environ=build_env(printer_root, moonraker_url=url),
+                )
+
+        self.assertEqual(rc, 0)
+        output = stream.getvalue()
+        disable_index = output.index("Auto-updates disabled.")
+        restart_prompt_index = output.index("Would you like me to restart Klipper to apply changes?")
+        self.assertLess(disable_index, restart_prompt_index)
+        self.assertIn("Restart Klipper to apply changes.", output)
 
     def test_install_demo_tui_returns_zero_without_writing(self):
         printer_root = copy_base_runtime()

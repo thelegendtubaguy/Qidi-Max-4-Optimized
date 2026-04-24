@@ -1,5 +1,28 @@
 # Development
 
+## Install from GitHub
+
+Install the latest dev-branch bundle published to the `dev-latest` prerelease:
+
+```bash
+TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/download/dev-latest/tltg-optimized-macros-dev.tar.gz \
+/bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/install-latest.sh)"
+```
+
+Dry-run the latest dev-branch bundle:
+
+```bash
+TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/download/dev-latest/tltg-optimized-macros-dev.tar.gz \
+/bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/install-latest.sh)" -- --dry-run
+```
+
+And to uninstall from dev:
+
+```bash
+TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/download/dev-latest/tltg-optimized-macros-dev.tar.gz \
+/bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/install-latest.sh)" -- --uninstall
+```
+
 ## Build, copy, and dry-run on a printer
 
 Run the helper from the repo root:

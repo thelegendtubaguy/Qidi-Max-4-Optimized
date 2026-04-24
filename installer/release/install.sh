@@ -16,6 +16,7 @@ plain_arg=""
 debug_arg=""
 dry_run_arg=""
 demo_tui_arg=""
+yes_arg=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -45,6 +46,9 @@ while [ "$#" -gt 0 ]; do
     --demo-tui)
       demo_tui_arg="--demo-tui"
       ;;
+    --yes)
+      yes_arg="--yes"
+      ;;
     *)
       echo "Unsupported argument: $1" >&2
       exit 1
@@ -65,5 +69,8 @@ if [ -n "$dry_run_arg" ]; then
 fi
 if [ -n "$demo_tui_arg" ]; then
   set -- "$@" "$demo_tui_arg"
+fi
+if [ -n "$yes_arg" ]; then
+  set -- "$@" "$yes_arg"
 fi
 exec "$@"

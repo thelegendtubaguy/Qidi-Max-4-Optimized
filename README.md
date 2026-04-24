@@ -22,6 +22,20 @@ If you'd rather do a dry-run before committing to a full install, you can run th
 
 Before installing or uninstalling, the installer will run preflight checks to ensure safety.  It will also take a backup of your config directory before installing or uninstalling.  You will be prompted to install or uninstall after the preflight checks.
 
+After a successful install, the installer asks whether to enable hourly automatic optimized config updates before asking whether to restart Klipper. Answering no to auto-updates still proceeds to the Klipper restart prompt. Auto-updates use a system-level systemd timer. Enabling auto-updates requires sudo once to install `/etc/systemd/system/tltg-optimized-auto-update.service` and `/etc/systemd/system/tltg-optimized-auto-update.timer`. Each hourly run checks the latest GitHub release checksum, skips while the printer is printing or paused, and then runs the normal installer with preflight checks and auto-approval. If the latest release checksum is unavailable during setup, the timer is still installed and the first successful check initializes update state without installing.
+
+Disable auto-updates:
+
+```bash
+~/tltg-optimized-macros/auto-update.sh --disable-systemd
+```
+
+Run one auto-update check manually:
+
+```bash
+~/tltg-optimized-macros/auto-update.sh --run
+```
+
 ### Slicer Machine GCode Updates
 You will need to manually copy the machine GCode to your slicer of choice to take advantage of the optimized path.  The stock print path remains in place for backwards compatibility, safety, and general user happiness :)
 
@@ -32,6 +46,8 @@ Use the pack that matches your slicer. The two packs are functionally aligned, b
 Use the pack that matches your slicer. The two packs are functionally aligned, but their placeholder syntax is different.
 
 ## Uninstall
+
+Uninstall removes the auto-update systemd timer when it was installed by this package before asking whether to restart Klipper.
 
 If `~/tltg-optimized-macros/` is still present on the printer:
 

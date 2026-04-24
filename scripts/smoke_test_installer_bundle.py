@@ -69,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
             [str(bundle_root / "install.sh"), "--plain"],
             cwd=bundle_root,
             env=plain_env,
-            input_text="yes\nno\n",
+            input_text="yes\nno\nno\n",
         )
         if install.returncode != 0:
             raise SystemExit(install.stdout + install.stderr)
@@ -94,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
             [str(bundle_root / "install.sh"), "--uninstall", "--plain"],
             cwd=bundle_root,
             env=plain_env,
-            input_text="yes\nno\n",
+            input_text="yes\nno\nno\n",
         )
         if uninstall.returncode != 0:
             raise SystemExit(uninstall.stdout + uninstall.stderr)
@@ -108,7 +108,7 @@ def main(argv: list[str] | None = None) -> int:
             [str(bundle_root / "install.sh")],
             cwd=bundle_root,
             env=rich_env,
-            input_text="yes\nno\n",
+            input_text="yes\nno\nno\n",
         )
         if rich_install.returncode != 0:
             raise SystemExit(rich_install.stdout)
@@ -143,7 +143,7 @@ def main(argv: list[str] | None = None) -> int:
             [str(bundle_root / "install.sh"), "--plain"],
             cwd=bundle_root,
             env=restore_env,
-            input_text="yes\nno\n",
+            input_text="yes\nno\nno\n",
         )
         if restore_install.returncode != 0:
             raise SystemExit(restore_install.stdout + restore_install.stderr)
@@ -200,7 +200,7 @@ def main(argv: list[str] | None = None) -> int:
                 [str(bundle_root / "install.sh")],
                 cwd=bundle_root,
                 env=fallback_env,
-                input_text="yes\nno\n",
+                input_text="yes\nno\nno\n",
             )
             if fallback_install.returncode != 0:
                 raise SystemExit(fallback_install.stdout)

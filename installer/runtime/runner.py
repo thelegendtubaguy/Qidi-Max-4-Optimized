@@ -5,6 +5,7 @@ import shutil
 import urllib.request
 
 from . import klipper_cfg, messages, patches
+from .auto_update import maybe_prompt_enable_auto_updates
 from .backup import (
     INSTALL_BACKUP_HISTORY_MESSAGES,
     build_install_backup_label,
@@ -54,6 +55,7 @@ def run_install(
     urlopen=urllib.request.urlopen,
     disk_usage=shutil.disk_usage,
     backup_history_chooser=random.choice,
+    environ: dict[str, str] | None = None,
 ) -> InstallResult:
     reporter.debug(
         event="install.start",
@@ -188,6 +190,7 @@ def run_install(
         backup_zip_path=backup_zip_path,
         input_stream=input_stream,
         urlopen=urlopen,
+        environ=environ,
     )
 
 
@@ -247,6 +250,7 @@ def _execute_install(
     backup_zip_path,
     input_stream,
     urlopen,
+    environ: dict[str, str] | None,
 ) -> InstallResult:
     state_path = paths.printer_data_root / manifest.state_file
     journal = RollbackJournal(
@@ -365,6 +369,13 @@ def _execute_install(
     reporter.emit_install_success(
         patch_results=result.patch_results,
         managed_tree_drift=result.managed_tree_drift,
+    )
+    maybe_prompt_enable_auto_updates(
+        paths=paths,
+        reporter=reporter,
+        input_stream=input_stream,
+        environ=environ,
+        urlopen=urlopen,
     )
     maybe_restart_klipper(
         reporter=reporter,

@@ -23,6 +23,7 @@ ALLOWED_FILES = [
     "installer/supported_upgrade_sources.yaml",
     "installer/release/install.sh",
     "installer/release/restore.sh",
+    "installer/release/auto-update.sh",
 ]
 ALLOWED_DIRECTORIES = [
     "installer/runtime",
@@ -59,6 +60,7 @@ def main(argv: list[str] | None = None) -> int:
         shutil.copy2(source, destination)
     shutil.copy2(REPO_ROOT / "installer/release/install.sh", bundle_root / "install.sh")
     shutil.copy2(REPO_ROOT / "installer/release/restore.sh", bundle_root / "restore.sh")
+    shutil.copy2(REPO_ROOT / "installer/release/auto-update.sh", bundle_root / "auto-update.sh")
     ignore = shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo")
     for directory in ALLOWED_DIRECTORIES:
         source = REPO_ROOT / directory

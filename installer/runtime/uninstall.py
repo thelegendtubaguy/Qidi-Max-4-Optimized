@@ -4,6 +4,7 @@ import shutil
 import urllib.request
 
 from . import klipper_cfg, messages, patches
+from .auto_update import AutoUpdateError, auto_updates_configured, disable_auto_updates
 from .backup import (
     build_uninstall_backup_label,
     create_config_backup,
@@ -361,6 +362,11 @@ def _execute_uninstall(
         patch_results=result.patch_results,
         managed_tree_drift=result.managed_tree_drift,
     )
+    if auto_updates_configured():
+        try:
+            disable_auto_updates(paths=paths, reporter=reporter, require_sudo=True)
+        except AutoUpdateError as exc:
+            reporter.line(f"{messages.AUTO_UPDATE_DISABLE_FAILED} {exc.message}")
     maybe_restart_klipper(
         reporter=reporter,
         input_stream=input_stream,

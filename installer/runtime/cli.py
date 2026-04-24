@@ -6,6 +6,7 @@ import sys
 import traceback
 from pathlib import Path
 
+from .auto_update import AutoUpdateError, disable_auto_updates, enable_auto_updates, run_auto_update_check
 from .backup import BackupArchiveError
 from .compatibility import CompatibilityValidationError, load_supported_upgrade_sources, validate_manifest_compatibility
 from .demo import resolve_demo_tui_delay_seconds, run_demo
@@ -45,7 +46,7 @@ def main(
         environ=env,
         debug=args.debug,
     )
-    input_stream = input_stream or sys.stdin
+    input_stream = None if args.yes else (input_stream or sys.stdin)
     paths = resolve_runtime_paths(bundle_root=bundle_root, environ=env)
     reporter.debug(
         event="cli.start",
@@ -71,6 +72,26 @@ def main(
                 return_code=0,
                 action="demo-tui",
             )
+            return 0
+
+        if args.mode == "auto-update-check":
+            result = run_auto_update_check(paths=paths, reporter=reporter, environ=env)
+            reporter.debug(
+                event="cli.complete",
+                mode=args.mode,
+                return_code=0,
+                action=result.action,
+            )
+            return 0
+
+        if args.mode == "enable-auto-updates":
+            enable_auto_updates(paths=paths, reporter=reporter, environ=env)
+            reporter.debug(event="cli.complete", mode=args.mode, return_code=0)
+            return 0
+
+        if args.mode == "disable-auto-updates":
+            disable_auto_updates(paths=paths, reporter=reporter)
+            reporter.debug(event="cli.complete", mode=args.mode, return_code=0)
             return 0
 
         if args.mode == "clear-recovery-sentinel":
@@ -144,6 +165,7 @@ def main(
                     reporter,
                     dry_run=args.dry_run,
                     input_stream=input_stream,
+                    environ=env,
                 )
             else:
                 run_uninstall(
@@ -170,6 +192,7 @@ def main(
         StateValidationError,
         BackupArchiveError,
         RestoreHelperError,
+        AutoUpdateError,
     ) as exc:
         reporter.debug(
             event="cli.failure",
@@ -210,13 +233,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "mode",
-        choices=["install", "uninstall", "clear-recovery-sentinel", "restore-backup"],
+        choices=[
+            "install",
+            "uninstall",
+            "clear-recovery-sentinel",
+            "restore-backup",
+            "auto-update-check",
+            "enable-auto-updates",
+            "disable-auto-updates",
+        ],
     )
     parser.add_argument("--plain", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--demo-tui", action="store_true")
     parser.add_argument("--backup")
+    parser.add_argument("--yes", action="store_true")
     args = parser.parse_args(argv)
     if args.dry_run and args.mode not in {"install", "uninstall"}:
         parser.error("--dry-run is only supported with install and uninstall.")
@@ -226,6 +258,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--demo-tui cannot be combined with --dry-run.")
     if args.backup and args.mode != "restore-backup":
         parser.error("--backup is only supported with restore-backup.")
+    if args.yes and args.mode not in {"install", "uninstall", "auto-update-check"}:
+        parser.error("--yes is only supported with install, uninstall, and auto-update-check.")
     return args
 
 
