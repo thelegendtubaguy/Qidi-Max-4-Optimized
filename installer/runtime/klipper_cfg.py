@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -36,6 +37,14 @@ class ResolvedOption:
 
 
 @dataclass(frozen=True)
+class ResolvedSection:
+    name: str
+    header_index: int
+    end_index: int
+    text: str
+
+
+@dataclass(frozen=True)
 class ParsedOptionLine:
     key: str
     value: str
@@ -62,7 +71,7 @@ def has_section(text: str, section_name: str) -> bool:
 
 
 
-def resolve_unique_option(text: str, section_name: str, option_name: str) -> ResolvedOption:
+def resolve_unique_section(text: str, section_name: str) -> ResolvedSection:
     lines = text.splitlines(keepends=True)
     sections = [span for span in _section_spans(lines) if span.name == section_name]
     if not sections:
@@ -70,8 +79,20 @@ def resolve_unique_option(text: str, section_name: str, option_name: str) -> Res
     if len(sections) > 1:
         raise TargetResolutionError("ambiguous")
     section = sections[0]
+    return ResolvedSection(
+        name=section.name,
+        header_index=section.header_index,
+        end_index=section.option_end,
+        text="".join(lines[section.header_index:section.option_end]),
+    )
+
+
+
+def resolve_unique_option(text: str, section_name: str, option_name: str) -> ResolvedOption:
+    lines = text.splitlines(keepends=True)
+    section = resolve_unique_section(text, section_name)
     matches: list[ResolvedOption] = []
-    for line_index in range(section.option_start, section.option_end):
+    for line_index in range(section.header_index + 1, section.end_index):
         parsed = parse_option_line(lines[line_index])
         if parsed is None or parsed.key != option_name:
             continue
@@ -100,6 +121,34 @@ def set_option_value(text: str, section_name: str, option_name: str, desired_val
         f"{resolved.prefix}{desired_value}{resolved.comment_suffix}{resolved.newline}"
     )
     return "".join(lines)
+
+
+
+def replace_section(text: str, section_name: str, desired_text: str) -> str:
+    lines = text.splitlines(keepends=True)
+    resolved = resolve_unique_section(text, section_name)
+    replacement = desired_text if desired_text.endswith(("\n", "\r\n")) else desired_text + "\n"
+    lines[resolved.header_index:resolved.end_index] = replacement.splitlines(keepends=True)
+    return "".join(lines)
+
+
+
+def delete_section(text: str, section_name: str) -> str:
+    lines = text.splitlines(keepends=True)
+    resolved = resolve_unique_section(text, section_name)
+    del lines[resolved.header_index:resolved.end_index]
+    return "".join(lines)
+
+
+
+def append_section(text: str, section_text: str) -> str:
+    separator = "" if not text or text.endswith(("\n", "\r\n")) else "\n"
+    return text + separator + section_text
+
+
+
+def normalized_section_sha256(section_text: str) -> str:
+    return hashlib.sha256(_normalize_section_for_hash(section_text).encode("utf-8")).hexdigest()
 
 
 
@@ -165,6 +214,42 @@ def _split_value_and_comment(rest: str) -> tuple[str, str]:
     for index, char in enumerate(rest):
         if char not in COMMENT_PREFIXES:
             continue
-        if index == 0 or rest[index - 1].isspace():
-            return rest[:index].rstrip(), rest[index:]
+        if index == 0:
+            return "", " " + rest
+        if rest[index - 1].isspace():
+            value = rest[:index].rstrip()
+            return value, rest[len(value) :]
     return rest.rstrip(), ""
+
+
+
+def _normalize_section_for_hash(section_text: str) -> str:
+    normalized: list[str] = []
+    for line in section_text.splitlines():
+        in_single = False
+        in_double = False
+        escaped = False
+        for index, char in enumerate(line):
+            if escaped:
+                normalized.append(char)
+                escaped = False
+                continue
+            if char == "\\" and (in_single or in_double):
+                normalized.append(char)
+                escaped = True
+                continue
+            if char == "'" and not in_double:
+                in_single = not in_single
+                normalized.append(char)
+                continue
+            if char == '"' and not in_single:
+                in_double = not in_double
+                normalized.append(char)
+                continue
+            if not in_single and not in_double:
+                if char in COMMENT_PREFIXES and (index == 0 or line[index - 1].isspace()):
+                    break
+                if char.isspace():
+                    continue
+            normalized.append(char)
+    return "".join(normalized)

@@ -14,11 +14,13 @@ from .models import (
     PreflightReport,
     RuntimePaths,
 )
-from .patches import USER_MODIFIED
+from .patches import SECTION_DELETED, USER_MODIFIED
 
 
 
-def verify_install_postflight(*, paths: RuntimePaths, manifest: Manifest) -> None:
+def verify_install_postflight(
+    *, paths: RuntimePaths, manifest: Manifest, patch_results: tuple[PatchResult, ...] = ()
+) -> None:
     expected_files = collect_source_hashes(
         paths.installer_root / manifest.managed_tree.source,
         destination_root=paths.printer_data_root / manifest.managed_tree.destination,
@@ -34,11 +36,62 @@ def verify_install_postflight(*, paths: RuntimePaths, manifest: Manifest) -> Non
         path = paths.printer_data_root / spec.file
         if not path.exists() or not has_active_line(klipper_cfg.read_text(path), spec.line):
             missing_lines.append(spec)
+    patch_target_issues = []
+    for result in patch_results:
+        if result.classification == USER_MODIFIED:
+            continue
+        path = paths.printer_data_root / result.file
+        if not path.exists():
+            patch_target_issues.append(
+                PatchTargetIssue(
+                    id=result.id,
+                    file=result.file,
+                    section=result.section,
+                    option=result.option,
+                    reason="missing",
+                )
+            )
+            continue
+        try:
+            text = klipper_cfg.read_text(path)
+            if result.option == "__section__":
+                try:
+                    current = klipper_cfg.resolve_unique_section(text, result.section).text
+                except klipper_cfg.TargetResolutionError as exc:
+                    if exc.reason == "missing" and result.desired == SECTION_DELETED:
+                        current = SECTION_DELETED
+                    else:
+                        raise
+            else:
+                current = klipper_cfg.resolve_unique_option(
+                    text, result.section, result.option
+                ).value
+        except klipper_cfg.TargetResolutionError as exc:
+            patch_target_issues.append(
+                PatchTargetIssue(
+                    id=result.id,
+                    file=result.file,
+                    section=result.section,
+                    option=result.option,
+                    reason=exc.reason,
+                )
+            )
+            continue
+        if current != result.desired:
+            patch_target_issues.append(
+                PatchTargetIssue(
+                    id=result.id,
+                    file=result.file,
+                    section=result.section,
+                    option=result.option,
+                    reason="missing",
+                )
+            )
     report = PreflightReport(
         missing_files=tuple(missing_files),
         missing_sections=(),
         missing_lines=tuple(missing_lines),
-        patch_target_issues=(),
+        patch_target_issues=tuple(patch_target_issues),
     )
     if not report.is_empty():
         raise PreflightTargetsError(report)
@@ -82,9 +135,13 @@ def verify_uninstall_postflight(
             )
             continue
         try:
-            resolved = klipper_cfg.resolve_unique_option(
-                klipper_cfg.read_text(path), result.section, result.option
-            )
+            text = klipper_cfg.read_text(path)
+            if result.option == "__section__":
+                current = klipper_cfg.resolve_unique_section(text, result.section).text
+            else:
+                current = klipper_cfg.resolve_unique_option(
+                    text, result.section, result.option
+                ).value
         except klipper_cfg.TargetResolutionError as exc:
             patch_target_issues.append(
                 PatchTargetIssue(
@@ -96,7 +153,7 @@ def verify_uninstall_postflight(
                 )
             )
             continue
-        if resolved.value != result.expected:
+        if current != result.expected:
             patch_target_issues.append(
                 PatchTargetIssue(
                     id=result.id,

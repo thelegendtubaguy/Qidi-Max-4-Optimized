@@ -55,6 +55,23 @@ class CliTests(unittest.TestCase):
         self.assertFalse(sentinel.exists())
         self.assertIn("Recovery sentinel cleared.", stream.getvalue())
 
+    def test_keyboard_interrupt_returns_130_without_traceback(self):
+        printer_root = copy_base_runtime()
+        stream = io.StringIO()
+        with moonraker_server("standby") as url:
+            with patch("installer.runtime.cli.run_install", side_effect=KeyboardInterrupt):
+                rc = main(
+                    ["install", "--plain", "--yes"],
+                    stream=stream,
+                    bundle_root=REPO_ROOT,
+                    environ=build_env(printer_root, moonraker_url=url),
+                )
+
+        self.assertEqual(rc, 130)
+        output = stream.getvalue()
+        self.assertIn("Interrupted. No further installer actions will run.", output)
+        self.assertNotIn("Traceback", output)
+
     def test_install_cancellation_returns_zero_without_writing(self):
         printer_root = copy_base_runtime()
         stream = io.StringIO()
@@ -135,7 +152,7 @@ class CliTests(unittest.TestCase):
             )
             run_install(paths, manifest, PlainReporter(io.StringIO()))
 
-        def fake_disable_auto_updates(*, paths, reporter, require_sudo):
+        def fake_disable_auto_updates(*, paths, reporter, input_stream, require_sudo):
             reporter.line("Auto-updates disabled.")
 
         stream = io.StringIO()

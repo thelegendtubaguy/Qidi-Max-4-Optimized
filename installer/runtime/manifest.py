@@ -17,6 +17,8 @@ from .models import (
     PatchSetSpec,
     PatchSpec,
     PatchVariantSpec,
+    SectionPatchSpec,
+    SectionPatchVariantSpec,
     PostflightSpec,
     PreflightSpec,
     SectionSpec,
@@ -174,7 +176,39 @@ def parse_manifest(raw: Any) -> Manifest:
         seen_targets.add(patch.target_tuple)
         _validate_patch_variant_coverage(patch, firmware.supported)
         patch_specs.append(patch)
-    patches = PatchSetSpec(set_options=tuple(patch_specs))
+
+    section_patch_specs: list[SectionPatchSpec] = []
+    for item in _require_list_of_mapping(patches_raw, "delete_sections"):
+        patch_id = _require_str(item, "id")
+        if patch_id in seen_patch_ids:
+            raise ManifestValidationError(f"Duplicate patch id: {patch_id}")
+        seen_patch_ids.add(patch_id)
+        patch = SectionPatchSpec(
+            id=patch_id,
+            file=_validate_relative_path(
+                _require_str(item, "file"), allowed_roots=("config",)
+            ),
+            section=_require_str(item, "section"),
+            variants=tuple(
+                SectionPatchVariantSpec(
+                    firmwares=_require_unique_str_list(variant, "firmwares", non_empty=True),
+                    expected_normalized_sha256=_require_sha256(
+                        variant, "expected_normalized_sha256"
+                    ),
+                )
+                for variant in _require_list_of_mapping(item, "variants")
+            ),
+        )
+        if patch.target_tuple in seen_targets:
+            raise ManifestValidationError(
+                "Duplicate patch target: " + " / ".join(patch.target_tuple)
+            )
+        seen_targets.add(patch.target_tuple)
+        _validate_patch_variant_coverage(patch, firmware.supported)
+        section_patch_specs.append(patch)
+    patches = PatchSetSpec(
+        set_options=tuple(patch_specs), delete_sections=tuple(section_patch_specs)
+    )
 
     postflight_raw = _require_mapping(raw, "postflight")
     if "verify_files" in postflight_raw:
@@ -207,7 +241,7 @@ def parse_manifest(raw: Any) -> Manifest:
     )
 
 
-def select_patch_variant(patch: PatchSpec, firmware_version: str) -> PatchVariantSpec:
+def select_patch_variant(patch: PatchSpec | SectionPatchSpec, firmware_version: str):
     matches = [
         variant
         for variant in patch.variants
@@ -225,7 +259,7 @@ def validate_relative_path(path: str, *, allowed_roots: Iterable[str]) -> str:
 
 
 def _validate_patch_variant_coverage(
-    patch: PatchSpec, supported_firmwares: tuple[str, ...]
+    patch: PatchSpec | SectionPatchSpec, supported_firmwares: tuple[str, ...]
 ) -> None:
     for firmware_version in supported_firmwares:
         matches = [
@@ -275,6 +309,14 @@ def _require_int(mapping: dict[str, Any], key: str) -> int:
     value = mapping.get(key)
     if not isinstance(value, int):
         raise ManifestValidationError(f"Expected integer at {key}.")
+    return value
+
+
+
+def _require_sha256(mapping: dict[str, Any], key: str) -> str:
+    value = _require_str(mapping, key).lower()
+    if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
+        raise ManifestValidationError(f"Expected SHA-256 hex string at {key}.")
     return value
 
 

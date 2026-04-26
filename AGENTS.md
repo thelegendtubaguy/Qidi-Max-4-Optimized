@@ -75,6 +75,17 @@
 - Optimized cooling helpers: `installer/klipper/tltg-optimized-macros/cooling.cfg`
 - Pause/resume/cancel flow: `config/klipper-macros-qd/pause_resume_cancel.cfg`
 
+## G-code path contracts
+
+- Start-print path invariants live in `docs/gcode-paths/start-print.path.json`.
+- Generated start-print views live in `docs/gcode-paths/generated/start-print.md` and `docs/gcode-paths/generated/start-print.mmd`.
+- Before changing start/end/filament/mesh behavior, read the generated path view and the sparse contract.
+- After changing slicer G-code or optimized Klipper macros that affect start-print flow, run:
+  - `python3 scripts/check_gcode_paths.py --write`
+  - `python3 scripts/check_gcode_paths.py`
+- `scripts/run_installer_core_tests.py` runs the generated-view freshness check through `installer/tests/integration/test_gcode_path_contract.py`.
+- Keep exact command sequences in `.gcode` and `.cfg` files; keep only branch-level invariants in `*.path.json`.
+
 ## Vendor reverse-engineering notes
 
 - `docs/box_print_start_notes.md` is a repo-local technical note about QIDI's vendor-implemented `BOX_PRINT_START` command.

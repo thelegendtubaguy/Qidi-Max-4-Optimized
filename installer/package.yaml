@@ -24,7 +24,6 @@ state:
 preflight:
   required_files:
     - "config/printer.cfg"
-    - "config/box.cfg"
     - "config/klipper-macros-qd/bed_mesh.cfg"
     - "config/klipper-macros-qd/filament.cfg"
     - "config/klipper-macros-qd/kinematics.cfg"
@@ -33,8 +32,6 @@ preflight:
   required_sections:
     - file: "config/printer.cfg"
       section: "save_variables"
-    - file: "config/box.cfg"
-      section: "box_extras"
     - file: "config/klipper-macros-qd/bed_mesh.cfg"
       section: "gcode_macro g29"
     - file: "config/klipper-macros-qd/filament.cfg"
@@ -144,6 +141,23 @@ patches:
         - firmwares: ["01.01.06.02"]
           expected: "10.0"
           desired: "5.0"
+
+    - id: virtual_sdcard_on_error_gcode
+      file: "config/printer.cfg"
+      section: "virtual_sdcard"
+      option: "on_error_gcode"
+      variants:
+        - firmwares: ["01.01.06.02"]
+          expected: "CANCEL_PRINT"
+          desired: "OPTIMIZED_CANCEL_PRINT_ON_ERROR"
+
+  delete_sections:
+    - id: kinematics_homing_override
+      file: "config/klipper-macros-qd/kinematics.cfg"
+      section: "homing_override"
+      variants:
+        - firmwares: ["01.01.06.02"]
+          expected_normalized_sha256: "6a924478b351dea193bf1060f5747b151bba3de4c5627c7faac741ad7b164cf4"
 
 postflight:
   verify_lines:

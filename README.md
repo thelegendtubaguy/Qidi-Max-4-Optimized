@@ -22,7 +22,7 @@ If you'd rather do a dry-run before committing to a full install, you can run th
 
 Before installing or uninstalling, the installer will run preflight checks to ensure safety.  It will also take a backup of your config directory before installing or uninstalling.  You will be prompted to install or uninstall after the preflight checks.
 
-After a successful install, the installer asks whether to enable hourly automatic optimized config updates before asking whether to restart Klipper. Answering no to auto-updates still proceeds to the Klipper restart prompt. Auto-updates use a system-level systemd timer. Enabling auto-updates requires sudo once to install `/etc/systemd/system/tltg-optimized-auto-update.service` and `/etc/systemd/system/tltg-optimized-auto-update.timer`. Each hourly run checks the latest GitHub release checksum, skips while the printer is printing or paused, and then runs the normal installer with preflight checks and auto-approval. If the latest release checksum is unavailable during setup, the timer is still installed and the first successful check initializes update state without installing.
+After a successful install, the installer asks whether to enable hourly automatic optimized config updates before asking whether to restart Klipper. Answering no to auto-updates still proceeds to the Klipper restart prompt. Auto-updates use a system-level systemd timer. Enabling auto-updates requires sudo once to install `/etc/systemd/system/tltg-optimized-auto-update.service` and `/etc/systemd/system/tltg-optimized-auto-update.timer`; the installer uses QIDI's public default sudo password (`qiditech`) unless `TLTG_OPTIMIZED_SUDO_PASSWORD` is set, then prompts for a password if the initial sudo attempt fails. Each hourly run checks the latest GitHub release checksum, skips while the printer is printing or paused, and then runs the normal installer with preflight checks and auto-approval. If the latest release checksum is unavailable during setup, the timer is still installed and the first successful check initializes update state without installing. Pressing `Ctrl+C` exits without a Python traceback.
 
 Disable auto-updates:
 
@@ -35,6 +35,26 @@ Run one auto-update check manually:
 ```bash
 ~/tltg-optimized-macros/auto-update.sh --run
 ```
+
+### QIDI Box temperature from Fluidd
+
+The installer adds `TLTG_SET_BOX_TEMP`, a Fluidd-visible macro for setting the QIDI Box heater target when Fluidd's native heater card cannot set `heater_box1` correctly.
+
+Use:
+
+```gcode
+TLTG_SET_BOX_TEMP BOX=1 TARGET=45
+```
+
+Use `TARGET=0` to turn the box heater off:
+
+```gcode
+TLTG_SET_BOX_TEMP BOX=1 TARGET=0
+```
+
+The macro appears in Fluidd's Macros panel after install and Klipper restart. If the panel is not visible, edit the Fluidd layout and enable the Macros panel.
+
+![Fluidd TLTG_SET_BOX_TEMP macro](docs/images/fluidd-tltg-set-box-temp-macro.png)
 
 ### Slicer Machine GCode Updates
 You will need to manually copy the machine GCode to your slicer of choice to take advantage of the optimized path.  The stock print path remains in place for backwards compatibility, safety, and general user happiness :)

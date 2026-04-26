@@ -6,6 +6,7 @@ import sys
 import traceback
 from pathlib import Path
 
+from . import messages
 from .auto_update import AutoUpdateError, disable_auto_updates, enable_auto_updates, run_auto_update_check
 from .backup import BackupArchiveError
 from .compatibility import CompatibilityValidationError, load_supported_upgrade_sources, validate_manifest_compatibility
@@ -85,12 +86,12 @@ def main(
             return 0
 
         if args.mode == "enable-auto-updates":
-            enable_auto_updates(paths=paths, reporter=reporter, environ=env)
+            enable_auto_updates(paths=paths, reporter=reporter, input_stream=input_stream, environ=env)
             reporter.debug(event="cli.complete", mode=args.mode, return_code=0)
             return 0
 
         if args.mode == "disable-auto-updates":
-            disable_auto_updates(paths=paths, reporter=reporter)
+            disable_auto_updates(paths=paths, reporter=reporter, input_stream=input_stream)
             reporter.debug(event="cli.complete", mode=args.mode, return_code=0)
             return 0
 
@@ -178,6 +179,14 @@ def main(
                 )
         reporter.debug(event="cli.complete", mode=args.mode, return_code=0)
         return 0
+    except KeyboardInterrupt:
+        reporter.debug(
+            event="cli.interrupted",
+            mode=args.mode,
+            return_code=130,
+        )
+        reporter.line(messages.INTERRUPTED)
+        return 130
     except OperationCancelled as exc:
         reporter.debug(
             event="cli.complete",

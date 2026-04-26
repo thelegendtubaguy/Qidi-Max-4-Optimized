@@ -5,8 +5,9 @@ import urllib.request
 from pathlib import Path
 from typing import Callable, Iterable
 
-from . import klipper_cfg, safety
+from . import klipper_cfg, patches, safety
 from .ensure_lines import has_active_line
+from .manifest import select_patch_variant
 from .errors import PreflightTargetsError
 from .models import InstalledState, Manifest, PatchLedgerEntry, PatchTargetIssue, PreflightReport, RuntimePaths
 
@@ -22,9 +23,17 @@ def run_install_preflight(
     reporter=None,
     disk_usage: DiskUsageFn = shutil.disk_usage,
     urlopen: UrlOpenFn = urllib.request.urlopen,
+    detected_firmware: str | None = None,
+    prior_state: InstalledState | None = None,
 ) -> None:
-    report = build_install_preflight_report(paths=paths, manifest=manifest)
-    unique_patch_targets = _count_unique_patch_targets(manifest.patches.set_options)
+    report = build_install_preflight_report(
+        paths=paths,
+        manifest=manifest,
+        detected_firmware=detected_firmware,
+        prior_state=prior_state,
+    )
+    patch_entries = (*manifest.patches.set_options, *manifest.patches.delete_sections)
+    unique_patch_targets = _count_unique_patch_targets(patch_entries)
     if reporter is not None:
         reporter.emit_install_preflight_counters(
             files=(len(manifest.preflight.required_files), len(manifest.preflight.required_files)),
@@ -59,7 +68,11 @@ def run_install_preflight(
 
 
 def build_install_preflight_report(
-    *, paths: RuntimePaths, manifest: Manifest
+    *,
+    paths: RuntimePaths,
+    manifest: Manifest,
+    detected_firmware: str | None = None,
+    prior_state: InstalledState | None = None,
 ) -> PreflightReport:
     missing_files = [
         rel_path
@@ -76,7 +89,12 @@ def build_install_preflight_report(
         path = paths.printer_data_root / spec.file
         if not path.exists() or not has_active_line(klipper_cfg.read_text(path), spec.line):
             missing_lines.append(spec)
-    patch_target_issues = _patch_target_issues(paths=paths, patch_entries=manifest.patches.set_options)
+    patch_target_issues = _patch_target_issues(
+        paths=paths,
+        patch_entries=(*manifest.patches.set_options, *manifest.patches.delete_sections),
+        detected_firmware=detected_firmware,
+        prior_state=prior_state,
+    )
     return PreflightReport(
         missing_files=tuple(missing_files),
         missing_sections=tuple(missing_sections),
@@ -169,7 +187,7 @@ def estimate_install_free_bytes(*, paths: RuntimePaths, manifest: Manifest) -> i
     )
     patch_writes = sum(
         safety.file_size(paths.printer_data_root / patch.file)
-        for patch in manifest.patches.set_options
+        for patch in (*manifest.patches.set_options, *manifest.patches.delete_sections)
     )
     state_write = 8 * 1024
     write_reserve = managed_tree_write + config_writes + patch_writes + state_write
@@ -212,7 +230,10 @@ def estimate_uninstall_free_bytes(
 def _install_rollup_paths(*, paths: RuntimePaths, manifest: Manifest) -> set[Path]:
     rollup = {paths.printer_data_root / manifest.state_file}
     rollup.update(paths.printer_data_root / spec.file for spec in manifest.install.ensure_lines)
-    rollup.update(paths.printer_data_root / patch.file for patch in manifest.patches.set_options)
+    rollup.update(
+        paths.printer_data_root / patch.file
+        for patch in (*manifest.patches.set_options, *manifest.patches.delete_sections)
+    )
     managed_tree_root = paths.printer_data_root / manifest.managed_tree.destination
     if managed_tree_root.exists():
         rollup.update(item for item in managed_tree_root.rglob("*") if item.is_file())
@@ -245,7 +266,11 @@ def _count_unique_patch_targets(patch_entries: Iterable[object]) -> int:
 
 
 def _patch_target_issues(
-    *, paths: RuntimePaths, patch_entries: Iterable[object]
+    *,
+    paths: RuntimePaths,
+    patch_entries: Iterable[object],
+    detected_firmware: str | None = None,
+    prior_state: InstalledState | None = None,
 ) -> list[PatchTargetIssue]:
     issues: list[PatchTargetIssue] = []
     seen: set[tuple[str, str, str]] = set()
@@ -267,10 +292,34 @@ def _patch_target_issues(
             )
             continue
         try:
-            klipper_cfg.resolve_unique_option(
-                klipper_cfg.read_text(path), entry.section, entry.option
-            )
+            text = klipper_cfg.read_text(path)
+            if entry.option == "__section__":
+                section = klipper_cfg.resolve_unique_section(text, entry.section)
+                if detected_firmware is not None:
+                    variant = select_patch_variant(entry, detected_firmware)
+                    current_hash = klipper_cfg.normalized_section_sha256(section.text)
+                    if current_hash != variant.expected_normalized_sha256:
+                        issues.append(
+                            PatchTargetIssue(
+                                id=entry.id,
+                                file=entry.file,
+                                section=entry.section,
+                                option=entry.option,
+                                reason="user_modified",
+                            )
+                        )
+            else:
+                klipper_cfg.resolve_unique_option(text, entry.section, entry.option)
         except klipper_cfg.TargetResolutionError as exc:
+            if (
+                entry.option == "__section__"
+                and exc.reason == "missing"
+                and (
+                    _prior_state_has_patch(prior_state, entry)
+                    or getattr(entry, "desired", None) == patches.SECTION_DELETED
+                )
+            ):
+                continue
             issues.append(
                 PatchTargetIssue(
                     id=entry.id,
@@ -281,3 +330,11 @@ def _patch_target_issues(
                 )
             )
     return issues
+
+
+
+def _prior_state_has_patch(prior_state: InstalledState | None, entry: object) -> bool:
+    if prior_state is None:
+        return False
+    target = (entry.file, entry.section, entry.option)
+    return any(item.target_tuple == target for item in prior_state.patch_ledger)

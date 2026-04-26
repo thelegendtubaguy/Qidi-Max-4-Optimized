@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import getpass
 import json
 import os
 import pwd
 import shutil
 import subprocess
+import sys
 import tempfile
 import urllib.error
 import urllib.request
@@ -23,6 +25,8 @@ STATE_FILE = "config/tltg_optimized_auto_update_state.json"
 SERVICE_NAME = "tltg-optimized-auto-update.service"
 TIMER_NAME = "tltg-optimized-auto-update.timer"
 SYSTEMD_DIR = Path("/etc/systemd/system")
+PUBLIC_DEFAULT_SUDO_PASSWORD = "qiditech"
+SUDO_PASSWORD_ENV = "TLTG_OPTIMIZED_SUDO_PASSWORD"
 
 UrlOpenFn = Callable[..., object]
 RunFn = Callable[..., subprocess.CompletedProcess]
@@ -59,7 +63,13 @@ def maybe_prompt_enable_auto_updates(
     ):
         return False
     try:
-        enable_auto_updates(paths=paths, reporter=reporter, environ=environ, urlopen=urlopen)
+        enable_auto_updates(
+            paths=paths,
+            reporter=reporter,
+            input_stream=input_stream,
+            environ=environ,
+            urlopen=urlopen,
+        )
     except AutoUpdateError as exc:
         reporter.line(f"{messages.AUTO_UPDATE_ENABLE_FAILED} {exc.message}")
         return False
@@ -70,6 +80,7 @@ def enable_auto_updates(
     *,
     paths: RuntimePaths,
     reporter,
+    input_stream=None,
     environ: dict[str, str] | None = None,
     urlopen: UrlOpenFn = urllib.request.urlopen,
     run: RunFn = subprocess.run,
@@ -88,13 +99,24 @@ def enable_auto_updates(
         _write_state(paths, checksum)
 
     reporter.line(messages.AUTO_UPDATE_SUDO_PROMPT)
-    _run_or_raise(["sudo", "-v"], messages.AUTO_UPDATE_SUDO_FAILED, run=run)
-    _install_systemd_units(paths=paths, run=run)
-    _run_or_raise(["sudo", "systemctl", "daemon-reload"], messages.AUTO_UPDATE_SYSTEMD_FAILED, run=run)
-    _run_or_raise(
-        ["sudo", "systemctl", "enable", "--now", TIMER_NAME],
+    sudo_password = _authenticate_sudo(
+        run=run,
+        environ=env,
+        reporter=reporter,
+        input_stream=input_stream,
+    )
+    _install_systemd_units(paths=paths, run=run, sudo_password=sudo_password)
+    _run_sudo_or_raise(
+        ["systemctl", "daemon-reload"],
         messages.AUTO_UPDATE_SYSTEMD_FAILED,
         run=run,
+        password=sudo_password,
+    )
+    _run_sudo_or_raise(
+        ["systemctl", "enable", "--now", TIMER_NAME],
+        messages.AUTO_UPDATE_SYSTEMD_FAILED,
+        run=run,
+        password=sudo_password,
     )
     reporter.line(messages.AUTO_UPDATE_ENABLED)
 
@@ -107,6 +129,7 @@ def disable_auto_updates(
     *,
     paths: RuntimePaths,
     reporter,
+    input_stream=None,
     run: RunFn = subprocess.run,
     require_sudo: bool = True,
 ) -> None:
@@ -117,15 +140,36 @@ def disable_auto_updates(
     if require_sudo and shutil.which("sudo") is None:
         raise AutoUpdateError(messages.AUTO_UPDATE_SUDO_MISSING)
 
-    command_prefix = ["sudo"] if require_sudo else []
+    env = os.environ
     if require_sudo:
         reporter.line(messages.AUTO_UPDATE_SUDO_PROMPT)
-        _run_or_raise(["sudo", "-v"], messages.AUTO_UPDATE_SUDO_FAILED, run=run)
-
-    _run_ignore_failure(command_prefix + ["systemctl", "disable", "--now", TIMER_NAME], run=run)
-    for unit in (SERVICE_NAME, TIMER_NAME):
-        _run_ignore_failure(command_prefix + ["rm", "-f", str(SYSTEMD_DIR / unit)], run=run)
-    _run_ignore_failure(command_prefix + ["systemctl", "daemon-reload"], run=run)
+        sudo_password = _authenticate_sudo(
+            run=run,
+            environ=env,
+            reporter=reporter,
+            input_stream=input_stream,
+        )
+        _run_sudo_ignore_failure(
+            ["systemctl", "disable", "--now", TIMER_NAME],
+            run=run,
+            password=sudo_password,
+        )
+        for unit in (SERVICE_NAME, TIMER_NAME):
+            _run_sudo_ignore_failure(
+                ["rm", "-f", str(SYSTEMD_DIR / unit)],
+                run=run,
+                password=sudo_password,
+            )
+        _run_sudo_ignore_failure(
+            ["systemctl", "daemon-reload"],
+            run=run,
+            password=sudo_password,
+        )
+    else:
+        _run_ignore_failure(["systemctl", "disable", "--now", TIMER_NAME], run=run)
+        for unit in (SERVICE_NAME, TIMER_NAME):
+            _run_ignore_failure(["rm", "-f", str(SYSTEMD_DIR / unit)], run=run)
+        _run_ignore_failure(["systemctl", "daemon-reload"], run=run)
     _remove_state(paths)
     reporter.line(messages.AUTO_UPDATE_DISABLED)
 
@@ -214,22 +258,24 @@ def timer_text() -> str:
     )
 
 
-def _install_systemd_units(*, paths: RuntimePaths, run: RunFn) -> None:
+def _install_systemd_units(*, paths: RuntimePaths, run: RunFn, sudo_password: str) -> None:
     tmp_root = Path(tempfile.mkdtemp(prefix="tltg-auto-update-units-"))
     try:
         service_path = tmp_root / SERVICE_NAME
         timer_path = tmp_root / TIMER_NAME
         service_path.write_text(service_text(paths), encoding="utf-8")
         timer_path.write_text(timer_text(), encoding="utf-8")
-        _run_or_raise(
-            ["sudo", "install", "-m", "0644", str(service_path), str(SYSTEMD_DIR / SERVICE_NAME)],
+        _run_sudo_or_raise(
+            ["install", "-m", "0644", str(service_path), str(SYSTEMD_DIR / SERVICE_NAME)],
             messages.AUTO_UPDATE_SYSTEMD_FAILED,
             run=run,
+            password=sudo_password,
         )
-        _run_or_raise(
-            ["sudo", "install", "-m", "0644", str(timer_path), str(SYSTEMD_DIR / TIMER_NAME)],
+        _run_sudo_or_raise(
+            ["install", "-m", "0644", str(timer_path), str(SYSTEMD_DIR / TIMER_NAME)],
             messages.AUTO_UPDATE_SYSTEMD_FAILED,
             run=run,
+            password=sudo_password,
         )
     finally:
         shutil.rmtree(tmp_root, ignore_errors=True)
@@ -270,8 +316,91 @@ def _run_or_raise(command: list[str], message: str, *, run: RunFn) -> None:
         raise AutoUpdateError(message)
 
 
+def _authenticate_sudo(
+    *,
+    run: RunFn,
+    environ: dict[str, str],
+    reporter,
+    input_stream,
+) -> str:
+    password = _initial_sudo_password(environ)
+    if _run_sudo(["-v"], run=run, password=password).returncode == 0:
+        return password
+    fallback = _prompt_sudo_password(reporter=reporter, input_stream=input_stream)
+    if fallback is None:
+        raise AutoUpdateError(messages.AUTO_UPDATE_SUDO_FAILED)
+    if _run_sudo(["-v"], run=run, password=fallback).returncode != 0:
+        raise AutoUpdateError(messages.AUTO_UPDATE_SUDO_FAILED)
+    return fallback
+
+
+def _run_sudo_or_raise(
+    command: list[str],
+    message: str,
+    *,
+    run: RunFn,
+    password: str,
+) -> None:
+    result = _run_sudo(command, run=run, password=password)
+    if result.returncode != 0:
+        raise AutoUpdateError(message)
+
+
+def _run_sudo(
+    command: list[str],
+    *,
+    run: RunFn,
+    password: str,
+    **kwargs,
+) -> subprocess.CompletedProcess:
+    return run(_sudo_command(command), input=password + "\n", text=True, **kwargs)
+
+
 def _run_ignore_failure(command: list[str], *, run: RunFn) -> None:
     run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def _run_sudo_ignore_failure(
+    command: list[str],
+    *,
+    run: RunFn,
+    password: str,
+) -> None:
+    _run_sudo(
+        command,
+        run=run,
+        password=password,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def _sudo_command(command: list[str]) -> list[str]:
+    return ["sudo", "-S", "-p", "", *command]
+
+
+def _initial_sudo_password(environ: dict[str, str]) -> str:
+    return environ.get(SUDO_PASSWORD_ENV, PUBLIC_DEFAULT_SUDO_PASSWORD)
+
+
+def _prompt_sudo_password(*, reporter, input_stream) -> str | None:
+    if input_stream is None:
+        return None
+    reporter.prepare_for_prompt()
+    reporter.line(messages.AUTO_UPDATE_SUDO_INITIAL_FAILED)
+    if input_stream is sys.stdin and getattr(input_stream, "isatty", lambda: False)():
+        try:
+            return getpass.getpass(
+                messages.AUTO_UPDATE_SUDO_PASSWORD_PROMPT + " ",
+                stream=reporter.stream,
+            )
+        except EOFError:
+            return None
+    reporter.line(messages.AUTO_UPDATE_SUDO_PASSWORD_PROMPT)
+    response = input_stream.readline()
+    if response == "":
+        return None
+    return response.rstrip("\n")
 
 
 def _checksum_url(environ: dict[str, str]) -> str:

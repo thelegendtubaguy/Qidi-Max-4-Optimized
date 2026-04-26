@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sys
+import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +19,17 @@ def main() -> int:
         REPO_ROOT / "installer/supported_upgrade_sources.yaml"
     )
     validate_manifest_compatibility(manifest, compatibility)
+    globals_text = (REPO_ROOT / "installer/klipper/tltg-optimized-macros/globals.cfg").read_text(
+        encoding="utf-8"
+    )
+    match = re.search(r'^variable_package_version:\s*["\']?([^"\'\n]+)["\']?\s*$', globals_text, re.MULTILINE)
+    if match is None:
+        raise SystemExit("Missing variable_package_version in optimized globals.cfg")
+    if match.group(1) != manifest.package.version:
+        raise SystemExit(
+            "Optimized globals package version does not match installer/package.yaml: "
+            f"{match.group(1)} != {manifest.package.version}"
+        )
     print("installer compatibility metadata validated")
     return 0
 

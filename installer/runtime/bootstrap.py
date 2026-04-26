@@ -62,10 +62,17 @@ def main(argv: list[str] | None = None) -> int:
         vendor_root = prepare_sys_path(bundle_root)
         validate_vendored_imports(bundle_root, vendor_root)
         from installer.runtime.cli import main as cli_main
+    except KeyboardInterrupt:
+        sys.stderr.write("Interrupted. No further installer actions will run.\n")
+        return 130
     except (BootstrapError, ImportError) as exc:
         sys.stderr.write(f"{exc}\n")
         return 1
-    return cli_main(argv=argv, bundle_root=bundle_root)
+    try:
+        return cli_main(argv=argv, bundle_root=bundle_root)
+    except KeyboardInterrupt:
+        sys.stderr.write("Interrupted. No further installer actions will run.\n")
+        return 130
 
 
 

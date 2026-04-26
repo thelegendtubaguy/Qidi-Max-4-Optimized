@@ -15,13 +15,13 @@ G29.0
 OPTIMIZED_PRINT_START_HOME
 
 ;===== BOX_PREPAR =====
-OPTIMIZED_START_PRINT_FILAMENT_PREP EXTRUDER=[initial_no_support_extruder] HOTENDTEMP={nozzle_temperature_range_high[initial_tool]} PURGETEMP=[nozzle_temperature_initial_layer] BEDTEMP=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperatures]
+OPTIMIZED_START_PRINT_FILAMENT_PREP EXTRUDER=[initial_no_support_extruder] FIRSTLAYERTEMP=[nozzle_temperature_initial_layer] PURGETEMP={nozzle_temperature_range_high[initial_tool]} BEDTEMP=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperatures]
 
 ;===== PRINT_START =====
 ; Set total layer count for progress reporting.
 SET_PRINT_STATS_INFO TOTAL_LAYER=[total_layer_count]
-; Select the initial tool.
-T[initial_tool]
+; Select the initial box tool when the QIDI Box stack is enabled.
+OPTIMIZED_SELECT_INITIAL_TOOL T=[initial_tool]
 ; Set bed target temperature (do not wait).
 M140 S[bed_temperature_initial_layer_single]
 ; Set chamber target temperature (do not wait).

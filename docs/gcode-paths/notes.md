@@ -1,0 +1,23 @@
+# G-code path notes
+
+Generated path maps live under `docs/gcode-paths/generated/` and are produced from `docs/gcode-paths/*.path.json` plus parsed `.gcode` / `.cfg` files with:
+
+```bash
+python3 scripts/check_gcode_paths.py --write
+```
+
+Path contract checks run with:
+
+```bash
+python3 scripts/check_gcode_paths.py
+```
+
+`enable_box` is read from `printer.save_variables.variables.enable_box`; it is not the same signal as `printer["box_extras"] is defined`.
+
+`BOX_PRINT_START`, `CLEAR_OOZE`, `CLEAR_FLUSH`, and `EXTRUDER_LOAD` are QIDI/vendor commands outside the visible optimized macro tree.
+
+`OPTIMIZED_START_PRINT_FILAMENT_PREP` owns the branch split between retained-filament reuse, QIDI Box fresh-load, and no-box external-spool startup.
+
+Slicer start G-code passes `FIRSTLAYERTEMP=[nozzle_temperature_initial_layer]` and `PURGETEMP={nozzle_temperature_range_high[initial_tool]}` to `OPTIMIZED_START_PRINT_FILAMENT_PREP`; the front prime line waits with `M109 S[nozzle_temperature_initial_layer]` after rear purge, Z tilt, and bed mesh.
+
+`docs/gcode-paths/start-print.path.json` records branch-level invariants only; exact command order comes from `orcaslicer_gcode/start.gcode`, `qidistudio_gcode/start.gcode`, and `installer/klipper/tltg-optimized-macros/*.cfg`.

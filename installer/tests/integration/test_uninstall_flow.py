@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import unittest
 
+from installer.runtime import klipper_cfg
 from installer.runtime.cli import resolve_runtime_paths
 from installer.runtime.compatibility import load_supported_upgrade_sources
 from installer.runtime.errors import InstalledPackageValidationError
@@ -20,6 +21,14 @@ class UninstallFlowTests(unittest.TestCase):
             REPO_ROOT / "installer/supported_upgrade_sources.yaml"
         )
 
+    def _homing_override(self, printer_root):
+        return klipper_cfg.resolve_unique_section(
+            (printer_root / "config/klipper-macros-qd/kinematics.cfg").read_text(
+                encoding="utf-8"
+            ),
+            "homing_override",
+        ).text
+
     def _install_first(self):
         printer_root = copy_base_runtime()
         with moonraker_server("standby") as url:
@@ -31,7 +40,14 @@ class UninstallFlowTests(unittest.TestCase):
         return printer_root
 
     def test_happy_path_uninstall(self):
-        printer_root = self._install_first()
+        printer_root = copy_base_runtime()
+        original_homing_override = self._homing_override(printer_root)
+        with moonraker_server("standby") as url:
+            paths = resolve_runtime_paths(
+                bundle_root=REPO_ROOT,
+                environ=build_env(printer_root, moonraker_url=url),
+            )
+            run_install(paths, self.manifest, PlainReporter(io.StringIO()))
         stream = io.StringIO()
         with moonraker_server("standby") as url:
             paths = resolve_runtime_paths(
@@ -49,11 +65,37 @@ class UninstallFlowTests(unittest.TestCase):
         printer_cfg = (paths.config_root / "printer.cfg").read_text(encoding="utf-8")
         self.assertNotIn("[include tltg-optimized-macros/*.cfg]", printer_cfg)
         self.assertIn("homing_speed: 50", printer_cfg)
+        self.assertIn("on_error_gcode: CANCEL_PRINT", printer_cfg)
+        self.assertEqual(self._homing_override(printer_root), original_homing_override)
         output = stream.getvalue()
         self.assertIn("stage 1/5", output)
         self.assertIn("Uninstalled.", output)
         self.assertIn("Restart Klipper to apply changes.", output)
         self.assertTrue(result.backup_zip_path.exists())
+
+    def test_uninstall_preserves_user_modified_homing_override(self):
+        printer_root = self._install_first()
+        kinematics = printer_root / "config/klipper-macros-qd/kinematics.cfg"
+        modified_section = "[homing_override]\ngcode:\n  M118 user modified homing override\n"
+        kinematics.write_text(
+            klipper_cfg.append_section(
+                kinematics.read_text(encoding="utf-8"),
+                modified_section,
+            ),
+            encoding="utf-8",
+        )
+        with moonraker_server("standby") as url:
+            paths = resolve_runtime_paths(
+                bundle_root=REPO_ROOT,
+                environ=build_env(printer_root, moonraker_url=url),
+            )
+            run_uninstall(
+                paths,
+                self.manifest,
+                self.compatibility,
+                PlainReporter(io.StringIO()),
+            )
+        self.assertEqual(self._homing_override(printer_root), modified_section)
 
     def test_uninstall_fails_closed_when_markers_exist_without_valid_state(self):
         printer_root = copy_base_runtime()

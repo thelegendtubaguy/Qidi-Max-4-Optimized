@@ -29,6 +29,8 @@ Excluded from this file:
   - `[stepper_y] homing_retract_dist`: stock `50.0` -> repo `20.0`
   - `[stepper_y] homing_retract_speed`: stock `200.0` -> repo `1000.0`
   - `[stepper_z] homing_retract_dist`: stock `10.0` -> repo `5.0`
+  - `[virtual_sdcard] on_error_gcode`: stock `CANCEL_PRINT` -> repo `OPTIMIZED_CANCEL_PRINT_ON_ERROR`
+  - `config/klipper-macros-qd/kinematics.cfg [homing_override]`: stock section is deleted after its normalized SHA-256 matches `6a924478b351dea193bf1060f5747b151bba3de4c5627c7faac741ad7b164cf4`; normalization removes comments and whitespace outside quoted strings. Uninstall restores the stored section text when the section is still absent.
 
 ### `installer/klipper/tltg-optimized-macros/globals.cfg` -> runtime `config/tltg-optimized-macros/globals.cfg`
 
@@ -41,32 +43,36 @@ Adds optimized-only knobs that do not exist in stock `config/klipper-macros-qd/g
 - `variable_z_home_randomize_radius: 6`
 - `variable_move_to_z_travel_speed_xy: 40000`
 - Adds `[delayed_gcode _tltg_optimized_startup_banner]` with `initial_duration: 6`.
-- `_tltg_optimized_startup_banner` emits `TLTG Optimized Configs Installed` to the Klipper console after startup.
+- `_tltg_optimized_startup_banner` emits `TLTG Optimized Configs Installed v<package_version>` to the Klipper console after startup; `variable_package_version` in `installer/klipper/tltg-optimized-macros/globals.cfg` must match `installer/package.yaml package.version`.
 
 ### `installer/klipper/tltg-optimized-macros/kinematics.cfg` -> runtime `config/tltg-optimized-macros/kinematics.cfg`
 
-- `OPTIMIZED_G28` replaces stock `homing_override` behavior for repo-managed entrypoints.
-- `OPTIMIZED_G28` supports single-axis `X`, `Y`, and `Z` requests without collapsing them into the stock full-home path.
-- `OPTIMIZED_G28` runs a Z-only path when `X` and `Y` are already homed; stock `G28 Z` falls back to the stock homing logic in `config/klipper-macros-qd/kinematics.cfg`.
-- `OPTIMIZED_G28` uses `20/50ms` settle waits from `_tltg_optimized_globals`; stock `homing_override` uses `200/400ms` waits.
-- `OPTIMIZED_G28` shortens XY backoff moves from stock `Y100` / `X-100` to `Y20` / `X-20` at `F24000`.
-- `OPTIMIZED_G28` restores `printer.max_accel` at the end of homing; stock `homing_override` leaves runtime accel at `10000`.
+- `installer/klipper/tltg-optimized-macros/kinematics.cfg [homing_override]` owns Fluidd/plain `G28` requests after the installer deletes QIDI's stock `[homing_override]` from `config/klipper-macros-qd/kinematics.cfg`.
+- Optimized homing is invoked through `G28`; no `OPTIMIZED_G28` macro is installed.
+- Optimized `[homing_override]` supports single-axis `X`, `Y`, and `Z` requests without collapsing them into the stock full-home path.
+- Optimized `[homing_override]` runs a Z-only path when `X` and `Y` are already homed; stock `G28 Z` falls back to the stock homing logic in `config/klipper-macros-qd/kinematics.cfg`.
+- Optimized `[homing_override]` uses `20/50ms` settle waits from `_tltg_optimized_globals`; stock `homing_override` uses `200/400ms` waits.
+- Optimized `[homing_override]` shortens XY backoff moves from stock `Y100` / `X-100` to `Y20` / `X-20` at `F24000`.
+- Optimized `[homing_override]` restores `printer.max_accel` at the end of homing; stock `homing_override` leaves runtime accel at `10000`.
 - `_OPTIMIZED_MOVE_TO_Z_HOME_POINT` randomizes the XY touch point within `z_home_randomize_radius` around bed center before Z homing.
 
 ### `installer/klipper/tltg-optimized-macros/motion.cfg` -> runtime `config/tltg-optimized-macros/motion.cfg`
 
-- `OPTIMIZED_MOVE_TO_TRASH` uses `OPTIMIZED_G28 O X Y` instead of stock `G28 O X Y`.
+- `OPTIMIZED_MOVE_TO_TRASH` uses `G28 O X Y`; optimized `[homing_override]` handles the request.
+- `OPTIMIZED_CANCEL_PRINT_ON_ERROR` cancels virtual-SD errors without parking or moving the toolhead; it turns off heaters/fans, disables the box heater through `OPTIMIZED_DISABLE_BOX_HEATER`, calls `_KM_CANCEL_PRINT_BASE`, restores pause state without movement when paused, runs `G31` to re-enable bed mesh on the next print start, and clears pause.
 - `OPTIMIZED_MOVE_TO_TRASH` increases the final two chute-approach moves from stock `F2000` to `F3500`.
 
 ### `installer/klipper/tltg-optimized-macros/bed_mesh.cfg` -> runtime `config/tltg-optimized-macros/bed_mesh.cfg`
 
 - `OPTIMIZED_G29_ZSAFE` skips redundant XY rehome when `X` and `Y` are already homed.
+- `OPTIMIZED_G29_ZSAFE` always clears the active bed mesh, homes Z or full axes through `_OPTIMIZED_G29_HOME_Z_OR_FULL`, and runs `BED_MESH_CALIBRATE PROFILE=kamp`; it does not load the saved `default` mesh based on `_km_globals.bedmesh_before_print`.
 - `OPTIMIZED_G29_ZSAFE` reduces the post-mesh wait before `SAVE_CONFIG_QD` from stock `G4 P5000` to `G4 P500`.
-- `OPTIMIZED_G29_ZSAFE` is called by the optimized print-start filament-prep path; stock `config/klipper-macros-qd/start_end.cfg` uses `g29`.
+- `OPTIMIZED_START_PRINT_FILAMENT_PREP` runs `M400` after each print-start `Z_TILT_ADJUST`, then inlines the same `BED_MESH_CLEAR` -> `_OPTIMIZED_G29_HOME_Z_OR_FULL` -> `BED_MESH_CALIBRATE PROFILE=kamp` -> `SAVE_CONFIG_QD` sequence instead of delegating through `OPTIMIZED_G29_ZSAFE`; stock `config/klipper-macros-qd/start_end.cfg` uses `g29`.
 
 ### `installer/klipper/tltg-optimized-macros/filament.cfg` -> runtime `config/tltg-optimized-macros/filament.cfg`
 
 - `OPTIMIZED_CUT_FILAMENT` removes the stock cutter tail sequence `G1 X15 F3000` + `G4 P2000` and exits at `G1 X15 F8000`.
+- `OPTIMIZED_START_PRINT_FILAMENT_PREP` runs `G31` before retained-filament branch selection for compatibility with stock `g29` state; the optimized print-start mesh sequence always runs `BED_MESH_CALIBRATE PROFILE=kamp` and does not branch on `_km_globals.bedmesh_before_print`.
 - `OPTIMIZED_START_PRINT_FILAMENT_PREP` adds a retained-filament reuse branch.
 - The reuse branch is gated by all of:
   - `keep_loaded_between_prints`
@@ -78,8 +84,11 @@ Adds optimized-only knobs that do not exist in stock `config/klipper-macros-qd/g
   - matching `slot_sync`
   - matching retained/current filament ID
   - matching retained/current vendor ID
-- When the reuse gate passes, `OPTIMIZED_START_PRINT_FILAMENT_PREP` bypasses `BOX_PRINT_START` and runs chute-side cleanup plus `Z_TILT_ADJUST` and `OPTIMIZED_G29_ZSAFE`.
-- When the reuse gate fails, `OPTIMIZED_START_PRINT_FILAMENT_PREP` calls `BOX_PRINT_START`, then `OPTIMIZED_EXTRUSION_AND_FLUSH`, then runs the later scrape/wipe sequence.
+- When the reuse gate passes, `OPTIMIZED_START_PRINT_FILAMENT_PREP` bypasses `BOX_PRINT_START` and runs chute-side cleanup plus `Z_TILT_ADJUST` and an inline `BED_MESH_CALIBRATE PROFILE=kamp` sequence.
+- When the reuse gate fails and the QIDI Box stack is enabled, `OPTIMIZED_START_PRINT_FILAMENT_PREP` calls vendor `BOX_PRINT_START` with `HOTENDTEMP={purge_temp}`, then `OPTIMIZED_EXTRUSION_AND_FLUSH` with `PURGETEMP={purge_temp}`, then re-homes Z before running the later scrape/wipe sequence.
+- `_OPTIMIZED_HOME_Z_FROM_SAFE_POINT` routes Z homing through the active `G28 Z` / `[homing_override]` path; raw `G28.6245197 Z` is confined to `_OPTIMIZED_HOME_Z_FROM_SAFE_POINT_RAW`, which is called only from `[homing_override]`, so print-start cleanup and mesh helpers do not recursively call `_OPTIMIZED_HOME_Z_FROM_SAFE_POINT`.
+- When `enable_box != 1` or `printer["box_extras"]` is not defined, `OPTIMIZED_START_PRINT_FILAMENT_PREP` skips `BOX_PRINT_START`, `OPTIMIZED_EXTRUSION_AND_FLUSH`, and rear extrusion purge, then runs `OPTIMIZED_WIPE_AND_SCRAPE_NOZZLE TARGET={scrape_target}`, bed/chamber waits, `Z_TILT_ADJUST`, and an inline `BED_MESH_CALIBRATE PROFILE=kamp` sequence.
+- `OPTIMIZED_WIPE_AND_SCRAPE_NOZZLE` heats the active hotend to `TARGET` defaulting to `start_extruder_probing_temp` or `140`, waits until the nozzle is no hotter than `TARGET + 10`, calls `CLEAR_OOZE` and `CLEAR_FLUSH` only when `printer["box_extras"]` is defined, re-homes Z, moves back to the trash/wipe position, then runs the rear-bed scrape sequence without any `G1 E...` extrusion move.
 - `OPTIMIZED_EXTRUSION_AND_FLUSH` changes the stock flush sequence:
   - starts with `G1 E10 F300` instead of stock `G1 E50 F300`
   - runs two `G1 E60 F300` flush loops instead of stock two loops bracketed by `M106 S255` / `M106 S60`
@@ -97,6 +106,8 @@ Adds optimized-only knobs that do not exist in stock `config/klipper-macros-qd/g
 ### `installer/klipper/tltg-optimized-macros/cooling.cfg` -> runtime `config/tltg-optimized-macros/cooling.cfg`
 
 - `OPTIMIZED_M1004` changes the unset default for `enable_polar_cooler` from stock `1` to `0`.
+- `OPTIMIZED_DISABLE_BOX_HEATER` calls vendor `DISABLE_BOX_HEATER` only when `printer["box_extras"]` is defined.
+- `TLTG_SET_BOX_TEMP BOX=<number> TARGET=<temp>` sets `SET_HEATER_TEMPERATURE HEATER=heater_box<number> TARGET=<temp>` after validating the runtime heater object and `target_max_temp_heater_generic` from `box_config box<number-1>`.
 - `OPTIMIZED_END_FAN_COOLDOWN` adds a timed post-print `P3` chamber/exhaust fan run with delayed shutdown.
 
 ### `orcaslicer_gcode/` and `qidistudio_gcode/`
@@ -106,6 +117,7 @@ Both slicer packs now call repo-only optimized entrypoints.
 Start G-code:
 - `OPTIMIZED_PRINT_START_HOME`
 - `OPTIMIZED_START_PRINT_FILAMENT_PREP`
+- `OPTIMIZED_START_PRINT_FILAMENT_PREP` receives `FIRSTLAYERTEMP=[nozzle_temperature_initial_layer]` and `PURGETEMP={nozzle_temperature_range_high[initial_tool]}`; the later front prime-line `M109` still uses `[nozzle_temperature_initial_layer]`.
 
 Change-filament G-code:
 - `OPTIMIZED_CUT_FILAMENT`
