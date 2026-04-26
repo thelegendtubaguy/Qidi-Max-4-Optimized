@@ -17,6 +17,9 @@ Ordered invariants:
 - `OPTIMIZED_START_PRINT_FILAMENT_PREP EXTRUDER=[initial_no_support_extruder] FIRSTLAYERTEMP=[nozzle_temperature_initial_layer] PURGETEMP={nozzle_temperature_range_high[initial_tool]} BEDTEMP=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperature]`
 - `OPTIMIZED_SELECT_INITIAL_TOOL T=[initial_tool]`
 - `M109 S[nozzle_temperature_initial_layer]`
+- `G1 E6 F300`
+- `G1 X178 E20 F1200`
+- `G1 X173 E0.8`
 - `SET_PRINT_MAIN_STATUS MAIN_STATUS=printing`
 
 Forbidden patterns:
@@ -38,6 +41,9 @@ Ordered invariants:
 - `OPTIMIZED_START_PRINT_FILAMENT_PREP EXTRUDER=[initial_no_support_extruder] FIRSTLAYERTEMP=[nozzle_temperature_initial_layer] PURGETEMP={nozzle_temperature_range_high[initial_tool]} BEDTEMP=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperatures]`
 - `OPTIMIZED_SELECT_INITIAL_TOOL T=[initial_tool]`
 - `M109 S[nozzle_temperature_initial_layer]`
+- `G1 E6 F300`
+- `G1 X178 E20 F1200`
+- `G1 X173 E0.8`
 - `SET_PRINT_MAIN_STATUS MAIN_STATUS=printing`
 
 Forbidden patterns:

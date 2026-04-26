@@ -118,6 +118,7 @@ Start G-code:
 - `OPTIMIZED_PRINT_START_HOME`
 - `OPTIMIZED_START_PRINT_FILAMENT_PREP`
 - `OPTIMIZED_START_PRINT_FILAMENT_PREP` receives `FIRSTLAYERTEMP=[nozzle_temperature_initial_layer]` and `PURGETEMP={nozzle_temperature_range_high[initial_tool]}`; the later front prime-line `M109` still uses `[nozzle_temperature_initial_layer]`.
+- The front prime line is a purge sequence at `Y0`: `G1 E6 F300`, `G1 X178 E20 F1200`, and `G1 X173 E0.8`.
 
 Change-filament G-code:
 - `OPTIMIZED_CUT_FILAMENT`

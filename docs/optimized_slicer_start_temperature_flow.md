@@ -169,15 +169,17 @@ After `OPTIMIZED_START_PRINT_FILAMENT_PREP` returns, both slicer packs:
 
 - call `OPTIMIZED_SELECT_INITIAL_TOOL T=[initial_tool]`, which calls `T<tool>` only when `enable_box == 1`, `printer["box_extras"]` is defined, and the matching `T<tool>` macro is defined
 - reassert `M140` and `M141`
-- move to `X147 Y0`
+- move to `X210 Y0`
 - wait with `M109 S[nozzle_temperature_initial_layer]`
-- move to `X155`
-- print the front prime line from `X155` to `X230`
-- taper the last `5mm` from `X230` to `X235`
+- use relative extrusion with `M83` and reset with `G92 E0`
+- move to `X218 Y0`
+- extrude `G1 E6 F300` to load the nozzle and absorb heat-up ooze
+- run the purge line from `X218` to `X178` with `G1 X178 E20 F1200`
+- taper/finish from `X178` to `X173` with `G1 X173 E0.8`
 - retract `0.2mm`
 - lift Z and return to print setup state
 
-The front prime line now owns the final first-layer nozzle heat-up.
+The front prime line owns the final first-layer nozzle heat-up and purges accumulated high-temperature ooze from the `M109` wait.
 
 ## Current meaning of `FIRSTLAYERTEMP` and `PURGETEMP`
 
