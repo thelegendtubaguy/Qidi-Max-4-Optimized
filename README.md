@@ -56,6 +56,20 @@ The macro appears in Fluidd's Macros panel after install and Klipper restart. If
 
 ![Fluidd TLTG_SET_BOX_TEMP macro](docs/images/fluidd-tltg-set-box-temp-macro.png)
 
+### Helpful Klipper tools
+
+After install and Klipper restart, the optimized macro set includes:
+
+```gcode
+TLTG_PROBE_ACCURACY_CENTER
+TLTG_CORNER_BED_SCREW_CHECK
+SCREWS_TILT_CALCULATE
+```
+
+`TLTG_PROBE_ACCURACY_CENTER [SAMPLES=20]` homes, moves to `X195 Y195 Z10`, and runs Klipper `PROBE_ACCURACY`.
+
+`TLTG_CORNER_BED_SCREW_CHECK` homes, runs `Z_TILT_ADJUST`, and runs `SCREWS_TILT_CALCULATE`.
+
 ### Slicer Machine GCode Updates
 You will need to manually copy the machine GCode to your slicer of choice to take advantage of the optimized path.  The stock print path remains in place for backwards compatibility, safety, and general user happiness :)
 

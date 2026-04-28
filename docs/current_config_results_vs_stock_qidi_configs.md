@@ -19,17 +19,19 @@ Excluded from this file:
 ### `config/printer.cfg`
 
 - Adds `[include tltg-optimized-macros/*.cfg]` after `[include klipper-macros-qd/*.cfg]`.
-- `installer/package.yaml` applies guarded runtime homing patches for supported firmware `01.01.06.02`:
-  - `[stepper_x] homing_speed`: stock `50` -> repo `65`
-  - `[stepper_x] second_homing_speed`: stock `50.0` -> repo `55.0`
-  - `[stepper_x] homing_retract_dist`: stock `50.0` -> repo `20.0`
-  - `[stepper_x] homing_retract_speed`: stock `200.0` -> repo `1000.0`
-  - `[stepper_y] homing_speed`: stock `50` -> repo `65`
-  - `[stepper_y] second_homing_speed`: stock `50.0` -> repo `55.0`
-  - `[stepper_y] homing_retract_dist`: stock `50.0` -> repo `20.0`
-  - `[stepper_y] homing_retract_speed`: stock `200.0` -> repo `1000.0`
-  - `[stepper_z] homing_retract_dist`: stock `10.0` -> repo `5.0`
-  - `[virtual_sdcard] on_error_gcode`: stock `CANCEL_PRINT` -> repo `OPTIMIZED_CANCEL_PRINT_ON_ERROR`
+- `installer/package.yaml` applies guarded runtime stock-value patches for supported firmware `01.01.06.02`:
+  - `[stepper_x] homing_speed`: stock `50` -> installer runtime `65`
+  - `[stepper_x] second_homing_speed`: stock `50.0` -> installer runtime `55.0`
+  - `[stepper_x] homing_retract_dist`: stock `50.0` -> installer runtime `20.0`
+  - `[stepper_x] homing_retract_speed`: stock `200.0` -> installer runtime `1000.0`
+  - `[stepper_y] homing_speed`: stock `50` -> installer runtime `65`
+  - `[stepper_y] second_homing_speed`: stock `50.0` -> installer runtime `55.0`
+  - `[stepper_y] homing_retract_dist`: stock `50.0` -> installer runtime `20.0`
+  - `[stepper_y] homing_retract_speed`: stock `200.0` -> installer runtime `1000.0`
+  - `[stepper_z] homing_retract_dist`: stock `10.0` -> installer runtime `5.0`
+  - `[z_tilt] speed`: stock `150` -> installer runtime `600`
+  - `[bed_mesh] speed`: stock `150` -> installer runtime `600`
+  - `[virtual_sdcard] on_error_gcode`: stock `CANCEL_PRINT` -> installer runtime `OPTIMIZED_CANCEL_PRINT_ON_ERROR`
   - `config/klipper-macros-qd/kinematics.cfg [homing_override]`: stock section is deleted after its normalized SHA-256 matches `6a924478b351dea193bf1060f5747b151bba3de4c5627c7faac741ad7b164cf4`; normalization removes comments and whitespace outside quoted strings. Uninstall restores the stored section text when the section is still absent.
 
 ### `installer/klipper/tltg-optimized-macros/globals.cfg` -> runtime `config/tltg-optimized-macros/globals.cfg`
@@ -69,6 +71,15 @@ Adds optimized-only knobs that do not exist in stock `config/klipper-macros-qd/g
 - `OPTIMIZED_G29_ZSAFE` reduces the post-mesh wait before `SAVE_CONFIG_QD` from stock `G4 P5000` to `G4 P500`.
 - `OPTIMIZED_START_PRINT_FILAMENT_PREP` runs `M400` after each print-start `Z_TILT_ADJUST`, then inlines the same `BED_MESH_CLEAR` -> `_OPTIMIZED_G29_HOME_Z_OR_FULL` -> `BED_MESH_CALIBRATE PROFILE=kamp` -> `SAVE_CONFIG_QD` sequence instead of delegating through `OPTIMIZED_G29_ZSAFE`; stock `config/klipper-macros-qd/start_end.cfg` uses `g29`.
 
+### `installer/klipper/tltg-optimized-macros/helpers.cfg` -> runtime `config/tltg-optimized-macros/helpers.cfg`
+
+- Adds `[screws_tilt_adjust]`, which enables Klipper `SCREWS_TILT_CALCULATE` when `[include tltg-optimized-macros/*.cfg]` is active in `config/printer.cfg`.
+- Reuses stock `[bed_screws]` positions from `config/printer.cfg`: `30,30`, `345,30`, `345,345`, and `30,345`.
+- Sets `screw1_name: Front left`, `screw2_name: Front right`, `screw3_name: Rear right`, and `screw4_name: Rear left`; `screw1` is the calculation reference screw.
+- Sets `speed: 150`, `horizontal_move_z: 5`, and `screw_thread: CW-M4`.
+- Adds `TLTG_PROBE_ACCURACY_CENTER`, which homes with `G28`, moves to `X195 Y195 Z10`, and runs `PROBE_ACCURACY` with `SAMPLES=20` unless overridden.
+- Adds `TLTG_CORNER_BED_SCREW_CHECK`, which homes with `G28`, runs `Z_TILT_ADJUST`, and runs `SCREWS_TILT_CALCULATE`.
+
 ### `installer/klipper/tltg-optimized-macros/filament.cfg` -> runtime `config/tltg-optimized-macros/filament.cfg`
 
 - `OPTIMIZED_CUT_FILAMENT` removes the stock cutter tail sequence `G1 X15 F3000` + `G4 P2000` and exits at `G1 X15 F8000`.
@@ -86,6 +97,7 @@ Adds optimized-only knobs that do not exist in stock `config/klipper-macros-qd/g
   - matching retained/current vendor ID
 - When the reuse gate passes, `OPTIMIZED_START_PRINT_FILAMENT_PREP` bypasses `BOX_PRINT_START` and runs chute-side cleanup plus `Z_TILT_ADJUST` and an inline `BED_MESH_CALIBRATE PROFILE=kamp` sequence.
 - When the reuse gate fails and the QIDI Box stack is enabled, `OPTIMIZED_START_PRINT_FILAMENT_PREP` calls vendor `BOX_PRINT_START` with `HOTENDTEMP={purge_temp}`, then `OPTIMIZED_EXTRUSION_AND_FLUSH` with `PURGETEMP={purge_temp}`, then re-homes Z before running the later scrape/wipe sequence.
+- The box fresh-load branch stages from the post-scrape rear-bed position to the first `Z_TILT_ADJUST` point with `G1 X15 Y202.5 F36000`.
 - `_OPTIMIZED_HOME_Z_FROM_SAFE_POINT` routes Z homing through the active `G28 Z` / `[homing_override]` path; raw `G28.6245197 Z` is confined to `_OPTIMIZED_HOME_Z_FROM_SAFE_POINT_RAW`, which is called only from `[homing_override]`, so print-start cleanup and mesh helpers do not recursively call `_OPTIMIZED_HOME_Z_FROM_SAFE_POINT`.
 - When `enable_box != 1` or `printer["box_extras"]` is not defined, `OPTIMIZED_START_PRINT_FILAMENT_PREP` skips `BOX_PRINT_START`, `OPTIMIZED_EXTRUSION_AND_FLUSH`, and rear extrusion purge, then runs `OPTIMIZED_WIPE_AND_SCRAPE_NOZZLE TARGET={scrape_target}`, bed/chamber waits, `Z_TILT_ADJUST`, and an inline `BED_MESH_CALIBRATE PROFILE=kamp` sequence.
 - `OPTIMIZED_WIPE_AND_SCRAPE_NOZZLE` heats the active hotend to `TARGET` defaulting to `start_extruder_probing_temp` or `140`, waits until the nozzle is no hotter than `TARGET + 10`, calls `CLEAR_OOZE` and `CLEAR_FLUSH` only when `printer["box_extras"]` is defined, re-homes Z, moves back to the trash/wipe position, then runs the rear-bed scrape sequence without any `G1 E...` extrusion move.

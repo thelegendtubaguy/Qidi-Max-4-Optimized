@@ -16,6 +16,24 @@ class OptimizedMacroContractTests(unittest.TestCase):
         if duplicates:
             self.fail("Optimized macro duplicate definitions are invalid for this test.")
 
+    def test_user_helper_macros_are_available(self):
+        helpers = (OPTIMIZED_MACRO_ROOT / "helpers.cfg").read_text(encoding="utf-8")
+        self.assertIn("[screws_tilt_adjust]", helpers)
+        self.assertIn("screw_thread: CW-M4", helpers)
+
+        probe_gcode = self._macro_gcode("TLTG_PROBE_ACCURACY_CENTER")
+        self.assertIn("G1 X195 Y195 F24000", probe_gcode)
+        self.assertIn("PROBE_ACCURACY SAMPLES={samples}", probe_gcode)
+        self.assertNotIn("params.X", probe_gcode)
+        self.assertNotIn("params.Y", probe_gcode)
+        self.assertNotIn("params.Z", probe_gcode)
+        self.assertNotIn("params.BED", probe_gcode)
+
+        screws_gcode = self._macro_gcode("TLTG_CORNER_BED_SCREW_CHECK")
+        self.assertIn("Z_TILT_ADJUST", screws_gcode)
+        self.assertIn("SCREWS_TILT_CALCULATE", screws_gcode)
+        self.assertNotIn("params.", screws_gcode)
+
     def test_start_filament_prep_enables_bed_mesh_before_branching(self):
         gcode = self._macro_gcode("OPTIMIZED_START_PRINT_FILAMENT_PREP")
         self.assertLess(gcode.index("G31"), gcode.index("SAVE_VARIABLE VARIABLE=retained_tool_ready"))

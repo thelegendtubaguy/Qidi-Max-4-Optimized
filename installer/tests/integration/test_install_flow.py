@@ -47,6 +47,14 @@ class InstallFlowTests(unittest.TestCase):
         printer_cfg = (paths.config_root / "printer.cfg").read_text(encoding="utf-8")
         self.assertIn("[include tltg-optimized-macros/*.cfg]", printer_cfg)
         self.assertIn("homing_speed: 65", printer_cfg)
+        self.assertEqual(
+            klipper_cfg.resolve_unique_option(printer_cfg, "z_tilt", "speed").value,
+            "600",
+        )
+        self.assertEqual(
+            klipper_cfg.resolve_unique_option(printer_cfg, "bed_mesh", "speed").value,
+            "600",
+        )
         self.assertIn("on_error_gcode: OPTIMIZED_CANCEL_PRINT_ON_ERROR", printer_cfg)
         self.assertFalse(self._homing_override_exists(printer_root))
         optimized_kinematics = paths.config_root / "tltg-optimized-macros/kinematics.cfg"

@@ -25,6 +25,7 @@ CORE_TESTS = (
     "installer.tests.integration.test_macro_call_graph.MacroCallGraphTests.test_optimized_macro_tree_call_graph_is_acyclic",
     "installer.tests.integration.test_macro_call_graph.MacroCallGraphTests.test_installed_runtime_macro_call_graph_is_acyclic",
     "installer.tests.integration.test_gcode_path_contract.GcodePathContractTests.test_gcode_path_contracts_and_generated_views_are_current",
+    "installer.tests.integration.test_optimized_macro_contract.OptimizedMacroContractTests.test_user_helper_macros_are_available",
     "installer.tests.integration.test_optimized_macro_contract.OptimizedMacroContractTests.test_start_filament_prep_enables_bed_mesh_before_branching",
     "installer.tests.integration.test_optimized_macro_contract.OptimizedMacroContractTests.test_start_filament_prep_uses_purge_temp_for_box_load_and_rear_purge",
     "installer.tests.integration.test_optimized_macro_contract.OptimizedMacroContractTests.test_cancel_on_error_reenables_bed_mesh_without_moving",

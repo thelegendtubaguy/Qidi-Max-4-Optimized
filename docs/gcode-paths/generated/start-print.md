@@ -125,6 +125,7 @@ Ordered invariants:
 - `_OPTIMIZED_HOME_Z_FROM_SAFE_POINT`
 - `G1 Z-0.2 F480`
 - `OPTIMIZED_WAIT_BED S={bed_target} STATUS=wait_bed_temp`
+- `G1 X15 Y202.5 F36000`
 - `Z_TILT_ADJUST`
 - `M400`
 - `BED_MESH_CALIBRATE PROFILE=kamp`

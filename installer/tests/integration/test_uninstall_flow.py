@@ -65,6 +65,14 @@ class UninstallFlowTests(unittest.TestCase):
         printer_cfg = (paths.config_root / "printer.cfg").read_text(encoding="utf-8")
         self.assertNotIn("[include tltg-optimized-macros/*.cfg]", printer_cfg)
         self.assertIn("homing_speed: 50", printer_cfg)
+        self.assertEqual(
+            klipper_cfg.resolve_unique_option(printer_cfg, "z_tilt", "speed").value,
+            "150",
+        )
+        self.assertEqual(
+            klipper_cfg.resolve_unique_option(printer_cfg, "bed_mesh", "speed").value,
+            "150",
+        )
         self.assertIn("on_error_gcode: CANCEL_PRINT", printer_cfg)
         self.assertEqual(self._homing_override(printer_root), original_homing_override)
         output = stream.getvalue()
