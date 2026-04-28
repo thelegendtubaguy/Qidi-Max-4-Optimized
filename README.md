@@ -20,7 +20,7 @@ If you'd rather do a dry-run before committing to a full install, you can run th
 /bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/install-latest.sh)" -- --dry-run
 ```
 
-Before installing or uninstalling, the installer will run preflight checks to ensure safety.  It will also take a backup of your config directory before installing or uninstalling.  You will be prompted to install or uninstall after the preflight checks.
+Before installing or uninstalling, the installer will run preflight checks to ensure safety. It will also take a backup of your config directory before installing or uninstalling. On an interactive terminal, the installer renders Rich status panels, counters, prompts, and summary tables. Add `--plain` after the installer arguments for line-oriented output. You will be prompted to install or uninstall after the preflight checks.
 
 After a successful install, the installer asks whether to enable hourly automatic optimized config updates before asking whether to restart Klipper. Answering no to auto-updates still proceeds to the Klipper restart prompt. Auto-updates use a system-level systemd timer. Enabling auto-updates requires sudo once to install `/etc/systemd/system/tltg-optimized-auto-update.service` and `/etc/systemd/system/tltg-optimized-auto-update.timer`; the installer uses QIDI's public default sudo password (`qiditech`) unless `TLTG_OPTIMIZED_SUDO_PASSWORD` is set, then prompts for a password if the initial sudo attempt fails. Each hourly run checks the latest GitHub release checksum, skips while the printer is printing or paused, and then runs the normal installer with preflight checks and auto-approval. If the latest release checksum is unavailable during setup, the timer is still installed and the first successful check initializes update state without installing. Pressing `Ctrl+C` exits without a Python traceback.
 
@@ -87,7 +87,7 @@ Read the installer output first. The installer stops before writing when firmwar
 
 Installer-created backup `.zip` files are stored under `/home/qidi/printer_data/` with `tltg-optimized-macros-before-optimize-...zip` and `tltg-optimized-macros-before-uninstall-...zip` labels.
 
-Restore interactively:
+Restore interactively. On an interactive terminal, `restore.sh` renders the backup list and restore warning with Rich; add `--plain` for line-oriented output.
 
 ```bash
 ssh -t qidi@"$PRINTER_HOST" 'cd ~/tltg-optimized-macros && ./restore.sh'

@@ -8,6 +8,7 @@ from . import klipper_cfg, messages
 from .fs_atomic import atomic_write_text
 from .interaction import confirm_yes
 from .models import RuntimePaths
+from .reporter import DetailGroup
 
 VALUE_T_RE = re.compile(r"^value_t(?P<tool>\d+)$")
 
@@ -87,12 +88,19 @@ def maybe_prompt_align_tool_slots(
         saved_variables_path=opportunity.saved_variables_path,
     )
     if input_stream is not None:
-        reporter.prepare_for_prompt()
-        reporter.line(messages.TOOL_SLOT_MAPPING_MISMATCH_HEADER)
-        for mismatch in opportunity.mismatches:
-            reporter.line(
-                f"  - {mismatch.variable}: {mismatch.current} -> {mismatch.expected}"
+        rows = tuple(
+            f"{mismatch.variable}: {mismatch.current} -> {mismatch.expected}"
+            for mismatch in opportunity.mismatches
+        )
+        if hasattr(reporter, "emit_detail_groups"):
+            reporter.emit_detail_groups(
+                (DetailGroup(messages.TOOL_SLOT_MAPPING_MISMATCH_HEADER, rows),)
             )
+        else:
+            reporter.prepare_for_prompt()
+            reporter.line(messages.TOOL_SLOT_MAPPING_MISMATCH_HEADER)
+            for row in rows:
+                reporter.line(f"  - {row}")
     if not confirm_yes(
         reporter=reporter,
         input_stream=input_stream,

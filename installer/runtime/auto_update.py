@@ -387,8 +387,15 @@ def _prompt_sudo_password(*, reporter, input_stream) -> str | None:
     if input_stream is None:
         return None
     reporter.prepare_for_prompt()
-    reporter.line(messages.AUTO_UPDATE_SUDO_INITIAL_FAILED)
-    if input_stream is sys.stdin and getattr(input_stream, "isatty", lambda: False)():
+    use_getpass = input_stream is sys.stdin and getattr(input_stream, "isatty", lambda: False)()
+    if hasattr(reporter, "emit_prompt") and not use_getpass:
+        reporter.emit_prompt(
+            question=messages.AUTO_UPDATE_SUDO_INITIAL_FAILED,
+            instruction=messages.AUTO_UPDATE_SUDO_PASSWORD_PROMPT,
+        )
+    else:
+        reporter.line(messages.AUTO_UPDATE_SUDO_INITIAL_FAILED)
+    if use_getpass:
         try:
             return getpass.getpass(
                 messages.AUTO_UPDATE_SUDO_PASSWORD_PROMPT + " ",
@@ -396,7 +403,8 @@ def _prompt_sudo_password(*, reporter, input_stream) -> str | None:
             )
         except EOFError:
             return None
-    reporter.line(messages.AUTO_UPDATE_SUDO_PASSWORD_PROMPT)
+    if not hasattr(reporter, "emit_prompt"):
+        reporter.line(messages.AUTO_UPDATE_SUDO_PASSWORD_PROMPT)
     response = input_stream.readline()
     if response == "":
         return None

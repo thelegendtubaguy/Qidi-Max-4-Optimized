@@ -42,7 +42,7 @@ def main(
     bundle_root = bundle_root or Path(__file__).resolve().parents[2]
     reporter = create_reporter(
         stream,
-        prefer_plain=args.plain or args.mode == "restore-backup",
+        prefer_plain=args.plain,
         bundle_root=bundle_root,
         environ=env,
         debug=args.debug,
@@ -131,7 +131,7 @@ def main(
                 rc = run_restore_helper(
                     paths,
                     manifest,
-                    stream=reporter.stream,
+                    reporter=reporter,
                     input_stream=input_stream,
                     backup_path=args.backup,
                     debug=reporter.debug,

@@ -120,6 +120,14 @@ Uninstall statuses and terminal messages:
 Interrupt handling:
 - `Ctrl+C` raises `KeyboardInterrupt`, prints `Interrupted. No further installer actions will run.`, returns exit code `130`, and does not print a Python traceback.
 
+Rich terminal UI:
+- When stdout is an interactive TTY and `TERM` is not `dumb`, `installer/runtime/reporter.py` renders the install, uninstall, dry-run, clear-recovery-sentinel, and restore-helper flows through the vendored Rich dependency under `installer/runtime/vendor/rich`.
+- `--plain`, non-TTY stdout, `TERM=dumb`, or a missing vendored Rich dependency select `PlainReporter` and preserve the line-oriented status output.
+- Rich install and uninstall status panels show `stage N/5`, the current status string, preflight target counters, and install/uninstall operation counters emitted by `installer/runtime/preflight.py`, `installer/runtime/runner.py`, and `installer/runtime/uninstall.py`.
+- Rich confirmation prompts render the required question and instruction strings in a prompt panel before reading the same stdin response accepted by `installer/runtime/interaction.py`.
+- Rich detail output renders preflight target reports, dry-run plans, user-modified patch reports, managed-tree drift, rollback recovery actions, restore backup lists, restore warnings, and restore verification in Rich panels or tables.
+- Contract-required status strings, prompt strings, success strings, warning strings, recovery strings, and error strings remain present in Rich output and unchanged in `--plain` output.
+
 Demo-TUI mode:
 - `install.sh --demo-tui` renders the install status sequence `checking firmware version`, `checking package version`, `performing preflight checks`, `creating backup`, and `installing` without reading `/home/qidi/update/firmware_manifest.json`, `/home/qidi/printer_data/config`, or Moonraker.
 - `install.sh --uninstall --demo-tui` renders the uninstall status sequence `checking firmware version`, `checking installed package`, `performing uninstall preflight checks`, `creating backup`, and `uninstalling` without reading `/home/qidi/update/firmware_manifest.json`, `/home/qidi/printer_data/config`, or Moonraker.
@@ -143,6 +151,7 @@ Debug logging:
 
 Manual restore helper:
 - Release bundles ship `restore.sh` beside `install.sh`.
+- `restore.sh` uses `RichReporter` for restore backup lists, selected-backup details, destructive restore warning, and restore verification output when stdout is an interactive TTY and `TERM` is not `dumb`; `restore.sh --plain`, non-TTY stdout, `TERM=dumb`, or a missing vendored Rich dependency use `PlainReporter`.
 - `restore.sh` lists installer-created backup zip files from `/home/qidi/printer_data/` by archive timestamp and label when no `--backup <path>` argument is provided.
 - `restore.sh --backup <path>` restores the specified archive only when it contains a valid, non-empty archived `config/` snapshot.
 - `restore.sh` warns that restore overwrites current config changes under `/home/qidi/printer_data/config`, requires an explicit `RESTORE` confirmation, stages the selected archive through a temporary directory, validates the staged `config/` snapshot before any live write, mirrors the staged snapshot into the live runtime tree, and verifies the restored tree before success output.

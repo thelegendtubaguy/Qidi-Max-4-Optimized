@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Callable, TextIO
 
 from .backup import (
-    InstallerBackupArchive,
     format_backup_display_timestamp,
     list_installer_backups,
     parse_installer_backup_archive,
@@ -36,42 +35,39 @@ def run_restore_helper(
     paths: RuntimePaths,
     manifest: Manifest,
     *,
-    stream: TextIO,
+    stream: TextIO | None = None,
     input_stream: TextIO,
     backup_path: str | None = None,
     debug: DebugFn | None = None,
+    reporter=None,
 ) -> int:
-    debug = debug or _noop_debug
+    if reporter is None:
+        from .reporter import PlainReporter
+
+        reporter = PlainReporter(stream)
+    debug = debug or getattr(reporter, "debug", _noop_debug)
     selection = _resolve_backup_selection(
         printer_data_root=paths.printer_data_root,
         install_label_prefix=manifest.backup.label_prefix,
         backup_path=backup_path,
-        stream=stream,
+        reporter=reporter,
         input_stream=input_stream,
         debug=debug,
     )
     if selection is None:
         return 0
 
-    _write_line(stream, f"Selected backup: {selection.label}")
-    _write_line(stream, f"Backup path: {selection.path}")
-    _write_line(
-        stream,
-        f"Warning: restore will overwrite current config changes under {paths.printer_data_root / manifest.backup.source_directory}.",
+    reporter.emit_restore_selection(label=selection.label, path=str(selection.path))
+    reporter.emit_restore_warning(
+        config_path=str(paths.printer_data_root / manifest.backup.source_directory)
     )
-    _write_line(stream, "This helper restores the full archived config snapshot.")
-    _write_line(stream, "This helper does not clear the recovery sentinel.")
-    _write_line(
-        stream,
-        f"Type {CONFIRMATION_TOKEN} to continue: ",
-        newline=False,
-    )
+    reporter.line(f"Type {CONFIRMATION_TOKEN} to continue:")
     confirmation = input_stream.readline().strip()
     if confirmation != CONFIRMATION_TOKEN:
-        _write_line(stream)
-        _write_line(stream, "Restore cancelled.")
+        reporter.line()
+        reporter.line("Restore cancelled.")
         return 0
-    _write_line(stream)
+    reporter.line()
 
     debug(
         event="restore.selection.confirmed",
@@ -98,12 +94,8 @@ def run_restore_helper(
         backup_path=selection.path,
         restored_files=len(backup_snapshot),
     )
-    _write_line(stream, "Restore complete.")
-    _write_line(stream, f"Verified restored tree: {paths.printer_data_root / manifest.backup.source_directory}")
-    _write_line(stream, "Recovery sentinel was not cleared.")
-    _write_line(
-        stream,
-        "After verifying the restored tree, clear it with: install.sh --clear-recovery-sentinel",
+    reporter.emit_restore_complete(
+        verified_path=str(paths.printer_data_root / manifest.backup.source_directory)
     )
     return 0
 
@@ -113,7 +105,7 @@ def _resolve_backup_selection(
     printer_data_root: Path,
     install_label_prefix: str,
     backup_path: str | None,
-    stream: TextIO,
+    reporter,
     input_stream: TextIO,
     debug: DebugFn,
 ) -> BackupSelection | None:
@@ -133,32 +125,35 @@ def _resolve_backup_selection(
         install_label_prefix=install_label_prefix,
     )
     if not backups:
-        _write_line(stream, f"No installer backups were found under {printer_data_root}.")
+        reporter.line(f"No installer backups were found under {printer_data_root}.")
         return None
 
     ordered_backups = tuple(reversed(backups))
-    _write_line(stream, "Available installer backups:")
-    for index, archive in enumerate(ordered_backups, start=1):
-        _write_line(stream, f"  {index}. {_format_backup_entry(archive)}")
+    reporter.emit_backup_choices(
+        tuple(
+            (index, archive.display_created_at, archive.label, str(archive.path))
+            for index, archive in enumerate(ordered_backups, start=1)
+        )
+    )
 
     while True:
-        _write_line(stream, "Select a backup number to restore, or q to cancel: ", newline=False)
+        reporter.line("Select a backup number to restore, or q to cancel:")
         raw_choice = input_stream.readline().strip()
         if not raw_choice:
-            _write_line(stream)
+            reporter.line()
             continue
         if raw_choice.lower() in {"q", "quit"}:
-            _write_line(stream)
-            _write_line(stream, "Restore cancelled.")
+            reporter.line()
+            reporter.line("Restore cancelled.")
             return None
         try:
             selection_index = int(raw_choice)
         except ValueError:
-            _write_line(stream)
-            _write_line(stream, "Enter a listed backup number or q.")
+            reporter.line()
+            reporter.line("Enter a listed backup number or q.")
             continue
         if 1 <= selection_index <= len(ordered_backups):
-            _write_line(stream)
+            reporter.line()
             archive = ordered_backups[selection_index - 1]
             selection = BackupSelection(
                 path=archive.path,
@@ -167,8 +162,8 @@ def _resolve_backup_selection(
             )
             debug(event="restore.selection.menu", backup_path=selection.path)
             return selection
-        _write_line(stream)
-        _write_line(stream, "Enter a listed backup number or q.")
+        reporter.line()
+        reporter.line("Enter a listed backup number or q.")
 
 
 def _selection_from_path(path: Path, *, install_label_prefix: str) -> BackupSelection:
@@ -192,17 +187,6 @@ def _resolve_backup_path(raw_path: str) -> Path:
     if not candidate.is_absolute():
         candidate = Path.cwd() / candidate
     return candidate.resolve()
-
-
-def _format_backup_entry(archive: InstallerBackupArchive) -> str:
-    return f"{archive.display_created_at} | {archive.label} | {archive.path}"
-
-
-def _write_line(stream: TextIO, message: str = "", *, newline: bool = True) -> None:
-    stream.write(message)
-    if newline:
-        stream.write("\n")
-    stream.flush()
 
 
 def _noop_debug(**kwargs) -> None:
