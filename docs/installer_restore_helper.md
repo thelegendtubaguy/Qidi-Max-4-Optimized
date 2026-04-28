@@ -2,6 +2,7 @@
 
 - Release bundles place `restore.sh` beside `install.sh` at the extracted bundle root.
 - `restore.sh` launches `python3 -I -S installer/runtime/bootstrap.py restore-backup` from the bundle root.
+- `restore.sh` uses `RichReporter` for backup selection, selected-backup details, restore warning, and restore verification output when stdout is an interactive TTY and `TERM` is not `dumb`; `restore.sh --plain`, non-TTY stdout, `TERM=dumb`, or a missing vendored Rich dependency use `PlainReporter`.
 - `restore.sh` without arguments lists installer-created backup archives from `/home/qidi/printer_data/` by parsed archive timestamp, label, and path.
 - Install and uninstall archives use `tltg-optimized-macros-before-optimize-...zip` and `tltg-optimized-macros-before-uninstall-...zip` labels under `/home/qidi/printer_data/`.
 - `restore.sh --backup /path/to/archive.zip` restores the specified archive only when it contains a valid, non-empty archived `config/` snapshot.

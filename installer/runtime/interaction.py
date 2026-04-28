@@ -22,9 +22,12 @@ def confirm_yes(
 ) -> bool:
     if input_stream is None:
         return True
-    reporter.prepare_for_prompt()
-    reporter.line(question)
-    reporter.line(instruction)
+    if hasattr(reporter, "emit_prompt"):
+        reporter.emit_prompt(question=question, instruction=instruction)
+    else:
+        reporter.prepare_for_prompt()
+        reporter.line(question)
+        reporter.line(instruction)
     response = input_stream.readline().strip().lower()
     if response in _YES_RESPONSES:
         return True

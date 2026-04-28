@@ -120,6 +120,13 @@ def run_uninstall_preflight(
         include_line_file=include_line_file,
     )
     if reporter is not None:
+        if hasattr(reporter, "emit_uninstall_preflight_counters"):
+            reporter.emit_uninstall_preflight_counters(
+                files=(2, 2),
+                sections=(0, 0),
+                lines=(0, 0),
+                patch_targets=(len(state.patch_ledger), len(state.patch_ledger)),
+            )
         reporter.debug(
             event="uninstall.preflight.report",
             missing_files=len(report.missing_files),

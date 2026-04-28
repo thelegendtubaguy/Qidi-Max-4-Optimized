@@ -14,7 +14,7 @@
 - `installer/runtime/` provides install, uninstall, dry-run, recovery-sentinel-clear, debug, backup-retention, rollback-diagnostics, and restore-helper flows.
 - `installer/release/install.sh` launches `python3 -I -S installer/runtime/bootstrap.py <mode>` from the extracted bundle root and supports `--plain`, `--debug`, `--dry-run`, `--demo-tui`, `--uninstall`, and `--clear-recovery-sentinel`.
 - `installer/release/restore.sh` launches `python3 -I -S installer/runtime/bootstrap.py restore-backup` from the extracted bundle root and supports interactive backup selection plus `--backup <path>`.
-- `installer/runtime/reporter.py` provides the current rich TUI path for install and uninstall plus plain fallback; restore-helper UX remains plain terminal I/O.
+- `installer/runtime/reporter.py` provides the Rich terminal UI path for install, uninstall, dry-run, clear-recovery-sentinel, and restore-helper flows plus plain fallback; the Rich path renders live status panels, preflight counters, operation counters, confirmation prompts, detail groups, backup tables, and success/error panels.
 - `installer/runtime/demo.py` provides the no-op TUI preview path for install and uninstall; the per-screen delay defaults to `5` seconds and `TLTG_OPTIMIZED_DEMO_TUI_DELAY_SECONDS` shortens it for smoke tests.
 - `installer/runtime/vendor/` vendors the required pure-Python runtime dependencies.
 - `scripts/build_installer_bundle.py` builds the self-contained release bundle and includes `restore.sh`.
