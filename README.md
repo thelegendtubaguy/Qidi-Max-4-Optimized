@@ -128,6 +128,7 @@ cd ~/tltg-optimized-macros && ./install.sh --clear-recovery-sentinel
 
 - [Behavior differences versus stock](docs/current_config_results_vs_stock_qidi_configs.md)
 - [QIDI box internals and `BOX_PRINT_START`](docs/box_print_start_notes.md)
+- [Want to help with testing?](TESTING.md)
 
 ## Development
 

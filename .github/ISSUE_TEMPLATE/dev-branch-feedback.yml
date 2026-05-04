@@ -1,0 +1,109 @@
+name: Dev Branch Feedback
+description: Report prerelease/dev branch testing results for QIDI Max 4 optimized macros.
+title: "[Dev Feedback]: "
+labels: ["prerelease", "feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing the dev branch/prerelease macros. Reports are useful even when everything works.
+
+  - type: dropdown
+    id: slicer
+    attributes:
+      label: Slicer
+      description: Which slicer generated the G-code?
+      options:
+        - OrcaSlicer
+        - QIDIStudio
+    validations:
+      required: true
+
+  - type: dropdown
+    id: qidi_box
+    attributes:
+      label: QIDI Box setup
+      description: Do you have a QIDI Box attached?
+      options:
+        - No QIDI Box
+        - One QIDI Box
+        - More than one QIDI Box
+    validations:
+      required: true
+
+  - type: dropdown
+    id: polar_cooler
+    attributes:
+      label: Polar cooler
+      description: Is a polar cooler installed?
+      options:
+        - "No"
+        - "Yes"
+    validations:
+      required: true
+
+  - type: input
+    id: slicer_filament_count
+    attributes:
+      label: Filaments added in the slicer
+      description: How many filaments were configured when you sliced?
+      placeholder: "Example: 4"
+    validations:
+      required: true
+
+  - type: input
+    id: object_filament_count
+    attributes:
+      label: Filaments used by objects
+      description: How many of the configured filaments were assigned to actual printed objects?
+      placeholder: "Example: 1 object filament, using filament 3"
+    validations:
+      required: true
+
+  - type: textarea
+    id: filament_temperatures
+    attributes:
+      label: Filament profile temperatures
+      description: What did the filament profile set for bed, chamber, and nozzle temperature?
+      placeholder: |
+        Bed: 60 C
+        Chamber: 0 C
+        Nozzle: 220 C first layer / 215 C other layers
+    validations:
+      required: true
+
+  - type: dropdown
+    id: same_filament_previous_job
+    attributes:
+      label: Same filament as previous successful job
+      description: Were you printing with the same filament that was used in a previous successful job while running this code?
+      options:
+        - "No"
+        - "Yes"
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: print_result
+    attributes:
+      label: What happened?
+      description: Describe the print-start sequence and result. If something failed, include the actual sequence it went through.
+      placeholder: |
+        Example:
+        - Selected filament/tool:
+        - Box load/reuse behavior:
+        - Nozzle clear/purge behavior:
+        - Bed mesh / Z tilt behavior:
+        - Prime line behavior:
+        - Final result:
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional context
+      description: Add screenshots, exported G-code snippets, console output, photos, or anything else relevant.
+    validations:
+      required: false
