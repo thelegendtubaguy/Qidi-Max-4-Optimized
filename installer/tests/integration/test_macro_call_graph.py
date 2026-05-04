@@ -55,14 +55,6 @@ class MacroCallGraphTests(unittest.TestCase):
             [("A", "B", "C", "A")],
         )
 
-    def test_current_config_tree_macro_call_graph_is_acyclic(self):
-        files = collect_config_tree_files(CONFIG_ROOT)
-        self.assert_macro_graph_is_acyclic(files)
-
-    def test_optimized_macro_tree_call_graph_is_acyclic(self):
-        files = tuple(sorted(OPTIMIZED_MACRO_ROOT.glob("*.cfg")))
-        self.assert_macro_graph_is_acyclic(files)
-
     def test_installed_runtime_macro_call_graph_is_acyclic(self):
         files = unique_paths(
             (

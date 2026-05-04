@@ -11,7 +11,7 @@ from installer.runtime.manifest import load_manifest
 from installer.runtime.reporter import PlainReporter
 from installer.runtime.runner import run_install
 from installer.runtime.uninstall import run_uninstall
-from installer.tests.helpers import REPO_ROOT, build_env, copy_base_runtime, moonraker_server
+from installer.tests.helpers import REPO_ROOT, build_env, copy_base_runtime, MOONRAKER_QUERY_URL, moonraker_urlopen
 
 
 class UninstallFlowTests(unittest.TestCase):
@@ -31,35 +31,33 @@ class UninstallFlowTests(unittest.TestCase):
 
     def _install_first(self):
         printer_root = copy_base_runtime()
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            run_install(paths, self.manifest, PlainReporter(io.StringIO()))
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        run_install(paths, self.manifest, PlainReporter(io.StringIO()), urlopen=moonraker_urlopen())
         return printer_root
 
     def test_happy_path_uninstall(self):
         printer_root = copy_base_runtime()
         original_homing_override = self._homing_override(printer_root)
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            run_install(paths, self.manifest, PlainReporter(io.StringIO()))
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        run_install(paths, self.manifest, PlainReporter(io.StringIO()), urlopen=moonraker_urlopen())
         stream = io.StringIO()
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            result = run_uninstall(
-                paths,
-                self.manifest,
-                self.compatibility,
-                PlainReporter(stream),
-            )
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        result = run_uninstall(
+            paths,
+            self.manifest,
+            self.compatibility,
+            PlainReporter(stream),
+            urlopen=moonraker_urlopen(),
+        )
         self.assertFalse((paths.config_root / "tltg_optimized_state.yaml").exists())
         self.assertFalse((paths.config_root / "tltg-optimized-macros").exists())
         printer_cfg = (paths.config_root / "printer.cfg").read_text(encoding="utf-8")
@@ -92,31 +90,31 @@ class UninstallFlowTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            run_uninstall(
-                paths,
-                self.manifest,
-                self.compatibility,
-                PlainReporter(io.StringIO()),
-            )
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        run_uninstall(
+            paths,
+            self.manifest,
+            self.compatibility,
+            PlainReporter(io.StringIO()),
+            urlopen=moonraker_urlopen(),
+        )
         self.assertEqual(self._homing_override(printer_root), modified_section)
 
     def test_uninstall_fails_closed_when_markers_exist_without_valid_state(self):
         printer_root = copy_base_runtime()
         (printer_root / "config/tltg-optimized-macros").mkdir(parents=True)
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        with self.assertRaises(InstalledPackageValidationError):
+            run_uninstall(
+                paths,
+                self.manifest,
+                self.compatibility,
+                PlainReporter(io.StringIO()),
+                urlopen=moonraker_urlopen(),
             )
-            with self.assertRaises(InstalledPackageValidationError):
-                run_uninstall(
-                    paths,
-                    self.manifest,
-                    self.compatibility,
-                    PlainReporter(io.StringIO()),
-                )

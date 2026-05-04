@@ -10,7 +10,7 @@ from installer.runtime.naming import INSTALL_BACKUP_LABEL_PREFIX, UNINSTALL_BACK
 from installer.runtime.reporter import PlainReporter
 from installer.runtime.runner import run_install
 from installer.runtime.uninstall import run_uninstall
-from installer.tests.helpers import REPO_ROOT, build_env, copy_base_runtime, moonraker_server, snapshot_tree
+from installer.tests.helpers import REPO_ROOT, build_env, copy_base_runtime, MOONRAKER_QUERY_URL, moonraker_urlopen, snapshot_tree
 
 
 class DryRunFlowTests(unittest.TestCase):
@@ -24,12 +24,11 @@ class DryRunFlowTests(unittest.TestCase):
         printer_root = copy_base_runtime()
         before = snapshot_tree(printer_root)
         stream = io.StringIO()
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            result = run_install(paths, self.manifest, PlainReporter(stream), dry_run=True)
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        result = run_install(paths, self.manifest, PlainReporter(stream), dry_run=True, urlopen=moonraker_urlopen())
 
         self.assertEqual(snapshot_tree(printer_root), before)
         self.assertTrue(result.dry_run)
@@ -45,18 +44,18 @@ class DryRunFlowTests(unittest.TestCase):
         printer_root = self._install_first()
         before = snapshot_tree(printer_root)
         stream = io.StringIO()
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            result = run_uninstall(
-                paths,
-                self.manifest,
-                self.compatibility,
-                PlainReporter(stream),
-                dry_run=True,
-            )
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        result = run_uninstall(
+            paths,
+            self.manifest,
+            self.compatibility,
+            PlainReporter(stream),
+            dry_run=True,
+            urlopen=moonraker_urlopen(),
+        )
 
         self.assertEqual(snapshot_tree(printer_root), before)
         self.assertTrue(result.dry_run)
@@ -71,10 +70,9 @@ class DryRunFlowTests(unittest.TestCase):
 
     def _install_first(self):
         printer_root = copy_base_runtime()
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            run_install(paths, self.manifest, PlainReporter(io.StringIO()))
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        run_install(paths, self.manifest, PlainReporter(io.StringIO()), urlopen=moonraker_urlopen())
         return printer_root

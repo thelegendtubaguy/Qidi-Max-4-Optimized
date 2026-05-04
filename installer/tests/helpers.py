@@ -12,6 +12,7 @@ from pathlib import Path
 FIXTURES_ROOT = Path(__file__).resolve().parent / "fixtures"
 BASE_RUNTIME_FIXTURE = FIXTURES_ROOT / "runtime" / "base"
 REPO_ROOT = Path(__file__).resolve().parents[2]
+MOONRAKER_QUERY_URL = "http://moonraker.invalid/printer/objects/query?print_stats"
 _TEMP_ROOTS: list[Path] = []
 
 
@@ -58,6 +59,31 @@ def snapshot_tree(root: Path) -> dict[str, bytes]:
         if item.is_file():
             snapshot[item.relative_to(root).as_posix()] = item.read_bytes()
     return snapshot
+
+
+class _JsonResponse:
+    def __init__(self, payload):
+        self._body = json.dumps(payload).encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self):
+        return self._body
+
+
+def moonraker_urlopen(state: str | None = "standby", *, raw_payload=None):
+    payload = raw_payload
+    if payload is None:
+        payload = {"result": {"status": {"print_stats": {"state": state}}}}
+
+    def urlopen(request, timeout=0):
+        return _JsonResponse(payload)
+
+    return urlopen
 
 
 @contextmanager

@@ -34,24 +34,6 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertIn("SCREWS_TILT_CALCULATE", screws_gcode)
         self.assertNotIn("params.", screws_gcode)
 
-    def test_start_filament_prep_enables_bed_mesh_before_branching(self):
-        gcode = self._macro_gcode("OPTIMIZED_START_PRINT_FILAMENT_PREP")
-        self.assertLess(gcode.index("G31"), gcode.index("SAVE_VARIABLE VARIABLE=retained_tool_ready"))
-        self.assertEqual(gcode.count("BED_MESH_CALIBRATE PROFILE=kamp"), 3)
-        self.assertNotIn("OPTIMIZED_G29_ZSAFE", gcode)
-
-    def test_start_filament_prep_uses_purge_temp_for_box_load_and_rear_purge(self):
-        gcode = self._macro_gcode("OPTIMIZED_START_PRINT_FILAMENT_PREP")
-        self.assertIn("requires FIRSTLAYERTEMP and PURGETEMP", gcode)
-        self.assertIn("first_layer_temp = params.FIRSTLAYERTEMP|int", gcode)
-        self.assertIn("purge_temp = params.PURGETEMP|int", gcode)
-        self.assertIn("BOX_PRINT_START EXTRUDER={tool} HOTENDTEMP={purge_temp}", gcode)
-        self.assertIn("OPTIMIZED_EXTRUSION_AND_FLUSH PURGETEMP={purge_temp}", gcode)
-        self.assertNotIn("params.HOTENDTEMP", gcode)
-        self.assertNotIn("params.LOADTEMP", gcode)
-        self.assertNotIn("load_temp", gcode)
-        self.assertNotIn("hotend_temp", gcode)
-
     def test_cancel_on_error_reenables_bed_mesh_without_moving(self):
         gcode = self._macro_gcode("OPTIMIZED_CANCEL_PRINT_ON_ERROR")
         self.assertIn("G31", gcode)

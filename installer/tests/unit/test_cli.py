@@ -11,7 +11,7 @@ from installer.runtime.manifest import load_manifest
 from installer.runtime.naming import INSTALL_BACKUP_LABEL_PREFIX, UNINSTALL_BACKUP_LABEL_PREFIX
 from installer.runtime.reporter import PlainReporter
 from installer.runtime.runner import run_install
-from installer.tests.helpers import REPO_ROOT, build_env, copy_base_runtime, moonraker_server, snapshot_tree
+from installer.tests.helpers import REPO_ROOT, build_env, copy_base_runtime, MOONRAKER_QUERY_URL, moonraker_server, moonraker_urlopen, snapshot_tree
 
 
 class CliTests(unittest.TestCase):
@@ -151,12 +151,11 @@ class CliTests(unittest.TestCase):
     def test_uninstall_cancellation_returns_zero_without_writing(self):
         printer_root = copy_base_runtime()
         manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            run_install(paths, manifest, PlainReporter(io.StringIO()))
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        run_install(paths, manifest, PlainReporter(io.StringIO()), urlopen=moonraker_urlopen())
 
         stream = io.StringIO()
         with moonraker_server("standby") as url:
@@ -179,12 +178,11 @@ class CliTests(unittest.TestCase):
     def test_uninstall_disables_auto_updates_before_restart_prompt(self):
         printer_root = copy_base_runtime()
         manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            run_install(paths, manifest, PlainReporter(io.StringIO()))
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        run_install(paths, manifest, PlainReporter(io.StringIO()), urlopen=moonraker_urlopen())
 
         def fake_disable_auto_updates(*, paths, reporter, input_stream, require_sudo):
             reporter.line("Auto-updates disabled.")

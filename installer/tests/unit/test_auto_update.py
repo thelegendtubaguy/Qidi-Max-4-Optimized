@@ -6,7 +6,6 @@ import json
 import subprocess
 import tarfile
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
 from installer.runtime.auto_update import (
@@ -21,7 +20,7 @@ from installer.runtime.auto_update import (
 from installer.runtime.cli import resolve_runtime_paths
 from installer.runtime.naming import BUNDLE_ROOT_NAME
 from installer.runtime.reporter import PlainReporter
-from installer.tests.helpers import REPO_ROOT, build_env, copy_base_runtime, moonraker_server, temp_path
+from installer.tests.helpers import REPO_ROOT, build_env, copy_base_runtime, MOONRAKER_QUERY_URL, temp_path
 
 
 class _Response:
@@ -72,18 +71,17 @@ class AutoUpdateTests(unittest.TestCase):
             calls.append(command)
             return subprocess.CompletedProcess(command, 0)
 
-        with moonraker_server("printing") as moonraker_url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=moonraker_url),
-            )
-            result = run_auto_update_check(
-                paths=paths,
-                reporter=PlainReporter(stream),
-                environ={"TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256"},
-                urlopen=urlopen,
-                run=run,
-            )
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        result = run_auto_update_check(
+            paths=paths,
+            reporter=PlainReporter(stream),
+            environ={"TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256"},
+            urlopen=urlopen,
+            run=run,
+        )
 
         self.assertEqual(result.action, "skipped-active-print")
         self.assertEqual(calls, [])
@@ -101,18 +99,17 @@ class AutoUpdateTests(unittest.TestCase):
             calls.append(command)
             return subprocess.CompletedProcess(command, 0)
 
-        with moonraker_server("standby") as moonraker_url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=moonraker_url),
-            )
-            result = run_auto_update_check(
-                paths=paths,
-                reporter=PlainReporter(stream),
-                environ={"TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256"},
-                urlopen=urlopen,
-                run=run,
-            )
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        result = run_auto_update_check(
+            paths=paths,
+            reporter=PlainReporter(stream),
+            environ={"TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256"},
+            urlopen=urlopen,
+            run=run,
+        )
 
         self.assertEqual(result.action, "skipped-checksum-unavailable")
         self.assertEqual(calls, [])
@@ -140,18 +137,17 @@ class AutoUpdateTests(unittest.TestCase):
             calls.append(command)
             return subprocess.CompletedProcess(command, 0)
 
-        with moonraker_server("standby") as moonraker_url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=moonraker_url),
-            )
-            result = run_auto_update_check(
-                paths=paths,
-                reporter=PlainReporter(stream),
-                environ={"TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256"},
-                urlopen=urlopen,
-                run=run,
-            )
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        result = run_auto_update_check(
+            paths=paths,
+            reporter=PlainReporter(stream),
+            environ={"TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256"},
+            urlopen=urlopen,
+            run=run,
+        )
 
         self.assertEqual(result.action, "initialized")
         self.assertEqual(calls, [])
@@ -185,24 +181,24 @@ class AutoUpdateTests(unittest.TestCase):
             calls.append((command, kwargs))
             return subprocess.CompletedProcess(command, 0)
 
-        with moonraker_server("standby") as moonraker_url:
-            paths = resolve_runtime_paths(
-                bundle_root=bundle_root,
-                environ=build_env(printer_root, moonraker_url=moonraker_url),
-            )
-            state_path(paths).parent.mkdir(parents=True, exist_ok=True)
-            state_path(paths).write_text(json.dumps({"latest_checksum": old_checksum}), encoding="utf-8")
-            result = run_auto_update_check(
-                paths=paths,
-                reporter=PlainReporter(stream),
-                environ={
-                    **build_env(printer_root, moonraker_url=moonraker_url),
-                    "TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256",
-                    "TLTG_AUTO_UPDATE_ARCHIVE_URL": "https://example.invalid/tltg-optimized-macros.tar.gz",
-                },
-                urlopen=urlopen,
-                run=run,
-            )
+        moonraker_url = MOONRAKER_QUERY_URL
+        paths = resolve_runtime_paths(
+            bundle_root=bundle_root,
+            environ=build_env(printer_root, moonraker_url=moonraker_url),
+        )
+        state_path(paths).parent.mkdir(parents=True, exist_ok=True)
+        state_path(paths).write_text(json.dumps({"latest_checksum": old_checksum}), encoding="utf-8")
+        result = run_auto_update_check(
+            paths=paths,
+            reporter=PlainReporter(stream),
+            environ={
+                **build_env(printer_root, moonraker_url=moonraker_url),
+                "TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256",
+                "TLTG_AUTO_UPDATE_ARCHIVE_URL": "https://example.invalid/tltg-optimized-macros.tar.gz",
+            },
+            urlopen=urlopen,
+            run=run,
+        )
 
         self.assertEqual(result.action, "updated")
         self.assertEqual(json.loads(state_path(paths).read_text())["latest_checksum"], checksum)
@@ -238,25 +234,25 @@ class AutoUpdateTests(unittest.TestCase):
             calls.append((command, kwargs))
             return subprocess.CompletedProcess(command, 0)
 
-        with moonraker_server("standby") as moonraker_url:
-            paths = resolve_runtime_paths(
-                bundle_root=bundle_root,
-                environ=build_env(printer_root, moonraker_url=moonraker_url),
+        moonraker_url = MOONRAKER_QUERY_URL
+        paths = resolve_runtime_paths(
+            bundle_root=bundle_root,
+            environ=build_env(printer_root, moonraker_url=moonraker_url),
+        )
+        state_path(paths).parent.mkdir(parents=True, exist_ok=True)
+        state_path(paths).write_text(json.dumps({"latest_checksum": old_checksum}), encoding="utf-8")
+        with self.assertRaises(AutoUpdateError):
+            run_auto_update_check(
+                paths=paths,
+                reporter=PlainReporter(stream),
+                environ={
+                    **build_env(printer_root, moonraker_url=moonraker_url),
+                    "TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256",
+                    "TLTG_AUTO_UPDATE_ARCHIVE_URL": "https://example.invalid/tltg-optimized-macros.tar.gz",
+                },
+                urlopen=urlopen,
+                run=run,
             )
-            state_path(paths).parent.mkdir(parents=True, exist_ok=True)
-            state_path(paths).write_text(json.dumps({"latest_checksum": old_checksum}), encoding="utf-8")
-            with self.assertRaises(AutoUpdateError):
-                run_auto_update_check(
-                    paths=paths,
-                    reporter=PlainReporter(stream),
-                    environ={
-                        **build_env(printer_root, moonraker_url=moonraker_url),
-                        "TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256",
-                        "TLTG_AUTO_UPDATE_ARCHIVE_URL": "https://example.invalid/tltg-optimized-macros.tar.gz",
-                    },
-                    urlopen=urlopen,
-                    run=run,
-                )
 
         self.assertEqual(calls, [])
         self.assertEqual(json.loads(state_path(paths).read_text())["latest_checksum"], old_checksum)
@@ -277,19 +273,18 @@ class AutoUpdateTests(unittest.TestCase):
             run_kwargs.append(kwargs)
             return subprocess.CompletedProcess(command, 0)
 
-        with moonraker_server("standby") as moonraker_url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=moonraker_url),
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        with patch("installer.runtime.auto_update.shutil.which", return_value="/usr/bin/tool"):
+            enable_auto_updates(
+                paths=paths,
+                reporter=PlainReporter(stream),
+                environ={"TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256"},
+                urlopen=urlopen,
+                run=run,
             )
-            with patch("installer.runtime.auto_update.shutil.which", return_value="/usr/bin/tool"):
-                enable_auto_updates(
-                    paths=paths,
-                    reporter=PlainReporter(stream),
-                    environ={"TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256"},
-                    urlopen=urlopen,
-                    run=run,
-                )
 
         self.assertEqual(json.loads(state_path(paths).read_text())["latest_checksum"], checksum)
         self.assertIn(["sudo", "-S", "-p", "", "-v"], commands)
@@ -321,20 +316,19 @@ class AutoUpdateTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 1)
             return subprocess.CompletedProcess(command, 0)
 
-        with moonraker_server("standby") as moonraker_url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=moonraker_url),
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        with patch("installer.runtime.auto_update.shutil.which", return_value="/usr/bin/tool"):
+            enable_auto_updates(
+                paths=paths,
+                reporter=PlainReporter(stream),
+                input_stream=io.StringIO("correct-password\n"),
+                environ={"TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256"},
+                urlopen=urlopen,
+                run=run,
             )
-            with patch("installer.runtime.auto_update.shutil.which", return_value="/usr/bin/tool"):
-                enable_auto_updates(
-                    paths=paths,
-                    reporter=PlainReporter(stream),
-                    input_stream=io.StringIO("correct-password\n"),
-                    environ={"TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256"},
-                    urlopen=urlopen,
-                    run=run,
-                )
 
         sudo_inputs = [
             kwargs.get("input")
@@ -364,19 +358,18 @@ class AutoUpdateTests(unittest.TestCase):
             run_kwargs.append(kwargs)
             return subprocess.CompletedProcess(command, 0)
 
-        with moonraker_server("standby") as moonraker_url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=moonraker_url),
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        with patch("installer.runtime.auto_update.shutil.which", return_value="/usr/bin/tool"):
+            enable_auto_updates(
+                paths=paths,
+                reporter=PlainReporter(stream),
+                environ={"TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256"},
+                urlopen=urlopen,
+                run=run,
             )
-            with patch("installer.runtime.auto_update.shutil.which", return_value="/usr/bin/tool"):
-                enable_auto_updates(
-                    paths=paths,
-                    reporter=PlainReporter(stream),
-                    environ={"TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256"},
-                    urlopen=urlopen,
-                    run=run,
-                )
 
         self.assertFalse(state_path(paths).exists())
         self.assertIn(["sudo", "-S", "-p", "", "-v"], commands)

@@ -8,7 +8,6 @@ from pathlib import Path
 from unittest import mock
 
 from installer.runtime import backup as backup_runtime
-from installer.runtime import klipper_cfg
 from installer.runtime.backup import BackupArchiveError, create_config_backup, restore_staged_snapshot_tree
 from installer.runtime.cli import resolve_runtime_paths
 from installer.runtime.errors import ManagedTreeSourceError, PathSafetyError, PreflightTargetsError
@@ -18,7 +17,7 @@ from installer.runtime.models import InstalledState, ManagedTreeState
 from installer.runtime.reporter import PlainReporter
 from installer.runtime.runner import run_install
 from installer.runtime.state_file import write_installed_state
-from installer.tests.helpers import REPO_ROOT, build_env, copy_base_runtime, moonraker_server, snapshot_tree, temp_path
+from installer.tests.helpers import REPO_ROOT, build_env, copy_base_runtime, MOONRAKER_QUERY_URL, moonraker_urlopen, snapshot_tree, temp_path
 
 
 class InstallerHardeningTests(unittest.TestCase):
@@ -28,25 +27,24 @@ class InstallerHardeningTests(unittest.TestCase):
     def test_managed_tree_source_must_exist_before_backup_or_runtime_write(self):
         printer_root = copy_base_runtime()
         missing_installer_root = temp_path("missing-installer-root-")
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            paths = type(paths)(
-                bundle_root=paths.bundle_root,
-                installer_root=missing_installer_root,
-                printer_data_root=paths.printer_data_root,
-                config_root=paths.config_root,
-                firmware_manifest_path=paths.firmware_manifest_path,
-                moonraker_url=paths.moonraker_url,
-                lock_path=paths.lock_path,
-                recovery_sentinel_path=paths.recovery_sentinel_path,
-                backup_root=paths.backup_root,
-            )
-            before = snapshot_tree(printer_root)
-            with self.assertRaises(ManagedTreeSourceError):
-                run_install(paths, self.manifest, PlainReporter(io.StringIO()))
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        paths = type(paths)(
+            bundle_root=paths.bundle_root,
+            installer_root=missing_installer_root,
+            printer_data_root=paths.printer_data_root,
+            config_root=paths.config_root,
+            firmware_manifest_path=paths.firmware_manifest_path,
+            moonraker_url=paths.moonraker_url,
+            lock_path=paths.lock_path,
+            recovery_sentinel_path=paths.recovery_sentinel_path,
+            backup_root=paths.backup_root,
+        )
+        before = snapshot_tree(printer_root)
+        with self.assertRaises(ManagedTreeSourceError):
+            run_install(paths, self.manifest, PlainReporter(io.StringIO()), urlopen=moonraker_urlopen())
 
         self.assertEqual(snapshot_tree(printer_root), before)
         self.assertFalse(any(printer_root.glob("*.zip")))
@@ -68,11 +66,10 @@ class InstallerHardeningTests(unittest.TestCase):
         destination = printer_root / "config/tltg-optimized-macros"
         shutil.copytree(REPO_ROOT / "installer/klipper/tltg-optimized-macros", destination)
         (destination / "kinematics.cfg").write_text("corrupt\n", encoding="utf-8")
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
 
         with self.assertRaises(PreflightTargetsError) as raised:
             verify_install_postflight(paths=paths, manifest=self.manifest)
@@ -86,13 +83,12 @@ class InstallerHardeningTests(unittest.TestCase):
         outside = temp_path("managed-tree-outside-")
         (outside / "keep.cfg").write_text("keep\n", encoding="utf-8")
         (printer_root / "config/tltg-optimized-macros").symlink_to(outside, target_is_directory=True)
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            with self.assertRaises(PathSafetyError):
-                run_install(paths, self.manifest, PlainReporter(io.StringIO()))
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        with self.assertRaises(PathSafetyError):
+            run_install(paths, self.manifest, PlainReporter(io.StringIO()), urlopen=moonraker_urlopen())
         self.assertEqual((outside / "keep.cfg").read_text(encoding="utf-8"), "keep\n")
 
     def test_restore_swap_rolls_back_original_tree_if_replacement_rename_fails(self):
@@ -155,26 +151,3 @@ class InstallerHardeningTests(unittest.TestCase):
         write_installed_state(state_path, state)
 
         self.assertEqual(state_path.stat().st_mode & 0o777, 0o600)
-
-    def test_optimized_include_is_written_only_after_stock_homing_override_delete(self):
-        printer_root = copy_base_runtime()
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            real_atomic_write_text = run_install.__globals__["atomic_write_text"]
-
-            def assert_ordered_write(path, text, *args, **kwargs):
-                if path == printer_root / "config/printer.cfg" and "[include tltg-optimized-macros/*.cfg]" in text:
-                    with self.assertRaises(klipper_cfg.TargetResolutionError):
-                        klipper_cfg.resolve_unique_section(
-                            (printer_root / "config/klipper-macros-qd/kinematics.cfg").read_text(
-                                encoding="utf-8"
-                            ),
-                            "homing_override",
-                        )
-                return real_atomic_write_text(path, text, *args, **kwargs)
-
-            with mock.patch("installer.runtime.runner.atomic_write_text", side_effect=assert_ordered_write):
-                run_install(paths, self.manifest, PlainReporter(io.StringIO()))

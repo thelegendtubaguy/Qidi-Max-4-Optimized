@@ -9,7 +9,7 @@ from installer.runtime.errors import PreflightTargetsError
 from installer.runtime.manifest import load_manifest
 from installer.runtime.reporter import PlainReporter
 from installer.runtime.runner import run_install
-from installer.tests.helpers import REPO_ROOT, build_env, copy_base_runtime, moonraker_server
+from installer.tests.helpers import REPO_ROOT, build_env, copy_base_runtime, MOONRAKER_QUERY_URL, moonraker_urlopen
 
 
 class InstallFlowTests(unittest.TestCase):
@@ -36,12 +36,11 @@ class InstallFlowTests(unittest.TestCase):
     def test_happy_path_install(self):
         printer_root = copy_base_runtime()
         stream = io.StringIO()
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            result = run_install(paths, self.manifest, reporter=PlainReporter(stream))
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        result = run_install(paths, self.manifest, reporter=PlainReporter(stream), urlopen=moonraker_urlopen())
 
         self.assertTrue((paths.config_root / "tltg_optimized_state.yaml").exists())
         printer_cfg = (paths.config_root / "printer.cfg").read_text(encoding="utf-8")
@@ -77,12 +76,11 @@ class InstallFlowTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            run_install(paths, self.manifest, reporter=PlainReporter(io.StringIO()))
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        run_install(paths, self.manifest, reporter=PlainReporter(io.StringIO()), urlopen=moonraker_urlopen())
 
         printer_cfg = printer_cfg_path.read_text(encoding="utf-8")
         resolved = klipper_cfg.resolve_unique_option(
@@ -98,12 +96,11 @@ class InstallFlowTests(unittest.TestCase):
         printer_root = copy_base_runtime()
         (printer_root / "config/box.cfg").unlink()
         stream = io.StringIO()
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            result = run_install(paths, self.manifest, reporter=PlainReporter(stream))
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        result = run_install(paths, self.manifest, reporter=PlainReporter(stream), urlopen=moonraker_urlopen())
 
         self.assertTrue((paths.config_root / "tltg_optimized_state.yaml").exists())
         self.assertTrue(result.backup_zip_path.exists())
@@ -117,17 +114,17 @@ class InstallFlowTests(unittest.TestCase):
             encoding="utf-8",
         )
         stream = io.StringIO()
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            run_install(
-                paths,
-                self.manifest,
-                reporter=PlainReporter(stream),
-                input_stream=io.StringIO("y\ny\nn\nn\n"),
-            )
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        run_install(
+            paths,
+            self.manifest,
+            reporter=PlainReporter(stream),
+            input_stream=io.StringIO("y\ny\nn\nn\n"),
+            urlopen=moonraker_urlopen(),
+        )
 
         saved_variables = saved_variables_path.read_text(encoding="utf-8")
         enabled = klipper_cfg.resolve_unique_option(saved_variables, "Variables", "enable_box")
@@ -148,17 +145,17 @@ class InstallFlowTests(unittest.TestCase):
             encoding="utf-8",
         )
         stream = io.StringIO()
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            run_install(
-                paths,
-                self.manifest,
-                reporter=PlainReporter(stream),
-                input_stream=io.StringIO("y\nn\nn\n"),
-            )
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        run_install(
+            paths,
+            self.manifest,
+            reporter=PlainReporter(stream),
+            input_stream=io.StringIO("y\nn\nn\n"),
+            urlopen=moonraker_urlopen(),
+        )
 
         saved_variables = saved_variables_path.read_text(encoding="utf-8")
         enabled = klipper_cfg.resolve_unique_option(saved_variables, "Variables", "enable_box")
@@ -181,17 +178,17 @@ class InstallFlowTests(unittest.TestCase):
             encoding="utf-8",
         )
         stream = io.StringIO()
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            run_install(
-                paths,
-                self.manifest,
-                reporter=PlainReporter(stream),
-                input_stream=io.StringIO("y\ny\nn\nn\n"),
-            )
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        run_install(
+            paths,
+            self.manifest,
+            reporter=PlainReporter(stream),
+            input_stream=io.StringIO("y\ny\nn\nn\n"),
+            urlopen=moonraker_urlopen(),
+        )
 
         saved_variables = saved_variables_path.read_text(encoding="utf-8")
         self.assertEqual(
@@ -232,17 +229,17 @@ class InstallFlowTests(unittest.TestCase):
             encoding="utf-8",
         )
         stream = io.StringIO()
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            run_install(
-                paths,
-                self.manifest,
-                reporter=PlainReporter(stream),
-                input_stream=io.StringIO("y\nn\nn\n"),
-            )
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        run_install(
+            paths,
+            self.manifest,
+            reporter=PlainReporter(stream),
+            input_stream=io.StringIO("y\nn\nn\n"),
+            urlopen=moonraker_urlopen(),
+        )
 
         saved_variables = saved_variables_path.read_text(encoding="utf-8")
         self.assertEqual(
@@ -256,18 +253,16 @@ class InstallFlowTests(unittest.TestCase):
     def test_reinstall_preserves_section_restore_ledger(self):
         printer_root = copy_base_runtime()
         original_section = self._homing_override(printer_root)
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            run_install(paths, self.manifest, PlainReporter(io.StringIO()))
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            run_install(paths, self.manifest, PlainReporter(io.StringIO()))
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        run_install(paths, self.manifest, PlainReporter(io.StringIO()), urlopen=moonraker_urlopen())
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        run_install(paths, self.manifest, PlainReporter(io.StringIO()), urlopen=moonraker_urlopen())
 
         state_text = (paths.config_root / "tltg_optimized_state.yaml").read_text(encoding="utf-8")
         self.assertIn(original_section.splitlines()[0], state_text)
@@ -282,12 +277,11 @@ class InstallFlowTests(unittest.TestCase):
             .replace("G4 P400", "      G4      P400", 1),
             encoding="utf-8",
         )
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            run_install(paths, self.manifest, PlainReporter(io.StringIO()))
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        run_install(paths, self.manifest, PlainReporter(io.StringIO()), urlopen=moonraker_urlopen())
         self.assertFalse(self._homing_override_exists(printer_root))
 
     def test_modified_homing_override_fails_closed(self):
@@ -301,13 +295,12 @@ class InstallFlowTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            with self.assertRaises(PreflightTargetsError) as exc:
-                run_install(paths, self.manifest, PlainReporter(io.StringIO()))
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        with self.assertRaises(PreflightTargetsError) as exc:
+            run_install(paths, self.manifest, PlainReporter(io.StringIO()), urlopen=moonraker_urlopen())
         self.assertEqual(exc.exception.report.patch_target_issues[0].reason, "user_modified")
         self.assertFalse((paths.config_root / "tltg_optimized_state.yaml").exists())
 
@@ -318,11 +311,10 @@ class InstallFlowTests(unittest.TestCase):
             printer_cfg.read_text(encoding="utf-8").replace("homing_speed: 50\n", "", 1),
             encoding="utf-8",
         )
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            with self.assertRaises(PreflightTargetsError) as exc:
-                run_install(paths, self.manifest, PlainReporter(io.StringIO()))
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        with self.assertRaises(PreflightTargetsError) as exc:
+            run_install(paths, self.manifest, PlainReporter(io.StringIO()), urlopen=moonraker_urlopen())
         self.assertEqual(exc.exception.report.patch_target_issues[0].reason, "missing")
