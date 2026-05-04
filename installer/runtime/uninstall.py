@@ -19,6 +19,7 @@ from .firmware import detect_firmware_version_best_effort
 from .interaction import confirm_yes, maybe_restart_klipper
 from .fs_atomic import atomic_write_text
 from .mirror import detect_uninstall_managed_tree_drift, remove_tree
+from .path_safety import ensure_uninstall_paths_safe
 from .models import (
     DriftRecord,
     EnsureLineSpec,
@@ -64,6 +65,7 @@ def run_uninstall(
     )
 
     reporter.status(messages.CHECKING_INSTALLED_PACKAGE)
+    ensure_uninstall_paths_safe(paths=paths, manifest=manifest)
     state_path = paths.printer_data_root / manifest.state_file
     include_line = manifest.include_line
     managed_tree_root = paths.printer_data_root / manifest.managed_tree.destination
@@ -299,15 +301,24 @@ def _execute_uninstall(
         for entry in state.patch_ledger:
             path = paths.printer_data_root / entry.file
             text = klipper_cfg.read_text(path)
-            resolved = klipper_cfg.resolve_unique_option(text, entry.section, entry.option)
-            result = patches.classify_uninstall_patch(resolved.value, entry)
-            patch_results.append(result)
-            if result.classification == patches.UNINSTALL_REVERTED:
-                new_text = klipper_cfg.set_option_value(
-                    text, entry.section, entry.option, result.expected
-                )
-                journal.note_write()
-                atomic_write_text(path, new_text)
+            if entry.option == "__section__":
+                current = _section_text_or_deleted(text, entry.section)
+                result = patches.classify_uninstall_patch(current, entry)
+                patch_results.append(result)
+                if result.classification == patches.UNINSTALL_REVERTED:
+                    new_text = klipper_cfg.append_section(text, result.expected)
+                    journal.note_write()
+                    atomic_write_text(path, new_text)
+            else:
+                resolved = klipper_cfg.resolve_unique_option(text, entry.section, entry.option)
+                result = patches.classify_uninstall_patch(resolved.value, entry)
+                patch_results.append(result)
+                if result.classification == patches.UNINSTALL_REVERTED:
+                    new_text = klipper_cfg.set_option_value(
+                        text, entry.section, entry.option, result.expected
+                    )
+                    journal.note_write()
+                    atomic_write_text(path, new_text)
             uninstall_counters["patches"][0] += 1
         reporter.emit_uninstall_counters(**_freeze_counters(uninstall_counters))
 
@@ -364,7 +375,12 @@ def _execute_uninstall(
     )
     if auto_updates_configured():
         try:
-            disable_auto_updates(paths=paths, reporter=reporter, require_sudo=True)
+            disable_auto_updates(
+                paths=paths,
+                reporter=reporter,
+                input_stream=input_stream,
+                require_sudo=True,
+            )
         except AutoUpdateError as exc:
             reporter.line(f"{messages.AUTO_UPDATE_DISABLE_FAILED} {exc.message}")
     maybe_restart_klipper(
@@ -395,13 +411,15 @@ def detect_patch_markers(*, paths: RuntimePaths, state: InstalledState) -> dict[
             markers[entry.id] = False
             continue
         try:
-            resolved = klipper_cfg.resolve_unique_option(
-                klipper_cfg.read_text(path), entry.section, entry.option
-            )
+            text = klipper_cfg.read_text(path)
+            if entry.option == "__section__":
+                current = _section_text_or_deleted(text, entry.section)
+            else:
+                current = klipper_cfg.resolve_unique_option(text, entry.section, entry.option).value
         except klipper_cfg.TargetResolutionError:
             markers[entry.id] = False
             continue
-        markers[entry.id] = resolved.value == entry.desired
+        markers[entry.id] = current == entry.desired
     return markers
 
 
@@ -415,9 +433,23 @@ def _collect_uninstall_patch_results(
     for entry in state.patch_ledger:
         path = paths.printer_data_root / entry.file
         text = klipper_cfg.read_text(path)
-        resolved = klipper_cfg.resolve_unique_option(text, entry.section, entry.option)
-        results.append(patches.classify_uninstall_patch(resolved.value, entry))
+        if entry.option == "__section__":
+            current = _section_text_or_deleted(text, entry.section)
+            results.append(patches.classify_uninstall_patch(current, entry))
+        else:
+            resolved = klipper_cfg.resolve_unique_option(text, entry.section, entry.option)
+            results.append(patches.classify_uninstall_patch(resolved.value, entry))
     return tuple(results)
+
+
+
+def _section_text_or_deleted(text: str, section: str) -> str:
+    try:
+        return klipper_cfg.resolve_unique_section(text, section).text
+    except klipper_cfg.TargetResolutionError as exc:
+        if exc.reason == "missing":
+            return patches.SECTION_DELETED
+        raise
 
 
 

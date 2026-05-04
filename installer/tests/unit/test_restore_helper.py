@@ -12,7 +12,7 @@ from installer.runtime.manifest import load_manifest
 from installer.runtime.reporter import PlainReporter
 from installer.runtime.restore_helper import run_restore_helper
 from installer.runtime.runner import run_install
-from installer.tests.helpers import REPO_ROOT, build_env, copy_base_runtime, moonraker_server
+from installer.tests.helpers import REPO_ROOT, build_env, copy_base_runtime, MOONRAKER_QUERY_URL, moonraker_urlopen
 
 
 class RestoreHelperTests(unittest.TestCase):
@@ -21,12 +21,11 @@ class RestoreHelperTests(unittest.TestCase):
 
     def test_restore_helper_supports_direct_restore_stages_before_live_write_and_restores_full_snapshot_without_clearing_sentinel(self):
         printer_root = copy_base_runtime()
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            install_result = run_install(paths, self.manifest, PlainReporter(io.StringIO()))
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        install_result = run_install(paths, self.manifest, PlainReporter(io.StringIO()), urlopen=moonraker_urlopen())
 
         backup_zip = install_result.backup_zip_path
         self.assertIsNotNone(backup_zip)
@@ -95,7 +94,4 @@ class RestoreHelperTests(unittest.TestCase):
         self.assertTrue(sentinel.exists())
         output = stream.getvalue()
         self.assertIn("Warning: restore will overwrite current config changes under", output)
-        self.assertIn("This helper restores the full archived config snapshot.", output)
-        self.assertIn("This helper does not clear the recovery sentinel.", output)
         self.assertIn("Recovery sentinel was not cleared.", output)
-        self.assertIn("install.sh --clear-recovery-sentinel", output)

@@ -36,6 +36,7 @@ class ManagedTreeSpec:
     source: str
     destination: str
     mode: str
+    required_files: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -54,12 +55,34 @@ class PatchVariantSpec:
 
 
 @dataclass(frozen=True)
+class SectionPatchVariantSpec:
+    firmwares: tuple[str, ...]
+    expected_normalized_sha256: str
+
+
+@dataclass(frozen=True)
 class PatchSpec:
     id: str
     file: str
     section: str
     option: str
     variants: tuple[PatchVariantSpec, ...]
+
+    @property
+    def target_tuple(self) -> tuple[str, str, str]:
+        return (self.file, self.section, self.option)
+
+
+@dataclass(frozen=True)
+class SectionPatchSpec:
+    id: str
+    file: str
+    section: str
+    variants: tuple[SectionPatchVariantSpec, ...]
+
+    @property
+    def option(self) -> str:
+        return "__section__"
 
     @property
     def target_tuple(self) -> tuple[str, str, str]:
@@ -108,6 +131,7 @@ class InstallSpec:
 @dataclass(frozen=True)
 class PatchSetSpec:
     set_options: tuple[PatchSpec, ...]
+    delete_sections: tuple[SectionPatchSpec, ...]
 
 
 @dataclass(frozen=True)
@@ -143,7 +167,10 @@ class Manifest:
 
     @property
     def patch_targets(self) -> tuple[tuple[str, str, str], ...]:
-        return tuple(patch.target_tuple for patch in self.patches.set_options)
+        return tuple(
+            patch.target_tuple
+            for patch in (*self.patches.set_options, *self.patches.delete_sections)
+        )
 
 
 @dataclass(frozen=True)

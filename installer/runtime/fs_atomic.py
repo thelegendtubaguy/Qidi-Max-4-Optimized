@@ -26,7 +26,13 @@ def read_metadata(path: Path) -> FileMetadata:
 
 
 
-def atomic_write_bytes(path: Path, data: bytes, *, mode: Optional[int] = None) -> None:
+def atomic_write_bytes(
+    path: Path,
+    data: bytes,
+    *,
+    mode: Optional[int] = None,
+    force_mode: bool = False,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     metadata = read_metadata(path)
     fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
@@ -36,7 +42,7 @@ def atomic_write_bytes(path: Path, data: bytes, *, mode: Optional[int] = None) -
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
-        _apply_metadata(temp_path, metadata, default_mode=mode)
+        _apply_metadata(temp_path, metadata, default_mode=mode, force_mode=force_mode)
         os.replace(temp_path, path)
         fsync_directory(path.parent)
     finally:
@@ -45,8 +51,14 @@ def atomic_write_bytes(path: Path, data: bytes, *, mode: Optional[int] = None) -
 
 
 
-def atomic_write_text(path: Path, text: str, *, mode: Optional[int] = None) -> None:
-    atomic_write_bytes(path, text.encode("utf-8"), mode=mode)
+def atomic_write_text(
+    path: Path,
+    text: str,
+    *,
+    mode: Optional[int] = None,
+    force_mode: bool = False,
+) -> None:
+    atomic_write_bytes(path, text.encode("utf-8"), mode=mode, force_mode=force_mode)
 
 
 
@@ -69,8 +81,17 @@ def fsync_directory(path: Path) -> None:
 
 
 
-def _apply_metadata(path: Path, metadata: FileMetadata, *, default_mode: Optional[int]) -> None:
-    mode = metadata.mode if metadata.mode is not None else default_mode
+def _apply_metadata(
+    path: Path,
+    metadata: FileMetadata,
+    *,
+    default_mode: Optional[int],
+    force_mode: bool,
+) -> None:
+    if force_mode:
+        mode = default_mode
+    else:
+        mode = metadata.mode if metadata.mode is not None else default_mode
     if mode is not None:
         os.chmod(path, mode)
     if metadata.uid is not None and metadata.gid is not None:

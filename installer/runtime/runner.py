@@ -6,6 +6,7 @@ import urllib.request
 
 from . import klipper_cfg, messages, patches
 from .auto_update import maybe_prompt_enable_auto_updates
+from .box_enablement import maybe_prompt_align_tool_slots, maybe_prompt_enable_box
 from .backup import (
     INSTALL_BACKUP_HISTORY_MESSAGES,
     build_install_backup_label,
@@ -38,6 +39,7 @@ from .models import (
     RuntimePaths,
     StateFileIntent,
 )
+from .path_safety import ensure_install_paths_safe
 from .postflight import verify_install_postflight
 from .preflight import run_install_preflight
 from .rollback import RollbackJournal
@@ -74,6 +76,7 @@ def run_install(
         raise UnsupportedFirmwareError()
 
     reporter.status(messages.CHECKING_PACKAGE_VERSION)
+    ensure_install_paths_safe(paths=paths, manifest=manifest)
     state_path = paths.printer_data_root / manifest.state_file
     prior_state = None
     if state_path.exists():
@@ -98,6 +101,8 @@ def run_install(
         reporter=reporter,
         urlopen=urlopen,
         disk_usage=disk_usage,
+        detected_firmware=detected_firmware,
+        prior_state=prior_state,
     )
 
     if not dry_run and not confirm_yes(
@@ -185,6 +190,7 @@ def run_install(
         manifest=manifest,
         reporter=reporter,
         detected_firmware=detected_firmware,
+        prior_state=prior_state,
         started_at=started_at,
         plan=plan,
         backup_zip_path=backup_zip_path,
@@ -215,6 +221,7 @@ def build_install_plan(
         paths=paths,
         manifest=manifest,
         detected_firmware=detected_firmware,
+        prior_state=prior_state,
     )
     include_line_intents = _collect_install_include_line_intents(paths=paths, manifest=manifest)
     managed_tree_intent = ManagedTreeIntent(
@@ -245,6 +252,7 @@ def _execute_install(
     manifest: Manifest,
     reporter,
     detected_firmware: str,
+    prior_state: InstalledState | None,
     started_at,
     plan: InstallPlan,
     backup_zip_path,
@@ -261,9 +269,10 @@ def _execute_install(
     patch_results = []
     install_counters = _install_counters_template(manifest)
     try:
-        touched_files = {state_path}
+        touched_files = {state_path, paths.config_root / "saved_variables.cfg"}
         touched_files.update(paths.printer_data_root / spec.file for spec in manifest.install.ensure_lines)
         touched_files.update(paths.printer_data_root / patch.file for patch in manifest.patches.set_options)
+        touched_files.update(paths.printer_data_root / patch.file for patch in manifest.patches.delete_sections)
         for touched in touched_files:
             journal.track_file(touched)
         journal.track_tree(paths.printer_data_root / manifest.managed_tree.destination)
@@ -271,6 +280,19 @@ def _execute_install(
             event="install.rollback.tracking",
             tracked_files=len(touched_files),
             tracked_trees=1,
+        )
+
+        maybe_prompt_enable_box(
+            paths=paths,
+            reporter=reporter,
+            input_stream=input_stream,
+            journal=journal,
+        )
+        maybe_prompt_align_tool_slots(
+            paths=paths,
+            reporter=reporter,
+            input_stream=input_stream,
+            journal=journal,
         )
 
         for directory in manifest.install.ensure_directories:
@@ -285,18 +307,9 @@ def _execute_install(
             source_root=paths.installer_root / manifest.managed_tree.source,
             destination_root=paths.printer_data_root / manifest.managed_tree.destination,
             journal=journal,
+            required_files=manifest.managed_tree.required_files,
         )
         install_counters["managed_trees"][0] = 1
-        reporter.emit_install_counters(**_freeze_counters(install_counters))
-
-        for ensure_line in manifest.install.ensure_lines:
-            path = paths.printer_data_root / ensure_line.file
-            text = klipper_cfg.read_text(path)
-            new_text = ensure_line_after(text, ensure_line.line, ensure_line.after)
-            if new_text != text:
-                journal.note_write()
-                atomic_write_text(path, new_text)
-            install_counters["ensure_lines"][0] += 1
         reporter.emit_install_counters(**_freeze_counters(install_counters))
 
         for patch in manifest.patches.set_options:
@@ -312,9 +325,36 @@ def _execute_install(
                 journal.note_write()
                 atomic_write_text(path, new_text)
             install_counters["patches"][0] += 1
+
+        for patch in manifest.patches.delete_sections:
+            path = paths.printer_data_root / patch.file
+            text = klipper_cfg.read_text(path)
+            current_section = _resolve_section_text_or_none(text, patch.section)
+            result = patches.classify_install_section_delete(
+                current_section, patch, detected_firmware
+            )
+            result = _preserve_prior_section_expected(result, prior_state)
+            patch_results.append(result)
+            if result.classification == patches.INSTALL_APPLIED:
+                new_text = klipper_cfg.delete_section(text, patch.section)
+                journal.note_write()
+                atomic_write_text(path, new_text)
+            install_counters["patches"][0] += 1
         reporter.emit_install_counters(**_freeze_counters(install_counters))
 
-        verify_install_postflight(paths=paths, manifest=manifest)
+        for ensure_line in manifest.install.ensure_lines:
+            path = paths.printer_data_root / ensure_line.file
+            text = klipper_cfg.read_text(path)
+            new_text = ensure_line_after(text, ensure_line.line, ensure_line.after)
+            if new_text != text:
+                journal.note_write()
+                atomic_write_text(path, new_text)
+            install_counters["ensure_lines"][0] += 1
+        reporter.emit_install_counters(**_freeze_counters(install_counters))
+
+        verify_install_postflight(
+            paths=paths, manifest=manifest, patch_results=tuple(patch_results)
+        )
         install_counters["postflight"][0] = 1
         reporter.emit_install_counters(**_freeze_counters(install_counters))
 
@@ -402,6 +442,7 @@ def _collect_install_patch_results(
     paths: RuntimePaths,
     manifest: Manifest,
     detected_firmware: str,
+    prior_state: InstalledState | None,
 ) -> tuple:
     results = []
     for patch in manifest.patches.set_options:
@@ -409,7 +450,44 @@ def _collect_install_patch_results(
         text = klipper_cfg.read_text(path)
         resolved = klipper_cfg.resolve_unique_option(text, patch.section, patch.option)
         results.append(patches.classify_install_patch(resolved.value, patch, detected_firmware))
+    for patch in manifest.patches.delete_sections:
+        path = paths.printer_data_root / patch.file
+        text = klipper_cfg.read_text(path)
+        current_section = _resolve_section_text_or_none(text, patch.section)
+        result = patches.classify_install_section_delete(current_section, patch, detected_firmware)
+        results.append(_preserve_prior_section_expected(result, prior_state))
     return tuple(results)
+
+
+
+def _resolve_section_text_or_none(text: str, section: str) -> str | None:
+    try:
+        return klipper_cfg.resolve_unique_section(text, section).text
+    except klipper_cfg.TargetResolutionError as exc:
+        if exc.reason == "missing":
+            return None
+        raise
+
+
+
+def _preserve_prior_section_expected(result, prior_state: InstalledState | None):
+    if result.option != "__section__" or result.classification != patches.INSTALL_NOOP_DESIRED:
+        return result
+    if prior_state is None:
+        return result
+    for entry in prior_state.patch_ledger:
+        if entry.target_tuple == (result.file, result.section, result.option):
+            return type(result)(
+                id=result.id,
+                file=result.file,
+                section=result.section,
+                option=result.option,
+                current=result.current,
+                expected=entry.expected,
+                desired=result.desired,
+                classification=result.classification,
+            )
+    return result
 
 
 
@@ -441,6 +519,7 @@ def _source_hashes(paths: RuntimePaths, manifest: Manifest) -> dict[str, str]:
         paths.installer_root / manifest.managed_tree.source,
         destination_root=paths.printer_data_root / manifest.managed_tree.destination,
         relative_to=paths.printer_data_root,
+        required_files=manifest.managed_tree.required_files,
     )
 
 
@@ -450,7 +529,7 @@ def _install_counters_template(manifest: Manifest) -> dict[str, list[int]]:
         "ensure_directories": [0, len(manifest.install.ensure_directories)],
         "managed_trees": [0, 1],
         "ensure_lines": [0, len(manifest.install.ensure_lines)],
-        "patches": [0, len(manifest.patches.set_options)],
+        "patches": [0, len(manifest.patches.set_options) + len(manifest.patches.delete_sections)],
         "postflight": [0, 1],
         "state_write": [0, 1],
     }

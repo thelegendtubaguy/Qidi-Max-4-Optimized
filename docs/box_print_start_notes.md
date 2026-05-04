@@ -19,15 +19,16 @@ This happens in `_print_start_box_prepar` before later preheat/probing phases.
 `installer/klipper/tltg-optimized-macros/filament.cfg`:
 
 - reuse branch: does not call `BOX_PRINT_START`
-- non-reuse branch: calls `BOX_PRINT_START`
+- box-enabled non-reuse branch: calls `BOX_PRINT_START`
+- no-box branch: does not call `BOX_PRINT_START`
 
 ```gcode
-BOX_PRINT_START EXTRUDER={tool} HOTENDTEMP={hotendtemp}
+BOX_PRINT_START EXTRUDER={tool} HOTENDTEMP={purge_temp}
 M400
-OPTIMIZED_EXTRUSION_AND_FLUSH HOTENDTEMP={hotendtemp} CHAMBER={chambertemp}
+OPTIMIZED_EXTRUSION_AND_FLUSH PURGETEMP={purge_temp} CHAMBER={chamber_target}
 ```
 
-The optimized start path bypasses `BOX_PRINT_START` in the reuse branch and calls it in the non-reuse branch.
+The optimized start path bypasses `BOX_PRINT_START` in the reuse branch and no-box branch, and calls it only in the box-enabled non-reuse branch. Slicer start G-code passes `FIRSTLAYERTEMP=[nozzle_temperature_initial_layer]` and `PURGETEMP={nozzle_temperature_range_high[initial_tool]}` to `OPTIMIZED_START_PRINT_FILAMENT_PREP`; `PURGETEMP` is forwarded to vendor `BOX_PRINT_START` as its required `HOTENDTEMP` parameter and to the rear purge path. The final first-layer temperature remains the later slicer `M109 S[nozzle_temperature_initial_layer]` before the front prime line.
 
 ## Active box stack on this machine
 
@@ -523,7 +524,8 @@ Current visible call sites include:
 
 - `installer/klipper/tltg-optimized-macros/filament.cfg`
   - after `OPTIMIZED_M1004` + `G4 P5000` inside `OPTIMIZED_EXTRUSION_AND_FLUSH`
-  - during staged post-flush cleanup in `OPTIMIZED_START_PRINT_FILAMENT_PREP`
+  - during staged post-flush cleanup in `OPTIMIZED_START_PRINT_FILAMENT_PREP`; that path re-homes Z with `_OPTIMIZED_HOME_Z_FROM_SAFE_POINT` before the rear-bed scrape motion
+  - inside `OPTIMIZED_WIPE_AND_SCRAPE_NOZZLE` when `printer["box_extras"]` is defined; that helper re-homes Z with `_OPTIMIZED_HOME_Z_FROM_SAFE_POINT` before the rear-bed scrape motion
   - after `OPTIMIZED_UNLOAD_FILAMENT`
 - `config/box.cfg`
   - after unload / short extrusion / heater-off inside `UNLOAD_FILAMENT`
@@ -658,6 +660,11 @@ Controller-side operation names imply:
 - `CLEAR_TOOLCHANGE_STATE`
 - `CLEAR_FLUSH`
 - `CLEAR_OOZE`
+
+### Repo custom wrappers
+
+- `TLTG_SET_BOX_TEMP BOX=<number> TARGET=<temp>` validates `heater_generic heater_box<number>` and calls `SET_HEATER_TEMPERATURE HEATER=heater_box<number> TARGET=<temp>`.
+- `OPTIMIZED_DISABLE_BOX_HEATER` calls `DISABLE_BOX_HEATER` only when `printer["box_extras"]` is defined.
 
 ### Present in binaries but not central to the current custom flow here
 

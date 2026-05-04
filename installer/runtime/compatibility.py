@@ -98,11 +98,14 @@ def validate_manifest_compatibility(
             "Current package.version must exist in supported upgrade sources."
         )
 
-    manifest_targets = {patch.target_tuple for patch in manifest.patches.set_options}
+    manifest_targets = {
+        patch.target_tuple
+        for patch in (*manifest.patches.set_options, *manifest.patches.delete_sections)
+    }
     current_targets = {target.target_tuple for target in current_entry.allowed_patch_targets}
     if manifest_targets != current_targets:
         raise CompatibilityValidationError(
-            "Current package.version uninstall targets must exactly match manifest patches.set_options."
+            "Current package.version uninstall targets must exactly match manifest patches."
         )
 
 

@@ -4,10 +4,15 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 import os
+import shutil
 import tempfile
 import zipfile
 
-from .fs_atomic import atomic_delete, atomic_write_bytes, fsync_directory
+from .fs_atomic import fsync_directory
+from .path_safety import (
+    ensure_runtime_path_has_no_symlink_components,
+    ensure_runtime_tree_has_no_symlinks,
+)
 from .naming import UNINSTALL_BACKUP_LABEL_PREFIX
 
 
@@ -185,6 +190,21 @@ def create_config_backup(
     backup_label: str,
 ) -> Path:
     source_root = printer_data_root / source_directory
+    if not source_root.exists() or not source_root.is_dir() or source_root.is_symlink():
+        raise BackupArchiveError(
+            f"Cannot create backup because {source_directory}/ is missing or not a real directory."
+        )
+    ensure_runtime_path_has_no_symlink_components(
+        printer_data_root=printer_data_root,
+        target=source_root,
+    )
+    ensure_runtime_tree_has_no_symlinks(source_root)
+    source_files = [item for item in sorted(source_root.rglob("*")) if item.is_file()]
+    if not source_files:
+        raise BackupArchiveError(
+            f"Cannot create backup because {source_directory}/ does not contain any files."
+        )
+
     backup_root = printer_data_root
     backup_root.mkdir(parents=True, exist_ok=True)
     final_path = backup_root / f"{backup_label}.zip"
@@ -193,9 +213,8 @@ def create_config_backup(
     temp_path = Path(temp_name)
     try:
         with zipfile.ZipFile(temp_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-            for item in sorted(source_root.rglob("*")):
-                if item.is_file():
-                    archive.write(item, item.relative_to(printer_data_root))
+            for item in source_files:
+                archive.write(item, item.relative_to(printer_data_root))
         os.chmod(temp_path, 0o600)
         os.replace(temp_path, final_path)
         fsync_directory(backup_root)
@@ -321,28 +340,78 @@ def restore_staged_snapshot_tree(
         )
 
     destination_root = printer_data_root / source_directory
-    destination_root.mkdir(parents=True, exist_ok=True)
-    target_files = {destination_root / rel_path for rel_path in source_files}
-    current_files = {item for item in destination_root.rglob("*") if item.is_file()}
-    for extra_file in sorted(current_files - target_files, reverse=True):
-        atomic_delete(extra_file)
-
-    required_directories = _required_runtime_directories(
-        destination_root=destination_root,
-        target_files=target_files,
+    ensure_runtime_path_has_no_symlink_components(
+        printer_data_root=printer_data_root,
+        target=destination_root,
     )
-    for directory in sorted(required_directories, key=lambda item: len(item.parts)):
-        directory.mkdir(parents=True, exist_ok=True)
+    if destination_root.exists() and not destination_root.is_dir():
+        raise BackupArchiveError(
+            f"Restore target is not a directory: {destination_root}"
+        )
 
-    for rel_path, staged_file in sorted(source_files.items()):
-        target_path = destination_root / rel_path
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_bytes(target_path, staged_file.read_bytes(), mode=0o644)
-
-    _remove_extra_runtime_directories(
+    replacement_root, old_root = _copy_staged_tree_for_swap(
+        staged_source_root=staged_source_root,
         destination_root=destination_root,
-        required_directories=required_directories,
     )
+    try:
+        if destination_root.exists():
+            os.replace(destination_root, old_root)
+            fsync_directory(destination_root.parent)
+        os.replace(replacement_root, destination_root)
+        fsync_directory(destination_root.parent)
+    except Exception:
+        if old_root.exists() and not destination_root.exists():
+            os.replace(old_root, destination_root)
+            fsync_directory(destination_root.parent)
+        raise
+    finally:
+        if replacement_root.exists():
+            shutil.rmtree(replacement_root)
+    if old_root.exists():
+        shutil.rmtree(old_root)
+        fsync_directory(destination_root.parent)
+
+
+def _copy_staged_tree_for_swap(
+    *, staged_source_root: Path, destination_root: Path
+) -> tuple[Path, Path]:
+    parent = destination_root.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    replacement_root = Path(
+        tempfile.mkdtemp(prefix=f".{destination_root.name}.restore-new.", dir=parent)
+    )
+    old_root = Path(
+        tempfile.mkdtemp(prefix=f".{destination_root.name}.restore-old.", dir=parent)
+    )
+    shutil.rmtree(replacement_root)
+    shutil.rmtree(old_root)
+    try:
+        shutil.copytree(staged_source_root, replacement_root)
+        _fsync_tree(replacement_root)
+        return replacement_root, old_root
+    except Exception:
+        if replacement_root.exists():
+            shutil.rmtree(replacement_root)
+        if old_root.exists():
+            shutil.rmtree(old_root)
+        raise
+
+
+def _fsync_tree(root: Path) -> None:
+    for item in sorted(root.rglob("*")):
+        if item.is_file():
+            fd = os.open(item, os.O_RDONLY)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+    directories = [root, *(item for item in root.rglob("*") if item.is_dir())]
+    for directory in sorted(
+        directories,
+        key=lambda item: len(item.parts),
+        reverse=True,
+    ):
+        fsync_directory(directory)
 
 
 def describe_snapshot_difference(

@@ -4,9 +4,11 @@ import argparse
 import os
 import sys
 import traceback
+from contextlib import nullcontext
 from pathlib import Path
 
-from .auto_update import AutoUpdateError, disable_auto_updates, enable_auto_updates, run_auto_update_check
+from . import messages
+from .auto_update import LOCK_HELD_ENV, AutoUpdateError, disable_auto_updates, enable_auto_updates, run_auto_update_check
 from .backup import BackupArchiveError
 from .compatibility import CompatibilityValidationError, load_supported_upgrade_sources, validate_manifest_compatibility
 from .demo import resolve_demo_tui_delay_seconds, run_demo
@@ -41,7 +43,7 @@ def main(
     bundle_root = bundle_root or Path(__file__).resolve().parents[2]
     reporter = create_reporter(
         stream,
-        prefer_plain=args.plain or args.mode == "restore-backup",
+        prefer_plain=args.plain,
         bundle_root=bundle_root,
         environ=env,
         debug=args.debug,
@@ -75,22 +77,33 @@ def main(
             return 0
 
         if args.mode == "auto-update-check":
-            result = run_auto_update_check(paths=paths, reporter=reporter, environ=env)
-            reporter.debug(
-                event="cli.complete",
-                mode=args.mode,
-                return_code=0,
-                action=result.action,
-            )
-            return 0
+            with acquire(paths.lock_path):
+                reporter.debug(
+                    event="cli.lock.acquired",
+                    mode=args.mode,
+                    lock_path=paths.lock_path,
+                )
+                ensure_no_recovery_sentinel(paths.recovery_sentinel_path)
+                reporter.debug(
+                    event="cli.recovery_sentinel.clear",
+                    sentinel_path=paths.recovery_sentinel_path,
+                )
+                result = run_auto_update_check(paths=paths, reporter=reporter, environ=env)
+                reporter.debug(
+                    event="cli.complete",
+                    mode=args.mode,
+                    return_code=0,
+                    action=result.action,
+                )
+                return 0
 
         if args.mode == "enable-auto-updates":
-            enable_auto_updates(paths=paths, reporter=reporter, environ=env)
+            enable_auto_updates(paths=paths, reporter=reporter, input_stream=input_stream, environ=env)
             reporter.debug(event="cli.complete", mode=args.mode, return_code=0)
             return 0
 
         if args.mode == "disable-auto-updates":
-            disable_auto_updates(paths=paths, reporter=reporter)
+            disable_auto_updates(paths=paths, reporter=reporter, input_stream=input_stream)
             reporter.debug(event="cli.complete", mode=args.mode, return_code=0)
             return 0
 
@@ -130,7 +143,7 @@ def main(
                 rc = run_restore_helper(
                     paths,
                     manifest,
-                    stream=reporter.stream,
+                    reporter=reporter,
                     input_stream=input_stream,
                     backup_path=args.backup,
                     debug=reporter.debug,
@@ -147,9 +160,10 @@ def main(
             known_versions=len(manifest.package.known_versions),
         )
 
-        with acquire(paths.lock_path):
+        lock_inherited = _lock_inherited(args.mode, env)
+        with nullcontext() if lock_inherited else acquire(paths.lock_path):
             reporter.debug(
-                event="cli.lock.acquired",
+                event="cli.lock.inherited" if lock_inherited else "cli.lock.acquired",
                 mode=args.mode,
                 lock_path=paths.lock_path,
             )
@@ -178,6 +192,14 @@ def main(
                 )
         reporter.debug(event="cli.complete", mode=args.mode, return_code=0)
         return 0
+    except KeyboardInterrupt:
+        reporter.debug(
+            event="cli.interrupted",
+            mode=args.mode,
+            return_code=130,
+        )
+        reporter.line(messages.INTERRUPTED)
+        return 130
     except OperationCancelled as exc:
         reporter.debug(
             event="cli.complete",
@@ -261,6 +283,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if args.yes and args.mode not in {"install", "uninstall", "auto-update-check"}:
         parser.error("--yes is only supported with install, uninstall, and auto-update-check.")
     return args
+
+
+
+def _lock_inherited(mode: str, environ: dict[str, str]) -> bool:
+    return mode == "install" and environ.get(LOCK_HELD_ENV) == "1"
 
 
 

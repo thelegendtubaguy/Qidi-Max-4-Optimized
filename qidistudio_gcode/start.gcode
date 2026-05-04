@@ -15,42 +15,37 @@ G29.0
 OPTIMIZED_PRINT_START_HOME
 
 ;===== BOX_PREPAR =====
-OPTIMIZED_START_PRINT_FILAMENT_PREP EXTRUDER=[initial_no_support_extruder] HOTENDTEMP={nozzle_temperature_range_high[initial_tool]} PURGETEMP=[nozzle_temperature_initial_layer] BEDTEMP=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperatures]
+OPTIMIZED_START_PRINT_FILAMENT_PREP EXTRUDER=[initial_no_support_extruder] FIRSTLAYERTEMP=[nozzle_temperature_initial_layer] PURGETEMP={nozzle_temperature_range_high[initial_tool]} BEDTEMP=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperatures]
 
 ;===== PRINT_START =====
 ; Set total layer count for progress reporting.
 SET_PRINT_STATS_INFO TOTAL_LAYER=[total_layer_count]
-; Select the initial tool.
-T[initial_tool]
+; Select the initial box tool when the QIDI Box stack is enabled.
+OPTIMIZED_SELECT_INITIAL_TOOL T=[initial_tool]
 ; Set bed target temperature (do not wait).
 M140 S[bed_temperature_initial_layer_single]
 ; Set chamber target temperature (do not wait).
 M141 S[chamber_temperatures]
-; Use absolute coordinates for the front load line.
+; Use absolute coordinates for the front purge line.
 G90
-; Move to a standby point 8mm left of the centered front-edge load-line start.
+; Move to the centered front purge lead-in point before the first-layer nozzle wait.
 G1 Z5 F1200
-G1 X147 Y0 F20000
+G1 X210 Y0 F20000
 ; Wait for nozzle to be fully back at first-layer temperature over the lead-in zone.
 M109 S[nozzle_temperature_initial_layer]
-; Lower near the bed before moving onto the actual line start.
-G1 Z0.5 F900
-; Slide onto the actual line start before extrusion begins.
-G1 X155 F12000
-; Drop to the load-line height.
-G1 Z{initial_layer_print_height} F1200
 ; Use relative extrusion for the purge line.
 M83
 ; Reset extruder position before priming.
 G92 E0
-; Lightly load the nozzle before the line starts.
-G1 E2 F300
-; Run part cooling during the purge to help the strand release cleanly.
+; Draw a fat front purge line to consume high-temp ooze from the final heat-up.
+G1 Z0.5 F900
+G1 X218 Y0 F12000
+G1 Z{initial_layer_print_height} F1200
+G1 E6 F300
 M106 S200
-; Draw one centered light front-edge load line.
-G1 X230 E4.88 F6000
-; Taper the last 5mm so the strand breaks onto the line instead of stringing forward.
-G1 X235 E0.11 F6000
+G1 X178 E20 F1200
+G1 F6000
+G1 X173 E0.8
 ; Relieve pressure before the nozzle lifts and the startup setup block runs.
 G1 E-0.2 F1800
 ; Lift off after the tapered finish and pressure relief.

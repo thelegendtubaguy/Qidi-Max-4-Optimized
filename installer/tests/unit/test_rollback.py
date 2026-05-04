@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import tempfile
 import unittest
-from pathlib import Path
 from unittest import mock
 
 from installer.runtime.rollback import RollbackJournal
+from installer.tests.helpers import temp_path
 
 
 class RollbackTests(unittest.TestCase):
     def test_rollback_failure_writes_recovery_sentinel(self):
-        temp_root = Path(tempfile.mkdtemp(prefix="rollback-test-"))
+        temp_root = temp_path("rollback-test-")
         sentinel = temp_root / ".sentinel"
         path = temp_root / "printer.cfg"
         path.write_text("before\n", encoding="utf-8")

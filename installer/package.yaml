@@ -6,9 +6,14 @@ package:
   id: qidi-max4-optimized
   display_name: QIDI Max 4 Optimized
   printer_model: qidi-max4
-  version: "26.04.21.1"
+  version: "26.05.04.1"
   known_versions:
     - "26.04.21.1"
+    - "26.04.27.1"
+    - "26.04.27.2"
+    - "26.04.27.3"
+    - "26.04.27.4"
+    - "26.05.04.1"
 
 firmware:
   supported:
@@ -24,7 +29,6 @@ state:
 preflight:
   required_files:
     - "config/printer.cfg"
-    - "config/box.cfg"
     - "config/klipper-macros-qd/bed_mesh.cfg"
     - "config/klipper-macros-qd/filament.cfg"
     - "config/klipper-macros-qd/kinematics.cfg"
@@ -33,8 +37,6 @@ preflight:
   required_sections:
     - file: "config/printer.cfg"
       section: "save_variables"
-    - file: "config/box.cfg"
-      section: "box_extras"
     - file: "config/klipper-macros-qd/bed_mesh.cfg"
       section: "gcode_macro g29"
     - file: "config/klipper-macros-qd/filament.cfg"
@@ -55,6 +57,17 @@ install:
     source: "klipper/tltg-optimized-macros"
     destination: "config/tltg-optimized-macros"
     mode: mirror
+    required_files:
+      - "bed_mesh.cfg"
+      - "cancel.cfg"
+      - "cooling.cfg"
+      - "filament.cfg"
+      - "globals.cfg"
+      - "heaters.cfg"
+      - "helpers.cfg"
+      - "kinematics.cfg"
+      - "motion.cfg"
+      - "start_end.cfg"
 
   ensure_lines:
     - id: include_optimized_macros
@@ -144,6 +157,41 @@ patches:
         - firmwares: ["01.01.06.02"]
           expected: "10.0"
           desired: "5.0"
+
+    - id: z_tilt_speed
+      file: "config/printer.cfg"
+      section: "z_tilt"
+      option: "speed"
+      variants:
+        - firmwares: ["01.01.06.02"]
+          expected: "150"
+          desired: "600"
+
+    - id: bed_mesh_speed
+      file: "config/printer.cfg"
+      section: "bed_mesh"
+      option: "speed"
+      variants:
+        - firmwares: ["01.01.06.02"]
+          expected: "150"
+          desired: "600"
+
+    - id: virtual_sdcard_on_error_gcode
+      file: "config/printer.cfg"
+      section: "virtual_sdcard"
+      option: "on_error_gcode"
+      variants:
+        - firmwares: ["01.01.06.02"]
+          expected: "CANCEL_PRINT"
+          desired: "OPTIMIZED_CANCEL_PRINT_ON_ERROR"
+
+  delete_sections:
+    - id: kinematics_homing_override
+      file: "config/klipper-macros-qd/kinematics.cfg"
+      section: "homing_override"
+      variants:
+        - firmwares: ["01.01.06.02"]
+          expected_normalized_sha256: "6a924478b351dea193bf1060f5747b151bba3de4c5627c7faac741ad7b164cf4"
 
 postflight:
   verify_lines:

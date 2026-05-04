@@ -195,7 +195,12 @@ class RollbackJournal:
         ]
         for path in failed_paths:
             lines.append(f"rollback_failed_path: {path}")
-        atomic_write_text(self.recovery_sentinel_path, "\n".join(lines) + "\n", mode=0o600)
+        atomic_write_text(
+            self.recovery_sentinel_path,
+            "\n".join(lines) + "\n",
+            mode=0o600,
+            force_mode=True,
+        )
 
 
 

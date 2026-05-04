@@ -5,12 +5,13 @@ import unittest
 from unittest.mock import call, patch
 
 from installer.runtime.backup import create_config_backup
+from installer.runtime.errors import LockAcquisitionError
 from installer.runtime.cli import main, resolve_runtime_paths
 from installer.runtime.manifest import load_manifest
 from installer.runtime.naming import INSTALL_BACKUP_LABEL_PREFIX, UNINSTALL_BACKUP_LABEL_PREFIX
 from installer.runtime.reporter import PlainReporter
 from installer.runtime.runner import run_install
-from installer.tests.helpers import REPO_ROOT, build_env, copy_base_runtime, moonraker_server, snapshot_tree
+from installer.tests.helpers import REPO_ROOT, build_env, copy_base_runtime, MOONRAKER_QUERY_URL, moonraker_server, moonraker_urlopen, snapshot_tree
 
 
 class CliTests(unittest.TestCase):
@@ -54,6 +55,56 @@ class CliTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertFalse(sentinel.exists())
         self.assertIn("Recovery sentinel cleared.", stream.getvalue())
+
+    def test_auto_update_check_honors_recovery_sentinel_before_running(self):
+        printer_root = copy_base_runtime()
+        (printer_root / ".tltg_optimized_recovery_required").write_text("recovery required\n", encoding="utf-8")
+        stream = io.StringIO()
+        with patch("installer.runtime.cli.run_auto_update_check") as auto_update_check:
+            rc = main(
+                ["auto-update-check", "--plain", "--yes"],
+                stream=stream,
+                bundle_root=REPO_ROOT,
+                environ=build_env(printer_root, moonraker_url="http://127.0.0.1:9/unused"),
+            )
+
+        self.assertEqual(rc, 1)
+        auto_update_check.assert_not_called()
+        self.assertIn("Previous recovery did not complete. Restore from backup before continuing.", stream.getvalue())
+
+    def test_auto_update_check_honors_installer_lock_before_running(self):
+        printer_root = copy_base_runtime()
+        stream = io.StringIO()
+        with patch("installer.runtime.cli.acquire", side_effect=LockAcquisitionError("locked")), patch(
+            "installer.runtime.cli.run_auto_update_check"
+        ) as auto_update_check:
+            rc = main(
+                ["auto-update-check", "--plain", "--yes"],
+                stream=stream,
+                bundle_root=REPO_ROOT,
+                environ=build_env(printer_root, moonraker_url="http://127.0.0.1:9/unused"),
+            )
+
+        self.assertEqual(rc, 1)
+        auto_update_check.assert_not_called()
+        self.assertIn("locked", stream.getvalue())
+
+    def test_keyboard_interrupt_returns_130_without_traceback(self):
+        printer_root = copy_base_runtime()
+        stream = io.StringIO()
+        with moonraker_server("standby") as url:
+            with patch("installer.runtime.cli.run_install", side_effect=KeyboardInterrupt):
+                rc = main(
+                    ["install", "--plain", "--yes"],
+                    stream=stream,
+                    bundle_root=REPO_ROOT,
+                    environ=build_env(printer_root, moonraker_url=url),
+                )
+
+        self.assertEqual(rc, 130)
+        output = stream.getvalue()
+        self.assertIn("Interrupted. No further installer actions will run.", output)
+        self.assertNotIn("Traceback", output)
 
     def test_install_cancellation_returns_zero_without_writing(self):
         printer_root = copy_base_runtime()
@@ -100,12 +151,11 @@ class CliTests(unittest.TestCase):
     def test_uninstall_cancellation_returns_zero_without_writing(self):
         printer_root = copy_base_runtime()
         manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            run_install(paths, manifest, PlainReporter(io.StringIO()))
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        run_install(paths, manifest, PlainReporter(io.StringIO()), urlopen=moonraker_urlopen())
 
         stream = io.StringIO()
         with moonraker_server("standby") as url:
@@ -128,14 +178,13 @@ class CliTests(unittest.TestCase):
     def test_uninstall_disables_auto_updates_before_restart_prompt(self):
         printer_root = copy_base_runtime()
         manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
-        with moonraker_server("standby") as url:
-            paths = resolve_runtime_paths(
-                bundle_root=REPO_ROOT,
-                environ=build_env(printer_root, moonraker_url=url),
-            )
-            run_install(paths, manifest, PlainReporter(io.StringIO()))
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        run_install(paths, manifest, PlainReporter(io.StringIO()), urlopen=moonraker_urlopen())
 
-        def fake_disable_auto_updates(*, paths, reporter, require_sudo):
+        def fake_disable_auto_updates(*, paths, reporter, input_stream, require_sudo):
             reporter.line("Auto-updates disabled.")
 
         stream = io.StringIO()

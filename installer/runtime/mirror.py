@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+from .errors import ManagedTreeSourceError, PathSafetyError
 from .fs_atomic import atomic_delete, atomic_write_bytes, fsync_directory
 from .models import DriftRecord, InstalledState
 from .rollback import RollbackJournal
@@ -35,14 +36,49 @@ def collect_source_hashes(
     *,
     destination_root: Path,
     relative_to: Path,
+    required_files: tuple[str, ...] = (),
 ) -> dict[str, str]:
+    source_files = validate_managed_tree_source(
+        source_root, required_files=required_files
+    )
     result: dict[str, str] = {}
-    for item in sorted(source_root.rglob("*")):
-        if item.is_file():
-            rel = item.relative_to(source_root)
-            runtime_path = destination_root / rel
-            result[runtime_path.relative_to(relative_to).as_posix()] = sha256_file(item)
+    for item in source_files:
+        rel = item.relative_to(source_root)
+        runtime_path = destination_root / rel
+        result[runtime_path.relative_to(relative_to).as_posix()] = sha256_file(item)
     return result
+
+
+
+def validate_managed_tree_source(
+    source_root: Path, *, required_files: tuple[str, ...] = ()
+) -> tuple[Path, ...]:
+    if not source_root.exists():
+        raise ManagedTreeSourceError(f"Managed-tree source is missing: {source_root}")
+    if source_root.is_symlink() or not source_root.is_dir():
+        raise ManagedTreeSourceError(
+            f"Managed-tree source is not a real directory: {source_root}"
+        )
+
+    source_files: list[Path] = []
+    for item in sorted(source_root.rglob("*")):
+        if item.is_symlink():
+            raise PathSafetyError(f"Managed-tree source contains a symlink: {item}")
+        if item.is_file():
+            source_files.append(item)
+    if not source_files:
+        raise ManagedTreeSourceError(
+            f"Managed-tree source does not contain any files: {source_root}"
+        )
+
+    source_rel_paths = {item.relative_to(source_root).as_posix() for item in source_files}
+    missing_required = sorted(set(required_files) - source_rel_paths)
+    if missing_required:
+        raise ManagedTreeSourceError(
+            "Managed-tree source is missing required file(s): "
+            + ", ".join(missing_required)
+        )
+    return tuple(source_files)
 
 
 
@@ -93,13 +129,18 @@ def detect_uninstall_managed_tree_drift(
 
 
 def mirror_tree(
-    *, source_root: Path, destination_root: Path, journal: RollbackJournal
+    *,
+    source_root: Path,
+    destination_root: Path,
+    journal: RollbackJournal,
+    required_files: tuple[str, ...] = (),
 ) -> None:
     journal.track_tree(destination_root)
     source_files = {
         item.relative_to(source_root): item
-        for item in sorted(source_root.rglob("*"))
-        if item.is_file()
+        for item in validate_managed_tree_source(
+            source_root, required_files=required_files
+        )
     }
     destination_files = {
         item.relative_to(destination_root): item
