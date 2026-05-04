@@ -23,7 +23,7 @@
 - `scripts/smoke_test_installer_bundle.py` smoke-tests archive extraction, launcher execution, rich/plain launcher behavior, and restore-helper behavior against fixture runtime trees.
 - `scripts/run_installer_core_tests.py` runs every discoverable test under `installer/tests/`.
 - `.github/workflows/check-installer-bundle.yml` runs the full installer test suite, validates compatibility metadata, and smoke-tests the release bundle in pull requests.
-- `.github/workflows/publish-dev-installer.yml` runs the full installer test suite, validates compatibility metadata, and publishes dev prerelease assets from `dev`.
+- `.github/workflows/publish-dev-installer.yml` runs the full installer test suite, validates compatibility metadata, and publishes dev-branch assets to the `prerelease` GitHub prerelease.
 - `.github/workflows/publish-release-installer.yml` runs the full installer test suite, validates compatibility metadata, smoke-tests the release bundle, and publishes release assets from `main`.
 - On-device printer validation remains manual and is not enforced by repository automation.
 
