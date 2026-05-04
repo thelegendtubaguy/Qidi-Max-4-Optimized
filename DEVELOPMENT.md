@@ -2,24 +2,24 @@
 
 ## Install from GitHub
 
-Install the latest dev-branch bundle published to the `dev` prerelease. The bootstrap script is read from the `dev` branch; the `dev-latest` prerelease only needs to carry `tltg-optimized-macros-dev.tar.gz` and its `.sha256` file.
+Install the latest dev-branch bundle published to the `prerelease` GitHub prerelease. The bootstrap script is read from the `dev` branch; the `prerelease` release carries `tltg-optimized-macros-dev.tar.gz` and its `.sha256` file.
 
 ```bash
-TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/download/dev/tltg-optimized-macros-dev.tar.gz \
+TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/download/prerelease/tltg-optimized-macros-dev.tar.gz \
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/thelegendtubaguy/Qidi-Max-4-Optimized/dev/installer/release/install-latest.sh)"
 ```
 
 Dry-run the latest dev-branch bundle:
 
 ```bash
-TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/download/dev/tltg-optimized-macros-dev.tar.gz \
+TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/download/prerelease/tltg-optimized-macros-dev.tar.gz \
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/thelegendtubaguy/Qidi-Max-4-Optimized/dev/installer/release/install-latest.sh)" -- --dry-run
 ```
 
 And to uninstall from dev:
 
 ```bash
-TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/download/dev/tltg-optimized-macros-dev.tar.gz \
+TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/download/prerelease/tltg-optimized-macros-dev.tar.gz \
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/thelegendtubaguy/Qidi-Max-4-Optimized/dev/installer/release/install-latest.sh)" -- --uninstall
 ```
 

@@ -25,11 +25,15 @@ jobs:
         run: echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
       - name: Build dev installer bundle
         run: python3 scripts/build_installer_bundle.py --output-dir dist --channel dev --build-id '${{ steps.sha.outputs.short_sha }}'
-      - name: Publish dev prerelease
+      - name: Update prerelease tag
+        run: |
+          git tag --force prerelease "${GITHUB_SHA}"
+          git push --force origin refs/tags/prerelease
+      - name: Publish prerelease
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: dev
-          name: dev
+          tag_name: prerelease
+          name: prerelease
           prerelease: true
           make_latest: false
           overwrite_files: true
