@@ -19,6 +19,7 @@
 - `installer/runtime/vendor/` vendors the required pure-Python runtime dependencies.
 - `scripts/build_installer_bundle.py` builds the self-contained release bundle and includes `restore.sh`.
 - `scripts/check_installer_known_versions.py` validates `installer/package.yaml` against `installer/supported_upgrade_sources.yaml`.
+- `scripts/bump_installer_version.py <version>` updates `installer/package.yaml`, `installer/supported_upgrade_sources.yaml`, and `installer/klipper/tltg-optimized-macros/globals.cfg` for a release version bump.
 - `scripts/smoke_test_installer_bundle.py` smoke-tests archive extraction, launcher execution, rich/plain launcher behavior, and restore-helper behavior against fixture runtime trees.
 - `scripts/run_installer_core_tests.py` runs the focused always-on suite for install, uninstall, dry-run immutability, fail-closed install and uninstall checks, restore-helper snapshot restore, recovery-sentinel clearing, and rollback sentinel creation.
 - `.github/workflows/check-installer-bundle.yml` runs the focused core suite, validates compatibility metadata, and smoke-tests the release bundle in pull requests.
@@ -33,6 +34,7 @@
 ## Validation Commands
 
 ```bash
+python3 scripts/bump_installer_version.py <version>
 python3 scripts/run_installer_core_tests.py
 python3 scripts/build_installer_bundle.py --output-dir dist --channel release --smoke-test
 python3 scripts/build_installer_bundle.py --output-dir dist --channel dev --build-id local

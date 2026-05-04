@@ -87,6 +87,56 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertEqual(homing_override.count("_OPTIMIZED_HOME_Z_FROM_SAFE_POINT_RAW"), 2)
         self.assertNotIn("\n      _OPTIMIZED_HOME_Z_FROM_SAFE_POINT\n", f"\n{homing_override}\n")
 
+    def test_public_motion_helpers_restore_modal_state_and_acceleration(self):
+        cut_gcode = self._macro_gcode("OPTIMIZED_CUT_FILAMENT")
+        self.assertIn("saved_accel = printer.toolhead.max_accel|float", cut_gcode)
+        self.assert_ordered(
+            cut_gcode,
+            "SAVE_GCODE_STATE NAME=optimized_cut_filament_state",
+            "G90",
+            "M204 S10000",
+            "M83",
+            "G1 E-4 F1000",
+            "SET_VELOCITY_LIMIT ACCEL={saved_accel}",
+            "RESTORE_GCODE_STATE NAME=optimized_cut_filament_state",
+        )
+
+        move_gcode = self._macro_gcode("OPTIMIZED_MOVE_TO_TRASH")
+        self.assertIn("saved_accel = printer.toolhead.max_accel|float", move_gcode)
+        self.assert_ordered(
+            move_gcode,
+            "SAVE_GCODE_STATE NAME=optimized_move_to_trash_state",
+            "G90",
+            "M204 S10000",
+            "SET_VELOCITY_LIMIT ACCEL={saved_accel}",
+            "RESTORE_GCODE_STATE NAME=optimized_move_to_trash_state",
+        )
+
+    def test_end_filament_prep_uses_explicit_relative_extrusion_for_e_only_moves(self):
+        end_gcode = self._macro_gcode("OPTIMIZED_END_PRINT_FILAMENT_PREP")
+        self.assert_ordered(
+            end_gcode,
+            "SAVE_GCODE_STATE NAME=optimized_end_print_filament_prep_state",
+            "M83",
+            "G1 E-3 F1800",
+            "RESTORE_GCODE_STATE NAME=optimized_end_print_filament_prep_state",
+        )
+
+        unload_gcode = self._macro_gcode("OPTIMIZED_UNLOAD_FILAMENT")
+        self.assertIn("saved_accel = printer.toolhead.max_accel|float", unload_gcode)
+        self.assert_ordered(
+            unload_gcode,
+            "SAVE_GCODE_STATE NAME=optimized_unload_filament_state",
+            "G90",
+            "M83",
+            "CUT_FILAMENT T={T}",
+            "OPTIMIZED_MOVE_TO_TRASH",
+            "UNLOAD_T{T}",
+            "G1 E25 F300",
+            "SET_VELOCITY_LIMIT ACCEL={saved_accel}",
+            "RESTORE_GCODE_STATE NAME=optimized_unload_filament_state",
+        )
+
     def test_no_box_start_path_wipes_and_scrapes_without_rear_purge(self):
         start_gcode = self._macro_gcode("OPTIMIZED_START_PRINT_FILAMENT_PREP")
         no_box_gcode = start_gcode[start_gcode.index("M118 Starting without QIDI Box filament prep") :]
@@ -98,6 +148,13 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertIn("OPTIMIZED_WAIT_HOTEND S={scrape_target} STATUS=clear_nozzle", wipe_gcode)
         self.assertLess(wipe_gcode.index("_OPTIMIZED_HOME_Z_FROM_SAFE_POINT"), wipe_gcode.index("G1 Z-0.2 F480"))
         self.assertIn("G1 Z-0.2 F480", wipe_gcode)
+
+    def assert_ordered(self, text: str, *needles: str):
+        position = -1
+        for needle in needles:
+            next_position = text.index(needle, position + 1)
+            self.assertGreater(next_position, position, needle)
+            position = next_position
 
     def _macro_gcode(self, name: str) -> str:
         macro = self.macros[name]

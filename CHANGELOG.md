@@ -1,5 +1,8 @@
 # Changelog
 
+## 26.05.04.1
+- Doc and release workflow changes
+
 ## 26.04.27.3
 
 - Simplified `TLTG_PROBE_ACCURACY_CENTER` to only accept `SAMPLES`.

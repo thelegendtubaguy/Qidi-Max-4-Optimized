@@ -15,7 +15,7 @@ fi
 INSTALL_DIR=${HOME}/tltg-optimized-macros
 INSTALL_PARENT=${HOME}
 
-for tool in curl tar mktemp rm mkdir; do
+for tool in curl tar mktemp rm mkdir mv grep find; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     echo "Missing required tool: $tool" >&2
     exit 1
@@ -39,12 +39,46 @@ if command -v sha256sum >/dev/null 2>&1; then
 elif command -v shasum >/dev/null 2>&1; then
   (cd "$TMP_DIR" && shasum -a 256 -c "$CHECKSUM_NAME")
 else
-  echo "Warning: sha256sum or shasum not found; checksum verification skipped." >&2
+  echo "Missing required tool: sha256sum or shasum" >&2
+  exit 1
+fi
+
+MEMBERS_FILE="$TMP_DIR/archive.members"
+LISTING_FILE="$TMP_DIR/archive.listing"
+tar -tzf "$TMP_DIR/$ARCHIVE_NAME" > "$MEMBERS_FILE"
+tar -tvzf "$TMP_DIR/$ARCHIVE_NAME" > "$LISTING_FILE"
+if grep -E '(^/|(^|/)\.\.(/|$))' "$MEMBERS_FILE" >/dev/null 2>&1; then
+  echo "Archive contains unsafe member paths." >&2
+  exit 1
+fi
+if grep -Ev '^tltg-optimized-macros(/|$)' "$MEMBERS_FILE" >/dev/null 2>&1; then
+  echo "Archive does not use the expected tltg-optimized-macros/ root." >&2
+  exit 1
+fi
+if ! grep -Fx 'tltg-optimized-macros/install.sh' "$MEMBERS_FILE" >/dev/null 2>&1; then
+  echo "Archive is missing tltg-optimized-macros/install.sh." >&2
+  exit 1
+fi
+if grep -Ev '^[-d]' "$LISTING_FILE" >/dev/null 2>&1; then
+  echo "Archive contains unsupported member types." >&2
+  exit 1
+fi
+
+STAGE_DIR="$TMP_DIR/extract"
+mkdir -p "$STAGE_DIR"
+tar -xzf "$TMP_DIR/$ARCHIVE_NAME" -C "$STAGE_DIR"
+if find "$STAGE_DIR/tltg-optimized-macros" -type l | grep . >/dev/null 2>&1; then
+  echo "Archive contains symbolic links." >&2
+  exit 1
+fi
+if [ ! -f "$STAGE_DIR/tltg-optimized-macros/install.sh" ]; then
+  echo "Archive is missing tltg-optimized-macros/install.sh." >&2
+  exit 1
 fi
 
 rm -rf "$INSTALL_DIR"
 mkdir -p "$INSTALL_PARENT"
-tar -xzf "$TMP_DIR/$ARCHIVE_NAME" -C "$INSTALL_PARENT"
+mv "$STAGE_DIR/tltg-optimized-macros" "$INSTALL_DIR"
 
 cd "$INSTALL_DIR"
 ./install.sh "$@"

@@ -38,6 +38,7 @@ CORE_TESTS = (
     "installer.tests.integration.test_dry_run_flow.DryRunFlowTests.test_install_dry_run_happy_path_leaves_runtime_tree_unchanged",
     "installer.tests.integration.test_dry_run_flow.DryRunFlowTests.test_uninstall_dry_run_happy_path_leaves_runtime_tree_unchanged",
     "installer.tests.unit.test_restore_helper.RestoreHelperTests.test_restore_helper_supports_direct_restore_stages_before_live_write_and_restores_full_snapshot_without_clearing_sentinel",
+    "installer.tests.unit.test_bump_installer_version.BumpInstallerVersionTests.test_bump_version_updates_release_metadata",
     "installer.tests.unit.test_reporter.RichReporterTests.test_rich_reporter_renders_live_counters_and_prompt_panel",
     "installer.tests.unit.test_reporter.RichReporterTests.test_rich_reporter_renders_restore_backup_table",
     "installer.tests.unit.test_cli.CliTests.test_clear_recovery_sentinel_requires_restored_backup_match",

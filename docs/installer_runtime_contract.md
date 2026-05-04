@@ -17,6 +17,7 @@ Installer metadata used by the runtime:
 - `installer/package.yaml install.managed_tree` defines the managed-tree file set validated during install postflight.
 - `installer/package.yaml postflight.verify_lines` defines additional final install line-verification targets.
 - `installer/supported_upgrade_sources.yaml` defines the supported prior installed package versions and the exact uninstall-allowed guarded patch target tuples (`file + section + option`) for each version.
+- `python3 scripts/bump_installer_version.py <version>` updates `installer/package.yaml package.version`, appends `<version>` to `package.known_versions`, appends the `<version>` uninstall tuple set to `installer/supported_upgrade_sources.yaml`, and updates `installer/klipper/tltg-optimized-macros/globals.cfg variable_package_version`.
 
 State-file contract:
 - Public installer bundles write `config/tltg_optimized_state.yaml schema_version: 1`.
@@ -80,14 +81,14 @@ Install statuses and terminal messages:
 
 Auto-update runtime behavior:
 - `auto-update.sh --run` calls installer mode `auto-update-check`.
-- `auto-update-check` fetches the latest release checksum from GitHub and compares it to `config/tltg_optimized_auto_update_state.json latest_checksum`.
+- `auto-update-check` acquires `/home/qidi/printer_data/.tltg_optimized_installer.lock`, stops when `/home/qidi/printer_data/.tltg_optimized_recovery_required` exists, fetches the latest release checksum from GitHub, and compares it to `config/tltg_optimized_auto_update_state.json latest_checksum`.
 - Checksum fetch failure prints `Auto-update skipped because the latest release checksum could not be fetched.`, exits zero, and does not run the installer.
 - Matching checksums print `Auto-update check: already current.` and do not run the installer.
-- Missing checksum state writes the fetched checksum to `config/tltg_optimized_auto_update_state.json`, prints `Auto-update check: initialized latest release state.`, and does not run the installer.
+- Missing checksum state atomically writes the fetched checksum to `config/tltg_optimized_auto_update_state.json`, prints `Auto-update check: initialized latest release state.`, and does not run the installer.
 - Changed checksums query local Moonraker `print_stats.state`; `printing` or `paused` prints `Auto-update skipped because a print is active or paused.` and does not run the installer.
 - Unknown printer state prints `Auto-update skipped because printer state could not be determined.` and does not run the installer.
-- Idle changed checksums fetch `install-latest.sh` from GitHub and run it as `/bin/sh <downloaded-script> --yes --plain`; the child installer still performs firmware, package-version, target, Moonraker idle, and free-space preflight checks before writing.
-- Successful auto-update writes the new checksum to `config/tltg_optimized_auto_update_state.json` and prints `Auto-update complete.`.
+- Idle changed checksums fetch `tltg-optimized-macros.tar.gz`, verify the archive SHA-256 against the fetched checksum, validate that every tar member is under `tltg-optimized-macros/`, reject `..`, absolute paths, non-file/non-directory entries, and archives missing `tltg-optimized-macros/install.sh`, replace `~/tltg-optimized-macros` with the staged archive, and run `/bin/sh ~/tltg-optimized-macros/install.sh --yes --plain` while the parent `auto-update-check` process holds the installer lock.
+- Successful auto-update atomically writes the new checksum to `config/tltg_optimized_auto_update_state.json` and prints `Auto-update complete.`.
 - `auto-update.sh --enable-systemd` installs and enables the systemd service/timer through sudo without running the main install flow; sudo uses `TLTG_OPTIMIZED_SUDO_PASSWORD` when set, otherwise QIDI's public default password `qiditech`, and prompts for a password when the initial sudo attempt fails and input is interactive.
 - `auto-update.sh --disable-systemd` disables `tltg-optimized-auto-update.timer`, removes the service/timer unit files from `/etc/systemd/system/`, reloads systemd, and removes `config/tltg_optimized_auto_update_state.json`; sudo uses `TLTG_OPTIMIZED_SUDO_PASSWORD` when set, otherwise QIDI's public default password `qiditech`, and prompts for a password when the initial sudo attempt fails and input is interactive.
 
@@ -158,7 +159,7 @@ Manual restore helper:
 - `restore.sh` does not clear `/home/qidi/printer_data/.tltg_optimized_recovery_required`.
 - After a valid restore when the recovery sentinel exists, the clear step remains `install.sh --clear-recovery-sentinel`.
 Required install flow:
-1. Acquire the single-run advisory lock before visible status changes.
+1. Acquire the single-run advisory lock before visible status changes unless `auto-update-check` is already holding it for the child install process.
 2. Stop the run before visible status changes when `/home/qidi/printer_data/.tltg_optimized_recovery_required` exists.
 3. Set the visible status to `checking firmware version` before reading `/home/qidi/printer_data/config`.
 4. Detect the printer firmware from `/home/qidi/update/firmware_manifest.json` field `SOC.version` with installer-owned logic.

@@ -4,10 +4,11 @@ import argparse
 import os
 import sys
 import traceback
+from contextlib import nullcontext
 from pathlib import Path
 
 from . import messages
-from .auto_update import AutoUpdateError, disable_auto_updates, enable_auto_updates, run_auto_update_check
+from .auto_update import LOCK_HELD_ENV, AutoUpdateError, disable_auto_updates, enable_auto_updates, run_auto_update_check
 from .backup import BackupArchiveError
 from .compatibility import CompatibilityValidationError, load_supported_upgrade_sources, validate_manifest_compatibility
 from .demo import resolve_demo_tui_delay_seconds, run_demo
@@ -76,14 +77,25 @@ def main(
             return 0
 
         if args.mode == "auto-update-check":
-            result = run_auto_update_check(paths=paths, reporter=reporter, environ=env)
-            reporter.debug(
-                event="cli.complete",
-                mode=args.mode,
-                return_code=0,
-                action=result.action,
-            )
-            return 0
+            with acquire(paths.lock_path):
+                reporter.debug(
+                    event="cli.lock.acquired",
+                    mode=args.mode,
+                    lock_path=paths.lock_path,
+                )
+                ensure_no_recovery_sentinel(paths.recovery_sentinel_path)
+                reporter.debug(
+                    event="cli.recovery_sentinel.clear",
+                    sentinel_path=paths.recovery_sentinel_path,
+                )
+                result = run_auto_update_check(paths=paths, reporter=reporter, environ=env)
+                reporter.debug(
+                    event="cli.complete",
+                    mode=args.mode,
+                    return_code=0,
+                    action=result.action,
+                )
+                return 0
 
         if args.mode == "enable-auto-updates":
             enable_auto_updates(paths=paths, reporter=reporter, input_stream=input_stream, environ=env)
@@ -148,9 +160,10 @@ def main(
             known_versions=len(manifest.package.known_versions),
         )
 
-        with acquire(paths.lock_path):
+        lock_inherited = _lock_inherited(args.mode, env)
+        with nullcontext() if lock_inherited else acquire(paths.lock_path):
             reporter.debug(
-                event="cli.lock.acquired",
+                event="cli.lock.inherited" if lock_inherited else "cli.lock.acquired",
                 mode=args.mode,
                 lock_path=paths.lock_path,
             )
@@ -270,6 +283,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if args.yes and args.mode not in {"install", "uninstall", "auto-update-check"}:
         parser.error("--yes is only supported with install, uninstall, and auto-update-check.")
     return args
+
+
+
+def _lock_inherited(mode: str, environ: dict[str, str]) -> bool:
+    return mode == "install" and environ.get(LOCK_HELD_ENV) == "1"
 
 
 

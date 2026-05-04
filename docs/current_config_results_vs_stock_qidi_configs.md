@@ -1,12 +1,10 @@
 # Current_Config_Results_Vs_Stock_QIDI_Configs
 
 Stock baseline for this file:
-- `../Qidi-Max4-Defaults/config`
 - `https://github.com/thelegendtubaguy/Qidi-Max4-Defaults`
 
 Installer-managed optimized macro source paths in this file:
 - `installer/klipper/tltg-optimized-macros/*.cfg`
-- runtime destination on the printer: `config/tltg-optimized-macros/*.cfg`
 
 Excluded from this file:
 - comment translation only
@@ -14,7 +12,7 @@ Excluded from this file:
 - `SAVE_CONFIG` state blocks in `config/printer.cfg`
 - state drift in `config/saved_variables.cfg` and `config/officiall_filas_list.cfg`
 
-## Verified functional differences
+## Functional differences
 
 ### `config/printer.cfg`
 
@@ -63,6 +61,7 @@ Adds optimized-only knobs that do not exist in stock `config/klipper-macros-qd/g
 - `OPTIMIZED_MOVE_TO_TRASH` uses `G28 O X Y`; optimized `[homing_override]` handles the request.
 - `OPTIMIZED_CANCEL_PRINT_ON_ERROR` cancels virtual-SD errors without parking or moving the toolhead; it turns off heaters/fans, disables the box heater through `OPTIMIZED_DISABLE_BOX_HEATER`, calls `_KM_CANCEL_PRINT_BASE`, restores pause state without movement when paused, runs `G31` to re-enable bed mesh on the next print start, and clears pause.
 - `OPTIMIZED_MOVE_TO_TRASH` increases the final two chute-approach moves from stock `F2000` to `F3500`.
+- `OPTIMIZED_MOVE_TO_TRASH` saves caller G-code state, forces `G90` for its absolute park moves, stores `printer.toolhead.max_accel`, and restores acceleration plus caller G-code state before returning.
 
 ### `installer/klipper/tltg-optimized-macros/bed_mesh.cfg` -> runtime `config/tltg-optimized-macros/bed_mesh.cfg`
 
@@ -83,6 +82,7 @@ Adds optimized-only knobs that do not exist in stock `config/klipper-macros-qd/g
 ### `installer/klipper/tltg-optimized-macros/filament.cfg` -> runtime `config/tltg-optimized-macros/filament.cfg`
 
 - `OPTIMIZED_CUT_FILAMENT` removes the stock cutter tail sequence `G1 X15 F3000` + `G4 P2000` and exits at `G1 X15 F8000`.
+- `OPTIMIZED_CUT_FILAMENT` saves caller G-code state, forces `G90` for cutter travel, forces `M83` for the cutter retract, stores `printer.toolhead.max_accel`, and restores acceleration plus caller G-code state before returning.
 - `OPTIMIZED_START_PRINT_FILAMENT_PREP` runs `G31` before retained-filament branch selection for compatibility with stock `g29` state; the optimized print-start mesh sequence always runs `BED_MESH_CALIBRATE PROFILE=kamp` and does not branch on `_km_globals.bedmesh_before_print`.
 - `OPTIMIZED_START_PRINT_FILAMENT_PREP` adds a retained-filament reuse branch.
 - The reuse branch is gated by all of:
@@ -107,7 +107,9 @@ Adds optimized-only knobs that do not exist in stock `config/klipper-macros-qd/g
   - keeps a fixed `G4 P5000` cleanup wait instead of stock `G4 P6000`
   - uses `OPTIMIZED_M1004`
 - `OPTIMIZED_END_PRINT_FILAMENT_PREP` can retain the active box filament between prints instead of always unloading.
+- `OPTIMIZED_END_PRINT_FILAMENT_PREP` runs its end retract under `M83` inside `SAVE_GCODE_STATE` / `RESTORE_GCODE_STATE` so the `G1 E-3 F1800` move remains a relative retract regardless of caller extrusion mode.
 - `OPTIMIZED_UNLOAD_FILAMENT` clears retained-tool state before unloading and routes unload travel through `OPTIMIZED_MOVE_TO_TRASH`.
+- `OPTIMIZED_UNLOAD_FILAMENT` wraps the unload sequence in `SAVE_GCODE_STATE` / `RESTORE_GCODE_STATE`, forces `G90` and `M83` for its internal moves, restores `printer.toolhead.max_accel`, and keeps the post-unload `G1 E25 F300` move relative regardless of caller extrusion mode.
 
 ### `installer/klipper/tltg-optimized-macros/heaters.cfg` -> runtime `config/tltg-optimized-macros/heaters.cfg`
 
@@ -120,14 +122,14 @@ Adds optimized-only knobs that do not exist in stock `config/klipper-macros-qd/g
 - `OPTIMIZED_M1004` changes the unset default for `enable_polar_cooler` from stock `1` to `0`.
 - `OPTIMIZED_DISABLE_BOX_HEATER` calls vendor `DISABLE_BOX_HEATER` only when `printer["box_extras"]` is defined.
 - `TLTG_SET_BOX_TEMP BOX=<number> TARGET=<temp>` sets `SET_HEATER_TEMPERATURE HEATER=heater_box<number> TARGET=<temp>` after validating the runtime heater object and `target_max_temp_heater_generic` from `box_config box<number-1>`.
-- `OPTIMIZED_END_FAN_COOLDOWN` adds a timed post-print `P3` chamber/exhaust fan run with delayed shutdown.
+- `OPTIMIZED_END_FAN_COOLDOWN` adds a timed post-print `P3` chamber/exhaust fan run with delayed shutdown; the delayed shutdown skips `M106 P3 S0` while a print is active or paused.
 
 ### `orcaslicer_gcode/` and `qidistudio_gcode/`
 
 Both slicer packs now call repo-only optimized entrypoints.
 
 Start G-code:
-- `OPTIMIZED_PRINT_START_HOME`
+- `OPTIMIZED_PRINT_START_HOME`; cancels any pending `_optimized_end_fan_cooldown_off` timer before homing.
 - `OPTIMIZED_START_PRINT_FILAMENT_PREP`
 - `OPTIMIZED_START_PRINT_FILAMENT_PREP` receives `FIRSTLAYERTEMP=[nozzle_temperature_initial_layer]` and `PURGETEMP={nozzle_temperature_range_high[initial_tool]}`; the later front prime-line `M109` still uses `[nozzle_temperature_initial_layer]`.
 - The front prime line is a purge sequence at `Y0`: `G1 E6 F300`, `G1 X178 E20 F1200`, and `G1 X173 E0.8`.

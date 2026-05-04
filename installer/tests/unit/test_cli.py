@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import call, patch
 
 from installer.runtime.backup import create_config_backup
+from installer.runtime.errors import LockAcquisitionError
 from installer.runtime.cli import main, resolve_runtime_paths
 from installer.runtime.manifest import load_manifest
 from installer.runtime.naming import INSTALL_BACKUP_LABEL_PREFIX, UNINSTALL_BACKUP_LABEL_PREFIX
@@ -54,6 +55,39 @@ class CliTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertFalse(sentinel.exists())
         self.assertIn("Recovery sentinel cleared.", stream.getvalue())
+
+    def test_auto_update_check_honors_recovery_sentinel_before_running(self):
+        printer_root = copy_base_runtime()
+        (printer_root / ".tltg_optimized_recovery_required").write_text("recovery required\n", encoding="utf-8")
+        stream = io.StringIO()
+        with patch("installer.runtime.cli.run_auto_update_check") as auto_update_check:
+            rc = main(
+                ["auto-update-check", "--plain", "--yes"],
+                stream=stream,
+                bundle_root=REPO_ROOT,
+                environ=build_env(printer_root, moonraker_url="http://127.0.0.1:9/unused"),
+            )
+
+        self.assertEqual(rc, 1)
+        auto_update_check.assert_not_called()
+        self.assertIn("Previous recovery did not complete. Restore from backup before continuing.", stream.getvalue())
+
+    def test_auto_update_check_honors_installer_lock_before_running(self):
+        printer_root = copy_base_runtime()
+        stream = io.StringIO()
+        with patch("installer.runtime.cli.acquire", side_effect=LockAcquisitionError("locked")), patch(
+            "installer.runtime.cli.run_auto_update_check"
+        ) as auto_update_check:
+            rc = main(
+                ["auto-update-check", "--plain", "--yes"],
+                stream=stream,
+                bundle_root=REPO_ROOT,
+                environ=build_env(printer_root, moonraker_url="http://127.0.0.1:9/unused"),
+            )
+
+        self.assertEqual(rc, 1)
+        auto_update_check.assert_not_called()
+        self.assertIn("locked", stream.getvalue())
 
     def test_keyboard_interrupt_returns_130_without_traceback(self):
         printer_root = copy_base_runtime()
