@@ -55,7 +55,7 @@ Install statuses and terminal messages:
 - Failure during `performing preflight checks` returns `There is not enough free space to continue.` when available free space is less than the reserved total for zip backup bytes, rollback preimages, new/rewritten files, same-directory atomic temp files, and a safety margin of `max(64 MiB, 20% of the subtotal)`.
 - After install preflight succeeds and before backup creation when `--dry-run` is not active, the runtime prompts `Would you like us to take a backup of your configs and proceed with installation?` and accepts `Y` or `Yes` case-insensitively.
 - Any other install confirmation input returns `Installation cancelled.` and exits zero before backup creation or any write under `config/`.
-- Status `creating backup` covers backup label creation and `.zip` archive creation for `/home/qidi/printer_data/config`; backup creation fails when `config/` is missing, not a directory, empty, or contains symlinks.
+- Status `creating backup` covers backup label creation and `.zip` archive creation for `/home/qidi/printer_data/config`; backup creation fails when `config/` is missing, not a directory, empty, or contains symlinks other than the direct `config/KAMP` directory symlink.
 - During `install` only, when `--dry-run` is not active and one or more installer-created backup zip files already exist under `/home/qidi/printer_data/`, the runtime may emit exactly one extra non-status line chosen at random from the approved backup-history message pool.
 - The backup-history voice line must not replace required status strings, success strings, recovery guidance, or error messages.
 - The backup-history voice line must not appear during `uninstall`, `--dry-run`, or preflight failures that stop before backup creation.
@@ -189,7 +189,7 @@ Required install flow:
 25. During non-dry-run install, print `Installation cancelled.` and exit zero before backup or writes when the confirmation input is anything else.
 26. Set the visible status to `creating backup` after aggregated preflight checks pass and install confirmation succeeds.
 27. Build the backup label from `installer/package.yaml backup.label_prefix`, the detected install firmware, `installer/package.yaml package.version`, and an install timestamp.
-28. Create a `.zip` backup of `/home/qidi/printer_data/config` before any write to any file under `config/`.
+28. Create a `.zip` backup of `/home/qidi/printer_data/config` before any write to any file under `config/`; the direct `config/KAMP` directory symlink is allowed and is not traversed into the backup archive.
 29. Set the visible status to `installing` after the `.zip` backup completes.
 30. When an existing installed-state ledger is present, compare current managed-tree file hashes against `managed_tree.files[]` from that ledger and record local managed-tree drift before mirror mode.
 31. Compare prior `managed_tree.files[]` ledger hashes against the new bundle contents to distinguish expected bundle-version changes from local drift.

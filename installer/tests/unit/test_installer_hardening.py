@@ -4,6 +4,7 @@ import io
 import os
 import shutil
 import unittest
+import zipfile
 from pathlib import Path
 from unittest import mock
 
@@ -121,6 +122,44 @@ class InstallerHardeningTests(unittest.TestCase):
 
         self.assertEqual((config / "printer.cfg").read_text(encoding="utf-8"), "old\n")
         self.assertEqual((config / "extra.cfg").read_text(encoding="utf-8"), "extra\n")
+
+    def test_backup_creation_allows_stock_kamp_directory_symlink(self):
+        printer_root = temp_path("kamp-symlink-backup-runtime-")
+        config_root = printer_root / "config"
+        config_root.mkdir()
+        (config_root / "printer.cfg").write_text("[printer]\n", encoding="utf-8")
+        kamp_source = temp_path("kamp-symlink-target-")
+        (kamp_source / "KAMP_Settings.cfg").write_text(
+            "[gcode_macro _KAMP_Settings]\n", encoding="utf-8"
+        )
+        (config_root / "KAMP").symlink_to(kamp_source, target_is_directory=True)
+
+        backup_path = create_config_backup(
+            printer_data_root=printer_root,
+            source_directory="config",
+            backup_label="kamp-symlink-backup",
+        )
+
+        with zipfile.ZipFile(backup_path, "r") as archive:
+            names = set(archive.namelist())
+        self.assertIn("config/printer.cfg", names)
+        self.assertNotIn("config/KAMP/KAMP_Settings.cfg", names)
+
+    def test_backup_creation_rejects_non_kamp_symlink(self):
+        printer_root = temp_path("symlink-backup-runtime-")
+        config_root = printer_root / "config"
+        config_root.mkdir()
+        (config_root / "printer.cfg").write_text("[printer]\n", encoding="utf-8")
+        outside = temp_path("symlink-backup-outside-")
+        (config_root / "extra").symlink_to(outside, target_is_directory=True)
+
+        with self.assertRaises(PathSafetyError):
+            create_config_backup(
+                printer_data_root=printer_root,
+                source_directory="config",
+                backup_label="symlink-backup",
+            )
+        self.assertFalse((printer_root / "symlink-backup.zip").exists())
 
     def test_backup_creation_rejects_empty_source_tree(self):
         printer_root = temp_path("empty-backup-runtime-")

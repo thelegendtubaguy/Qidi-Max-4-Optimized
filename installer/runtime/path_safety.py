@@ -29,14 +29,21 @@ def ensure_runtime_path_has_no_symlink_components(
 
 
 
-def ensure_runtime_tree_has_no_symlinks(root: Path) -> None:
+def ensure_runtime_tree_has_no_symlinks(
+    root: Path, *, allowed_relative_symlinks: Iterable[str | Path] = ()
+) -> None:
     if not root.exists():
         return
     if root.is_symlink():
         raise PathSafetyError(f"Runtime tree root is a symlink: {root}")
+    allowed = {_relative_path_parts(path) for path in allowed_relative_symlinks}
     for item in root.rglob("*"):
-        if item.is_symlink():
-            raise PathSafetyError(f"Runtime tree contains a symlink: {item}")
+        if not item.is_symlink():
+            continue
+        relative_parts = item.relative_to(root).parts
+        if relative_parts in allowed and item.is_dir():
+            continue
+        raise PathSafetyError(f"Runtime tree contains a symlink: {item}")
 
 
 
@@ -60,6 +67,16 @@ def ensure_uninstall_paths_safe(
             printer_data_root=paths.printer_data_root,
             target=target,
         )
+
+
+
+def _relative_path_parts(path: str | Path) -> tuple[str, ...]:
+    relative = Path(path)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError(
+            f"Allowed symlink path must be relative and contained: {path}"
+        )
+    return relative.parts
 
 
 

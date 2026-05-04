@@ -198,7 +198,10 @@ def create_config_backup(
         printer_data_root=printer_data_root,
         target=source_root,
     )
-    ensure_runtime_tree_has_no_symlinks(source_root)
+    ensure_runtime_tree_has_no_symlinks(
+        source_root,
+        allowed_relative_symlinks=("KAMP",),
+    )
     source_files = [item for item in sorted(source_root.rglob("*")) if item.is_file()]
     if not source_files:
         raise BackupArchiveError(
