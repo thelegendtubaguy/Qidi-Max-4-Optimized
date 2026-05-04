@@ -19,6 +19,7 @@ from .firmware import detect_firmware_version_best_effort
 from .interaction import confirm_yes, maybe_restart_klipper
 from .fs_atomic import atomic_write_text
 from .mirror import detect_uninstall_managed_tree_drift, remove_tree
+from .path_safety import ensure_uninstall_paths_safe
 from .models import (
     DriftRecord,
     EnsureLineSpec,
@@ -64,6 +65,7 @@ def run_uninstall(
     )
 
     reporter.status(messages.CHECKING_INSTALLED_PACKAGE)
+    ensure_uninstall_paths_safe(paths=paths, manifest=manifest)
     state_path = paths.printer_data_root / manifest.state_file
     include_line = manifest.include_line
     managed_tree_root = paths.printer_data_root / manifest.managed_tree.destination

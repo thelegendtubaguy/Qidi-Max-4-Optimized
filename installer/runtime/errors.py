@@ -40,6 +40,14 @@ class PrinterStateError(InstallerError):
         super().__init__(messages.COULD_NOT_DETERMINE_PRINTER_STATE)
 
 
+class ManagedTreeSourceError(InstallerError):
+    pass
+
+
+class PathSafetyError(InstallerError):
+    pass
+
+
 class ActivePrintError(InstallerError):
     def __init__(self):
         super().__init__(messages.CANNOT_CONTINUE_ACTIVE_PRINT)

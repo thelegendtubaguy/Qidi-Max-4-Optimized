@@ -123,7 +123,7 @@ def write_installed_state(path: Path, state: InstalledState) -> None:
         ],
     }
     text = yaml.safe_dump(document, sort_keys=False)
-    atomic_write_text(path, text, mode=0o600)
+    atomic_write_text(path, text, mode=0o600, force_mode=True)
 
 
 

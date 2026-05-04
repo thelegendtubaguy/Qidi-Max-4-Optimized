@@ -36,6 +36,7 @@ class ManagedTreeSpec:
     source: str
     destination: str
     mode: str
+    required_files: tuple[str, ...]
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,6 @@
 # Qidi Max 4 Optimized
 
-Opinionated and Optimized Klipper macros and slicer machine G-code for the QIDI Max 4.
+Opinionated and Optimized Klipper macros and slicer machine GCode for the QIDI Max 4.
 
 ## tl;dr
 1. SSH into your printer `qidi@<your printer's ip>`.
@@ -9,7 +9,7 @@ Opinionated and Optimized Klipper macros and slicer machine G-code for the QIDI 
 /bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/install-latest.sh)"
 ```
 3. Follow the prompts
-4. Use Orca and subscribe to the OrcaCloud bundle shared [here](https://cloud.orcaslicer.com/b/4c4b3b74c745).  If you're not using Orca >= 2.4.0, see [the section on slicer configs]().
+4. Use Orca and subscribe to the OrcaCloud bundle shared [here](https://cloud.orcaslicer.com/b/4c4b3b74c745).  If you're not using Orca >= 2.4.0, see [the section on slicer configs](#slicer-machine-gcode-updates).
 5. Slice using the printer profile `Qidi X-Max 4 0.4 nozzle - TLTG Optimized GCode`
 6. Optional: Make a copy and customize the machine profile to your liking.
 
@@ -23,7 +23,7 @@ If you'd rather do a dry-run before committing to a full install, you can run th
 
 ### Automatic Updates
 
-The installer asks whether to enable hourly automatic optimized config updates before asking whether to restart Klipper. Auto-updates use a system-level systemd timer. Enabling auto-updates requires sudo once to install `/etc/systemd/system/tltg-optimized-auto-update.service` and `/etc/systemd/system/tltg-optimized-auto-update.timer`; the installer uses QIDI's public default sudo password (`qiditech`) unless `TLTG_OPTIMIZED_SUDO_PASSWORD` is set, then prompts for a password if the initial sudo attempt fails. 
+The installer asks whether to enable hourly automatic optimized config updates before asking whether to restart Klipper. Auto-updates use a system-level systemd timer. Enabling auto-updates requires sudo once to install `/etc/systemd/system/tltg-optimized-auto-update.service` and `/etc/systemd/system/tltg-optimized-auto-update.timer`; the installer uses QIDI's public default sudo password (`qiditech`) unless the environment variable `TLTG_OPTIMIZED_SUDO_PASSWORD` is set, then prompts for a password if the initial sudo attempt fails. 
 
 Each hourly run checks the latest GitHub release checksum, skips while the printer is printing or paused, and then runs the normal installer with preflight checks and auto-approval.
 
@@ -41,7 +41,7 @@ Run one auto-update check manually:
 
 ### QIDI Box temperature from Fluidd
 
-The installer adds `TLTG_SET_BOX_TEMP`, a Fluidd-visible macro for setting the QIDI Box heater target because Qidi's Fluidd config is incapable of setting `heater_box1` correctly.
+The installer adds `TLTG_SET_BOX_TEMP`, a macro for setting the QIDI Box heater target because Qidi's Fluidd config is incapable of setting `heater_box1` correctly.
 
 Use:
 
@@ -87,8 +87,6 @@ Use the pack that matches your slicer. The two packs are functionally aligned, b
 Use the pack that matches your slicer. The two packs are functionally aligned, but their placeholder syntax is different.
 
 ## Uninstall
-
-Uninstall removes the auto-update systemd timer when it was installed by this package before asking whether to restart Klipper.
 
 If `~/tltg-optimized-macros/` is still present on the printer:
 

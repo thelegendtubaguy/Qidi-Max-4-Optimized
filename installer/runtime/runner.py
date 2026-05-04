@@ -39,6 +39,7 @@ from .models import (
     RuntimePaths,
     StateFileIntent,
 )
+from .path_safety import ensure_install_paths_safe
 from .postflight import verify_install_postflight
 from .preflight import run_install_preflight
 from .rollback import RollbackJournal
@@ -75,6 +76,7 @@ def run_install(
         raise UnsupportedFirmwareError()
 
     reporter.status(messages.CHECKING_PACKAGE_VERSION)
+    ensure_install_paths_safe(paths=paths, manifest=manifest)
     state_path = paths.printer_data_root / manifest.state_file
     prior_state = None
     if state_path.exists():
@@ -305,18 +307,9 @@ def _execute_install(
             source_root=paths.installer_root / manifest.managed_tree.source,
             destination_root=paths.printer_data_root / manifest.managed_tree.destination,
             journal=journal,
+            required_files=manifest.managed_tree.required_files,
         )
         install_counters["managed_trees"][0] = 1
-        reporter.emit_install_counters(**_freeze_counters(install_counters))
-
-        for ensure_line in manifest.install.ensure_lines:
-            path = paths.printer_data_root / ensure_line.file
-            text = klipper_cfg.read_text(path)
-            new_text = ensure_line_after(text, ensure_line.line, ensure_line.after)
-            if new_text != text:
-                journal.note_write()
-                atomic_write_text(path, new_text)
-            install_counters["ensure_lines"][0] += 1
         reporter.emit_install_counters(**_freeze_counters(install_counters))
 
         for patch in manifest.patches.set_options:
@@ -347,6 +340,16 @@ def _execute_install(
                 journal.note_write()
                 atomic_write_text(path, new_text)
             install_counters["patches"][0] += 1
+        reporter.emit_install_counters(**_freeze_counters(install_counters))
+
+        for ensure_line in manifest.install.ensure_lines:
+            path = paths.printer_data_root / ensure_line.file
+            text = klipper_cfg.read_text(path)
+            new_text = ensure_line_after(text, ensure_line.line, ensure_line.after)
+            if new_text != text:
+                journal.note_write()
+                atomic_write_text(path, new_text)
+            install_counters["ensure_lines"][0] += 1
         reporter.emit_install_counters(**_freeze_counters(install_counters))
 
         verify_install_postflight(
@@ -516,6 +519,7 @@ def _source_hashes(paths: RuntimePaths, manifest: Manifest) -> dict[str, str]:
         paths.installer_root / manifest.managed_tree.source,
         destination_root=paths.printer_data_root / manifest.managed_tree.destination,
         relative_to=paths.printer_data_root,
+        required_files=manifest.managed_tree.required_files,
     )
 
 

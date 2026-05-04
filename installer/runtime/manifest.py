@@ -140,6 +140,10 @@ def parse_manifest(raw: Any) -> Manifest:
                 _require_str(managed_tree_raw, "destination"), allowed_roots=("config",)
             ),
             mode=_validate_managed_tree_mode(_require_str(managed_tree_raw, "mode")),
+            required_files=tuple(
+                _validate_tree_relative_path(item)
+                for item in _optional_list_of_str(managed_tree_raw, "required_files")
+            ),
         ),
         ensure_lines=ensure_lines,
     )
@@ -291,6 +295,18 @@ def _validate_managed_tree_mode(mode: str) -> str:
     return mode
 
 
+def _validate_tree_relative_path(path: str) -> str:
+    if not isinstance(path, str) or not path:
+        raise ManifestValidationError("Path values must be non-empty strings.")
+    pure = PurePosixPath(path)
+    if pure.is_absolute() or any(part == ".." for part in pure.parts):
+        raise ManifestValidationError(f"Path is not allowed: {path}")
+    if not pure.parts:
+        raise ManifestValidationError(f"Path is not allowed: {path}")
+    return pure.as_posix()
+
+
+
 def _require_mapping(mapping: dict[str, Any], key: str) -> dict[str, Any]:
     value = mapping.get(key)
     if not isinstance(value, dict):
@@ -342,6 +358,19 @@ def _require_list_of_str(mapping: dict[str, Any], key: str) -> list[str]:
             raise ManifestValidationError(f"Expected string entries at {key}.")
         result.append(item)
     return result
+
+
+def _optional_list_of_str(mapping: dict[str, Any], key: str) -> list[str]:
+    value = mapping.get(key, [])
+    if not isinstance(value, list):
+        raise ManifestValidationError(f"Expected list at {key}.")
+    result: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item:
+            raise ManifestValidationError(f"Expected string entries at {key}.")
+        result.append(item)
+    return result
+
 
 
 def _require_unique_str_list(

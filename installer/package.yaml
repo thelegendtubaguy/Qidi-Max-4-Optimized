@@ -57,6 +57,17 @@ install:
     source: "klipper/tltg-optimized-macros"
     destination: "config/tltg-optimized-macros"
     mode: mirror
+    required_files:
+      - "bed_mesh.cfg"
+      - "cancel.cfg"
+      - "cooling.cfg"
+      - "filament.cfg"
+      - "globals.cfg"
+      - "heaters.cfg"
+      - "helpers.cfg"
+      - "kinematics.cfg"
+      - "motion.cfg"
+      - "start_end.cfg"
 
   ensure_lines:
     - id: include_optimized_macros

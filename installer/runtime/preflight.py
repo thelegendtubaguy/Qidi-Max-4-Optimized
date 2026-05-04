@@ -9,7 +9,19 @@ from . import klipper_cfg, patches, safety
 from .ensure_lines import has_active_line
 from .manifest import select_patch_variant
 from .errors import PreflightTargetsError
-from .models import InstalledState, Manifest, PatchLedgerEntry, PatchTargetIssue, PreflightReport, RuntimePaths
+from .mirror import validate_managed_tree_source
+from .path_safety import (
+    ensure_install_paths_safe,
+    ensure_runtime_path_has_no_symlink_components,
+)
+from .models import (
+    InstalledState,
+    Manifest,
+    PatchLedgerEntry,
+    PatchTargetIssue,
+    PreflightReport,
+    RuntimePaths,
+)
 
 DiskUsageFn = Callable[[Path], object]
 UrlOpenFn = Callable[..., object]
@@ -26,6 +38,11 @@ def run_install_preflight(
     detected_firmware: str | None = None,
     prior_state: InstalledState | None = None,
 ) -> None:
+    ensure_install_paths_safe(paths=paths, manifest=manifest)
+    validate_managed_tree_source(
+        paths.installer_root / manifest.managed_tree.source,
+        required_files=manifest.managed_tree.required_files,
+    )
     report = build_install_preflight_report(
         paths=paths,
         manifest=manifest,
@@ -114,6 +131,11 @@ def run_uninstall_preflight(
     disk_usage: DiskUsageFn = shutil.disk_usage,
     urlopen: UrlOpenFn = urllib.request.urlopen,
 ) -> None:
+    for path in (state.managed_tree.root, include_line_file, state_file_path):
+        ensure_runtime_path_has_no_symlink_components(
+            printer_data_root=paths.printer_data_root,
+            target=paths.printer_data_root / path,
+        )
     report = build_uninstall_preflight_report(
         paths=paths,
         state=state,

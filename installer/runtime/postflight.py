@@ -3,7 +3,7 @@ from __future__ import annotations
 from . import klipper_cfg
 from .ensure_lines import has_active_line
 from .errors import PreflightTargetsError
-from .mirror import collect_source_hashes
+from .mirror import collect_source_hashes, sha256_file
 from .models import (
     EnsureLineSpec,
     InstalledState,
@@ -25,12 +25,16 @@ def verify_install_postflight(
         paths.installer_root / manifest.managed_tree.source,
         destination_root=paths.printer_data_root / manifest.managed_tree.destination,
         relative_to=paths.printer_data_root,
+        required_files=manifest.managed_tree.required_files,
     )
-    missing_files = [
-        rel_path
-        for rel_path in expected_files
-        if not (paths.printer_data_root / rel_path).exists()
-    ]
+    missing_files = []
+    for rel_path, expected_sha256 in expected_files.items():
+        path = paths.printer_data_root / rel_path
+        if not path.exists() or not path.is_file():
+            missing_files.append(rel_path)
+            continue
+        if sha256_file(path) != expected_sha256:
+            missing_files.append(rel_path)
     missing_lines = []
     for spec in manifest.postflight.verify_lines:
         path = paths.printer_data_root / spec.file
