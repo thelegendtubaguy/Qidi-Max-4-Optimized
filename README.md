@@ -29,6 +29,7 @@ For stock QIDI-shipped configs and firmware-version snapshots, see [Qidi-Max4-De
 - [Temperature Flow From The Optimized Orca And QIDIStudio Start G-Code](docs/orca-hotendtemp-purgetemp-flow.md): temperature timeline for the repo's optimized slicer packs through the active box-prep and prime-line sequence.
 - [QIDI Box Implementation Notes](docs/box_print_start_notes.md): reverse-engineering notes for QIDI's vendor-implemented `BOX_PRINT_START` and related box internals.
 - [Current Config Results Vs Stock QIDI Configs](docs/current-config-results-vs-stock-qidi-configs.md): summary of behavior changes and estimated time impact versus the stock configs shipped by QIDI.
+- [Want to help with testing?](TESTING.md)
 
 ## How to use this repo
 
