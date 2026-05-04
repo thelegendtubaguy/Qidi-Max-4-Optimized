@@ -15,7 +15,7 @@ Ordered invariants:
 - `G29.0`
 - `OPTIMIZED_PRINT_START_HOME`
 - `OPTIMIZED_START_PRINT_FILAMENT_PREP EXTRUDER=[initial_no_support_extruder] FIRSTLAYERTEMP=[nozzle_temperature_initial_layer] PURGETEMP={nozzle_temperature_range_high[initial_tool]} BEDTEMP=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperature]`
-- `OPTIMIZED_SELECT_INITIAL_TOOL T=[initial_tool]`
+- `T[initial_tool]`
 - `M109 S[nozzle_temperature_initial_layer]`
 - `G1 E6 F300`
 - `G1 X178 E20 F1200`
@@ -24,7 +24,6 @@ Ordered invariants:
 
 Forbidden patterns:
 
-- `T[initial_tool]`
 - `HOTENDTEMP=`
 - `LOADTEMP=`
 - `PURGETEMP=[nozzle_temperature_initial_layer]`
@@ -39,7 +38,7 @@ Ordered invariants:
 - `G29.0`
 - `OPTIMIZED_PRINT_START_HOME`
 - `OPTIMIZED_START_PRINT_FILAMENT_PREP EXTRUDER=[initial_no_support_extruder] FIRSTLAYERTEMP=[nozzle_temperature_initial_layer] PURGETEMP={nozzle_temperature_range_high[initial_tool]} BEDTEMP=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperatures]`
-- `OPTIMIZED_SELECT_INITIAL_TOOL T=[initial_tool]`
+- `T[initial_tool]`
 - `M109 S[nozzle_temperature_initial_layer]`
 - `G1 E6 F300`
 - `G1 X178 E20 F1200`
@@ -48,7 +47,6 @@ Ordered invariants:
 
 Forbidden patterns:
 
-- `T[initial_tool]`
 - `HOTENDTEMP=`
 - `LOADTEMP=`
 - `PURGETEMP=[nozzle_temperature_initial_layer]`
@@ -59,7 +57,7 @@ Forbidden patterns:
 
 Condition: `reuse_loaded`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:138-181`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:127-170`
 
 Direct visible macro calls in branch slice:
 
@@ -100,7 +98,7 @@ Forbidden patterns:
 
 Condition: `box_enabled && !reuse_loaded`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:182-248`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:171-237`
 
 Direct visible macro calls in branch slice:
 
@@ -141,7 +139,7 @@ Forbidden patterns:
 
 Condition: `!box_available || !enable_box`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:249-288`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:238-277`
 
 Direct visible macro calls in branch slice:
 

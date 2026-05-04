@@ -22,8 +22,8 @@ OPTIMIZED_START_PRINT_FILAMENT_PREP EXTRUDER=[initial_no_support_extruder] FIRST
 M106 P4 S255
 ; Set total layer count for progress reporting.
 SET_PRINT_STATS_INFO TOTAL_LAYER=[total_layer_count]
-; Select the initial box tool when the QIDI Box stack is enabled.
-OPTIMIZED_SELECT_INITIAL_TOOL T=[initial_tool]
+; Select the initial tool before the front prime line.
+T[initial_tool]
 ; Set bed target temperature (do not wait).
 M140 S[bed_temperature_initial_layer_single]
 ; Set chamber target temperature (do not wait).

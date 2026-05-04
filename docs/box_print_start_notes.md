@@ -28,7 +28,7 @@ M400
 OPTIMIZED_EXTRUSION_AND_FLUSH PURGETEMP={purge_temp} CHAMBER={chamber_target}
 ```
 
-The optimized start path bypasses `BOX_PRINT_START` in the reuse branch and no-box branch, and calls it only in the box-enabled non-reuse branch. Slicer start G-code passes `FIRSTLAYERTEMP=[nozzle_temperature_initial_layer]` and `PURGETEMP={nozzle_temperature_range_high[initial_tool]}` to `OPTIMIZED_START_PRINT_FILAMENT_PREP`; `PURGETEMP` is forwarded to vendor `BOX_PRINT_START` as its required `HOTENDTEMP` parameter and to the rear purge path. The final first-layer temperature remains the later slicer `M109 S[nozzle_temperature_initial_layer]` before the front prime line.
+The optimized start path bypasses `BOX_PRINT_START` in the reuse branch and no-box branch, and calls it only in the box-enabled non-reuse branch. Slicer start G-code passes `FIRSTLAYERTEMP=[nozzle_temperature_initial_layer]` and `PURGETEMP={nozzle_temperature_range_high[initial_tool]}` to `OPTIMIZED_START_PRINT_FILAMENT_PREP`; `PURGETEMP` is forwarded to vendor `BOX_PRINT_START` as its required `HOTENDTEMP` parameter and to the rear purge path. Slicer start G-code emits `T[initial_tool]` before the front prime line so Orca/QIDI Studio annotate the startup extrusion with the selected initial object filament. The final first-layer temperature remains the later slicer `M109 S[nozzle_temperature_initial_layer]` before the front prime line.
 
 ## Active box stack on this machine
 
