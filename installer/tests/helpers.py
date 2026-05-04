@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import atexit
 import json
 import shutil
 import tempfile
@@ -11,11 +12,29 @@ from pathlib import Path
 FIXTURES_ROOT = Path(__file__).resolve().parent / "fixtures"
 BASE_RUNTIME_FIXTURE = FIXTURES_ROOT / "runtime" / "base"
 REPO_ROOT = Path(__file__).resolve().parents[2]
+_TEMP_ROOTS: list[Path] = []
+
+
+
+def temp_path(prefix: str) -> Path:
+    root = Path(tempfile.mkdtemp(prefix=prefix))
+    _TEMP_ROOTS.append(root)
+    return root
+
+
+
+def _cleanup_temp_roots() -> None:
+    for root in reversed(_TEMP_ROOTS):
+        shutil.rmtree(root, ignore_errors=True)
+
+
+
+atexit.register(_cleanup_temp_roots)
 
 
 
 def copy_base_runtime() -> Path:
-    temp_root = Path(tempfile.mkdtemp(prefix="installer-runtime-"))
+    temp_root = temp_path("installer-runtime-")
     shutil.copytree(BASE_RUNTIME_FIXTURE / "config", temp_root / "config")
     shutil.copy2(BASE_RUNTIME_FIXTURE / "firmware_manifest.json", temp_root / "firmware_manifest.json")
     return temp_root

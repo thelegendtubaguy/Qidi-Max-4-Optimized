@@ -21,10 +21,10 @@
 - `scripts/check_installer_known_versions.py` validates `installer/package.yaml` against `installer/supported_upgrade_sources.yaml`.
 - `scripts/bump_installer_version.py <version>` updates `installer/package.yaml`, `installer/supported_upgrade_sources.yaml`, and `installer/klipper/tltg-optimized-macros/globals.cfg` for a release version bump.
 - `scripts/smoke_test_installer_bundle.py` smoke-tests archive extraction, launcher execution, rich/plain launcher behavior, and restore-helper behavior against fixture runtime trees.
-- `scripts/run_installer_core_tests.py` runs the focused always-on suite for install, uninstall, dry-run immutability, fail-closed install and uninstall checks, restore-helper snapshot restore, recovery-sentinel clearing, and rollback sentinel creation.
-- `.github/workflows/check-installer-bundle.yml` runs the focused core suite, validates compatibility metadata, and smoke-tests the release bundle in pull requests.
-- `.github/workflows/publish-dev-installer.yml` runs the focused core suite, validates compatibility metadata, and publishes dev prerelease assets from `dev`.
-- `.github/workflows/publish-release-installer.yml` runs the focused core suite, validates compatibility metadata, smoke-tests the release bundle, and publishes release assets from `main`.
+- `scripts/run_installer_core_tests.py` runs every discoverable test under `installer/tests/`.
+- `.github/workflows/check-installer-bundle.yml` runs the full installer test suite, validates compatibility metadata, and smoke-tests the release bundle in pull requests.
+- `.github/workflows/publish-dev-installer.yml` runs the full installer test suite, validates compatibility metadata, and publishes dev prerelease assets from `dev`.
+- `.github/workflows/publish-release-installer.yml` runs the full installer test suite, validates compatibility metadata, smoke-tests the release bundle, and publishes release assets from `main`.
 - On-device printer validation remains manual and is not enforced by repository automation.
 
 ## Remaining Work

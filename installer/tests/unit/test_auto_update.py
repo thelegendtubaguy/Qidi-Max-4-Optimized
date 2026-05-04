@@ -5,7 +5,6 @@ import io
 import json
 import subprocess
 import tarfile
-import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -22,7 +21,7 @@ from installer.runtime.auto_update import (
 from installer.runtime.cli import resolve_runtime_paths
 from installer.runtime.naming import BUNDLE_ROOT_NAME
 from installer.runtime.reporter import PlainReporter
-from installer.tests.helpers import REPO_ROOT, build_env, copy_base_runtime, moonraker_server
+from installer.tests.helpers import REPO_ROOT, build_env, copy_base_runtime, moonraker_server, temp_path
 
 
 class _Response:
@@ -40,7 +39,7 @@ class _Response:
 
 
 def _release_archive(payloads: dict[str, bytes]) -> bytes:
-    archive_path = Path(tempfile.mkdtemp(prefix="auto-update-archive-")) / "bundle.tar.gz"
+    archive_path = temp_path("auto-update-archive-") / "bundle.tar.gz"
     with tarfile.open(archive_path, "w:gz") as archive:
         root = tarfile.TarInfo(BUNDLE_ROOT_NAME)
         root.type = tarfile.DIRTYPE
@@ -161,7 +160,7 @@ class AutoUpdateTests(unittest.TestCase):
 
     def test_changed_checksum_downloads_verified_archive_and_runs_extracted_installer(self):
         printer_root = copy_base_runtime()
-        bundle_root = Path(tempfile.mkdtemp(prefix="auto-update-bundle-")) / BUNDLE_ROOT_NAME
+        bundle_root = temp_path("auto-update-bundle-") / BUNDLE_ROOT_NAME
         bundle_root.mkdir()
         (bundle_root / "old.txt").write_text("old bundle", encoding="utf-8")
         archive = _release_archive({"install.sh": b"#!/bin/sh\nexit 0\n", "payload.txt": b"new bundle\n"})
@@ -217,7 +216,7 @@ class AutoUpdateTests(unittest.TestCase):
 
     def test_changed_checksum_mismatch_does_not_replace_bundle_or_state(self):
         printer_root = copy_base_runtime()
-        bundle_root = Path(tempfile.mkdtemp(prefix="auto-update-bundle-")) / BUNDLE_ROOT_NAME
+        bundle_root = temp_path("auto-update-bundle-") / BUNDLE_ROOT_NAME
         bundle_root.mkdir()
         (bundle_root / "old.txt").write_text("old bundle", encoding="utf-8")
         checksum = "2" * 64

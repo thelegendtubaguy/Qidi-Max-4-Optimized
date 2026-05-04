@@ -3,7 +3,6 @@ from __future__ import annotations
 import io
 import os
 import shutil
-import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -19,7 +18,7 @@ from installer.runtime.models import InstalledState, ManagedTreeState
 from installer.runtime.reporter import PlainReporter
 from installer.runtime.runner import run_install
 from installer.runtime.state_file import write_installed_state
-from installer.tests.helpers import REPO_ROOT, build_env, copy_base_runtime, moonraker_server, snapshot_tree
+from installer.tests.helpers import REPO_ROOT, build_env, copy_base_runtime, moonraker_server, snapshot_tree, temp_path
 
 
 class InstallerHardeningTests(unittest.TestCase):
@@ -28,7 +27,7 @@ class InstallerHardeningTests(unittest.TestCase):
 
     def test_managed_tree_source_must_exist_before_backup_or_runtime_write(self):
         printer_root = copy_base_runtime()
-        missing_installer_root = Path(tempfile.mkdtemp(prefix="missing-installer-root-"))
+        missing_installer_root = temp_path("missing-installer-root-")
         with moonraker_server("standby") as url:
             paths = resolve_runtime_paths(
                 bundle_root=REPO_ROOT,
@@ -53,7 +52,7 @@ class InstallerHardeningTests(unittest.TestCase):
         self.assertFalse(any(printer_root.glob("*.zip")))
 
     def test_managed_tree_source_must_contain_manifest_required_files(self):
-        source_root = Path(tempfile.mkdtemp(prefix="managed-tree-source-"))
+        source_root = temp_path("managed-tree-source-")
         (source_root / "bed_mesh.cfg").write_text("[gcode_macro g29]\n", encoding="utf-8")
 
         with self.assertRaises(ManagedTreeSourceError):
@@ -84,7 +83,7 @@ class InstallerHardeningTests(unittest.TestCase):
 
     def test_symlinked_managed_tree_destination_is_rejected_before_mirror(self):
         printer_root = copy_base_runtime()
-        outside = Path(tempfile.mkdtemp(prefix="managed-tree-outside-"))
+        outside = temp_path("managed-tree-outside-")
         (outside / "keep.cfg").write_text("keep\n", encoding="utf-8")
         (printer_root / "config/tltg-optimized-macros").symlink_to(outside, target_is_directory=True)
         with moonraker_server("standby") as url:
@@ -97,13 +96,13 @@ class InstallerHardeningTests(unittest.TestCase):
         self.assertEqual((outside / "keep.cfg").read_text(encoding="utf-8"), "keep\n")
 
     def test_restore_swap_rolls_back_original_tree_if_replacement_rename_fails(self):
-        printer_root = Path(tempfile.mkdtemp(prefix="restore-swap-runtime-"))
+        printer_root = temp_path("restore-swap-runtime-")
         config = printer_root / "config"
         config.mkdir()
         (config / "printer.cfg").write_text("old\n", encoding="utf-8")
         (config / "extra.cfg").write_text("extra\n", encoding="utf-8")
 
-        staged_root = Path(tempfile.mkdtemp(prefix="restore-swap-stage-")) / "config"
+        staged_root = temp_path("restore-swap-stage-") / "config"
         staged_root.mkdir()
         (staged_root / "printer.cfg").write_text("new\n", encoding="utf-8")
 
@@ -128,7 +127,7 @@ class InstallerHardeningTests(unittest.TestCase):
         self.assertEqual((config / "extra.cfg").read_text(encoding="utf-8"), "extra\n")
 
     def test_backup_creation_rejects_empty_source_tree(self):
-        printer_root = Path(tempfile.mkdtemp(prefix="empty-backup-runtime-"))
+        printer_root = temp_path("empty-backup-runtime-")
         (printer_root / "config").mkdir()
         with self.assertRaises(BackupArchiveError):
             create_config_backup(
@@ -139,7 +138,7 @@ class InstallerHardeningTests(unittest.TestCase):
         self.assertFalse((printer_root / "empty-backup.zip").exists())
 
     def test_secure_state_file_write_forces_requested_mode_on_existing_file(self):
-        state_path = Path(tempfile.mkdtemp(prefix="state-mode-")) / "state.yaml"
+        state_path = temp_path("state-mode-") / "state.yaml"
         state_path.write_text("old\n", encoding="utf-8")
         os.chmod(state_path, 0o644)
         state = InstalledState(

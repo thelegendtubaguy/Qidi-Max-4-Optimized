@@ -103,7 +103,7 @@ Common behavior paths:
 
 - If changing start-print behavior, follow the start-print path contract above.
 
-- If changing installer behavior, run focused installer tests or the core suite:
+- If changing installer behavior, run the full installer test suite:
 
   ```bash
   python3 scripts/run_installer_core_tests.py

@@ -6,11 +6,10 @@ import os
 import shutil
 import subprocess
 import tarfile
-import tempfile
 import unittest
 from pathlib import Path
 
-from installer.tests.helpers import REPO_ROOT
+from installer.tests.helpers import REPO_ROOT, temp_path
 
 
 SCRIPT = REPO_ROOT / "installer/release/install-latest.sh"
@@ -60,7 +59,7 @@ def _path_without_checksum_tools(root: Path) -> str:
 
 class InstallLatestTests(unittest.TestCase):
     def test_missing_checksum_tool_fails_closed(self):
-        temp_root = Path(tempfile.mkdtemp(prefix="install-latest-"))
+        temp_root = temp_path("install-latest-")
         home = temp_root / "home"
         home.mkdir()
         archive_path = _make_archive(
@@ -80,7 +79,7 @@ class InstallLatestTests(unittest.TestCase):
         self.assertFalse((home / "tltg-optimized-macros").exists())
 
     def test_invalid_archive_layout_fails_before_replacing_existing_install(self):
-        temp_root = Path(tempfile.mkdtemp(prefix="install-latest-"))
+        temp_root = temp_path("install-latest-")
         home = temp_root / "home"
         install_dir = home / "tltg-optimized-macros"
         install_dir.mkdir(parents=True)
@@ -95,7 +94,7 @@ class InstallLatestTests(unittest.TestCase):
         self.assertEqual(marker.read_text(encoding="utf-8"), "existing install")
 
     def test_valid_archive_replaces_install_and_runs_installer(self):
-        temp_root = Path(tempfile.mkdtemp(prefix="install-latest-"))
+        temp_root = temp_path("install-latest-")
         home = temp_root / "home"
         install_dir = home / "tltg-optimized-macros"
         install_dir.mkdir(parents=True)

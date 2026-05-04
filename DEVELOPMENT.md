@@ -55,7 +55,7 @@ Password-based runs require local `sshpass`.
 
 ## Testing
 
-Run the focused installer core test suite:
+Run the full installer test suite:
 
 ```bash
 python3 scripts/run_installer_core_tests.py
