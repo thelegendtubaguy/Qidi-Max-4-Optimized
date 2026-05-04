@@ -2,7 +2,7 @@
 
 ## Install from GitHub
 
-Install the latest dev-branch bundle published to the `dev-latest` prerelease. The bootstrap script is read from the `dev` branch; the `dev-latest` prerelease only needs to carry `tltg-optimized-macros-dev.tar.gz` and its `.sha256` file.
+Install the latest dev-branch bundle published to the `dev` prerelease. The bootstrap script is read from the `dev` branch; the `dev-latest` prerelease only needs to carry `tltg-optimized-macros-dev.tar.gz` and its `.sha256` file.
 
 ```bash
 TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/download/dev/tltg-optimized-macros-dev.tar.gz \
