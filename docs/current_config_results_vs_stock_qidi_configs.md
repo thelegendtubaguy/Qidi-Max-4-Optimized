@@ -132,6 +132,7 @@ Start G-code:
 - `OPTIMIZED_PRINT_START_HOME`; cancels any pending `_optimized_end_fan_cooldown_off` timer before homing.
 - `OPTIMIZED_START_PRINT_FILAMENT_PREP`
 - `OPTIMIZED_START_PRINT_FILAMENT_PREP` receives `FIRSTLAYERTEMP=[nozzle_temperature_initial_layer]` and `PURGETEMP={nozzle_temperature_range_high[initial_tool]}`; the later front prime-line `M109` still uses `[nozzle_temperature_initial_layer]`.
+- `T[initial_tool]` runs before the front prime line so slicer-generated startup extrusion and firmware tool state both use the initial object filament.
 - The front prime line is a purge sequence at `Y0`: `G1 E6 F300`, `G1 X178 E20 F1200`, and `G1 X173 E0.8`.
 
 Change-filament G-code:
