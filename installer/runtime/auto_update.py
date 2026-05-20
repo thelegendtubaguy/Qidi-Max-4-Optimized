@@ -37,6 +37,12 @@ STATE_FILE = "config/tltg_optimized_auto_update_state.json"
 SERVICE_NAME = "tltg-optimized-auto-update.service"
 TIMER_NAME = "tltg-optimized-auto-update.timer"
 SYSTEMD_DIR = Path("/etc/systemd/system")
+URL_OVERRIDE_ENVIRONMENT = (
+    "TLTG_AUTO_UPDATE_ARCHIVE_URL",
+    "TLTG_AUTO_UPDATE_CHECKSUM_URL",
+    "TLTG_INSTALLER_ARCHIVE_URL",
+    "TLTG_INSTALLER_CHECKSUM_URL",
+)
 UrlOpenFn = Callable[..., object]
 RunFn = Callable[..., subprocess.CompletedProcess]
 
@@ -86,6 +92,32 @@ def maybe_prompt_enable_auto_updates(
     return True
 
 
+def maybe_repair_configured_auto_updates(
+    *,
+    paths: RuntimePaths,
+    reporter,
+    input_stream=None,
+    environ: dict[str, str] | None = None,
+    urlopen: UrlOpenFn = urllib.request.urlopen,
+    run: RunFn = subprocess.run,
+) -> bool:
+    if not auto_updates_configured():
+        return False
+    try:
+        enable_auto_updates(
+            paths=paths,
+            reporter=reporter,
+            input_stream=input_stream,
+            environ=_without_url_overrides(environ),
+            urlopen=urlopen,
+            run=run,
+            success_message=messages.AUTO_UPDATE_REPAIRED,
+        )
+    except AutoUpdateError as exc:
+        reporter.line(f"{messages.AUTO_UPDATE_REPAIR_FAILED} {exc.message}")
+    return True
+
+
 def enable_auto_updates(
     *,
     paths: RuntimePaths,
@@ -94,6 +126,7 @@ def enable_auto_updates(
     environ: dict[str, str] | None = None,
     urlopen: UrlOpenFn = urllib.request.urlopen,
     run: RunFn = subprocess.run,
+    success_message: str = messages.AUTO_UPDATE_ENABLED,
 ) -> None:
     if shutil.which("systemctl") is None:
         raise AutoUpdateError(messages.AUTO_UPDATE_SYSTEMD_MISSING)
@@ -123,14 +156,20 @@ def enable_auto_updates(
             password=sudo_password,
         )
         _run_sudo_or_raise(
-            ["systemctl", "enable", "--now", TIMER_NAME],
+            ["systemctl", "enable", TIMER_NAME],
+            messages.AUTO_UPDATE_SYSTEMD_FAILED,
+            run=run,
+            password=sudo_password,
+        )
+        _run_sudo_or_raise(
+            ["systemctl", "restart", TIMER_NAME],
             messages.AUTO_UPDATE_SYSTEMD_FAILED,
             run=run,
             password=sudo_password,
         )
     except SudoError as exc:
         raise AutoUpdateError(exc.message) from exc
-    reporter.line(messages.AUTO_UPDATE_ENABLED)
+    reporter.line(success_message)
 
 
 def auto_updates_configured() -> bool:
@@ -262,6 +301,7 @@ def service_text(paths: RuntimePaths) -> str:
         "Type=oneshot\n"
         f"User={user}\n"
         f"WorkingDirectory={paths.bundle_root}\n"
+        f"UnsetEnvironment={' '.join(URL_OVERRIDE_ENVIRONMENT)}\n"
         f"ExecStart={paths.bundle_root / 'auto-update.sh'} --run\n"
     )
 
@@ -403,6 +443,13 @@ def _archive_url(environ: dict[str, str]) -> str:
     return environ.get("TLTG_AUTO_UPDATE_ARCHIVE_URL") or environ.get(
         "TLTG_INSTALLER_ARCHIVE_URL", DEFAULT_ARCHIVE_URL
     )
+
+
+def _without_url_overrides(environ: dict[str, str] | None) -> dict[str, str]:
+    result = dict(os.environ if environ is None else environ)
+    for key in URL_OVERRIDE_ENVIRONMENT:
+        result.pop(key, None)
+    return result
 
 
 def _current_user() -> str:

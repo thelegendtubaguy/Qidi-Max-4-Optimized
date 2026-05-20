@@ -174,6 +174,34 @@ class CliTests(unittest.TestCase):
         self.assertIn("Auto-updates not enabled.", output)
         self.assertIn("Restart Klipper to apply changes.", output)
 
+    def test_install_repairs_existing_auto_updates_before_restart(self):
+        printer_root = copy_base_runtime()
+
+        def fake_repair_auto_updates(*, paths, reporter, input_stream, environ, urlopen):
+            reporter.line("Auto-updates repaired.")
+            return True
+
+        stream = io.StringIO()
+        with moonraker_server("standby") as url:
+            with patch(
+                "installer.runtime.runner.maybe_repair_configured_auto_updates",
+                side_effect=fake_repair_auto_updates,
+            ):
+                rc = main(
+                    ["install", "--plain"],
+                    stream=stream,
+                    input_stream=io.StringIO("yes\nno\nno\n"),
+                    bundle_root=REPO_ROOT,
+                    environ=build_env(printer_root, moonraker_url=url),
+                )
+
+        self.assertEqual(rc, 0)
+        output = stream.getvalue()
+        repair_index = output.index("Auto-updates repaired.")
+        restart_prompt_index = output.index("Would you like me to restart Klipper to apply changes?")
+        self.assertLess(repair_index, restart_prompt_index)
+        self.assertNotIn("Would you like to enable hourly automatic updates for the TLTG configs?", output)
+
     def test_uninstall_cancellation_returns_zero_without_writing(self):
         printer_root = copy_base_runtime()
         manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
