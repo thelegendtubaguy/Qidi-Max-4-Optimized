@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import patch
 
 from installer.runtime.auto_update import (
+    DEFAULT_CHECKSUM_URL,
     LOCK_HELD_ENV,
     SERVICE_NAME,
     TIMER_NAME,
@@ -16,7 +17,9 @@ from installer.runtime.auto_update import (
     disable_auto_updates,
     enable_auto_updates,
     maybe_prompt_enable_auto_updates,
+    maybe_repair_configured_auto_updates,
     run_auto_update_check,
+    service_text,
     state_path,
 )
 from installer.runtime.cli import resolve_runtime_paths
@@ -291,7 +294,8 @@ class AutoUpdateTests(unittest.TestCase):
         self.assertEqual(json.loads(state_path(paths).read_text())["latest_checksum"], checksum)
         self.assertIn(["sudo", "-S", "-p", "", "-v"], commands)
         self.assertIn(["sudo", "-S", "-p", "", "systemctl", "daemon-reload"], commands)
-        self.assertIn(["sudo", "-S", "-p", "", "systemctl", "enable", "--now", TIMER_NAME], commands)
+        self.assertIn(["sudo", "-S", "-p", "", "systemctl", "enable", TIMER_NAME], commands)
+        self.assertIn(["sudo", "-S", "-p", "", "systemctl", "restart", TIMER_NAME], commands)
         sudo_kwargs = [kwargs for command, kwargs in zip(commands, run_kwargs) if command[:4] == ["sudo", "-S", "-p", ""]]
         self.assertTrue(sudo_kwargs)
         self.assertTrue(all(kwargs.get("input") == "qiditech\n" for kwargs in sudo_kwargs))
@@ -300,6 +304,86 @@ class AutoUpdateTests(unittest.TestCase):
         self.assertIn(f"/etc/systemd/system/{SERVICE_NAME}", install_targets)
         self.assertIn(f"/etc/systemd/system/{TIMER_NAME}", install_targets)
         self.assertIn("Auto-updates enabled.", stream.getvalue())
+
+    def test_repair_configured_auto_updates_refreshes_systemd_units(self):
+        printer_root = copy_base_runtime()
+        checksum = "f" * 64
+        stream = io.StringIO()
+        commands = []
+        opened_urls = []
+
+        def urlopen(url, timeout=0):
+            opened_urls.append(str(url))
+            return _Response(f"{checksum}  tltg-optimized-macros.tar.gz\n".encode())
+
+        def run(command, **kwargs):
+            commands.append(command)
+            return subprocess.CompletedProcess(command, 0)
+
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        with patch("installer.runtime.auto_update.auto_updates_configured", return_value=True), patch(
+            "installer.runtime.auto_update.shutil.which", return_value="/usr/bin/tool"
+        ):
+            handled = maybe_repair_configured_auto_updates(
+                paths=paths,
+                reporter=PlainReporter(stream),
+                environ={"TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256"},
+                urlopen=urlopen,
+                run=run,
+            )
+
+        self.assertTrue(handled)
+        self.assertEqual(opened_urls, [DEFAULT_CHECKSUM_URL])
+        self.assertEqual(json.loads(state_path(paths).read_text())["latest_checksum"], checksum)
+        self.assertIn(["sudo", "-S", "-p", "", "systemctl", "daemon-reload"], commands)
+        self.assertIn(["sudo", "-S", "-p", "", "systemctl", "enable", TIMER_NAME], commands)
+        self.assertIn(["sudo", "-S", "-p", "", "systemctl", "restart", TIMER_NAME], commands)
+        self.assertIn("Auto-updates repaired.", stream.getvalue())
+
+    def test_repair_configured_auto_updates_failure_is_nonfatal(self):
+        printer_root = copy_base_runtime()
+        stream = io.StringIO()
+
+        def run(command, **kwargs):
+            if command == ["sudo", "-S", "-p", "", "-v"]:
+                return subprocess.CompletedProcess(command, 1)
+            return subprocess.CompletedProcess(command, 0)
+
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        with patch("installer.runtime.auto_update.auto_updates_configured", return_value=True), patch(
+            "installer.runtime.auto_update.shutil.which", return_value="/usr/bin/tool"
+        ):
+            handled = maybe_repair_configured_auto_updates(
+                paths=paths,
+                reporter=PlainReporter(stream),
+                environ={"TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256"},
+                urlopen=lambda url, timeout=0: _Response(("e" * 64 + "  tltg-optimized-macros.tar.gz\n").encode()),
+                run=run,
+            )
+
+        self.assertTrue(handled)
+        self.assertIn("Could not repair auto-updates. sudo authentication failed.", stream.getvalue())
+
+    def test_service_text_clears_url_override_environment(self):
+        printer_root = copy_base_runtime()
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+
+        text = service_text(paths)
+
+        self.assertIn(
+            "UnsetEnvironment=TLTG_AUTO_UPDATE_ARCHIVE_URL TLTG_AUTO_UPDATE_CHECKSUM_URL TLTG_INSTALLER_ARCHIVE_URL TLTG_INSTALLER_CHECKSUM_URL\n",
+            text,
+        )
+        self.assertIn(f"ExecStart={REPO_ROOT / 'auto-update.sh'} --run\n", text)
 
     def test_enable_auto_updates_prompts_when_default_sudo_password_fails(self):
         printer_root = copy_base_runtime()

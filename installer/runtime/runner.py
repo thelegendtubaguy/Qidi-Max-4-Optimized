@@ -5,7 +5,11 @@ import subprocess
 import urllib.request
 
 from . import klipper_cfg, messages, patches
-from .auto_update import LOCK_HELD_ENV, maybe_prompt_enable_auto_updates
+from .auto_update import (
+    LOCK_HELD_ENV,
+    maybe_prompt_enable_auto_updates,
+    maybe_repair_configured_auto_updates,
+)
 from .box_enablement import maybe_prompt_align_tool_slots, maybe_prompt_enable_box
 from .backup import (
     build_install_backup_label,
@@ -452,13 +456,20 @@ def _execute_install(
         patch_results=result.patch_results,
         managed_tree_drift=result.managed_tree_drift,
     )
-    maybe_prompt_enable_auto_updates(
+    if not maybe_repair_configured_auto_updates(
         paths=paths,
         reporter=reporter,
         input_stream=input_stream,
         environ=environ,
         urlopen=urlopen,
-    )
+    ):
+        maybe_prompt_enable_auto_updates(
+            paths=paths,
+            reporter=reporter,
+            input_stream=input_stream,
+            environ=environ,
+            urlopen=urlopen,
+        )
     maybe_restart_klipper(
         reporter=reporter,
         input_stream=input_stream,
