@@ -1,0 +1,233 @@
+# Installer manifest for staged optimized-macro install and guarded stock-value patches.
+
+schema_version: 1
+
+package:
+  id: qidi-max4-optimized
+  display_name: QIDI Max 4 Optimized
+  printer_model: qidi-max4
+  version: "26.05.19.1"
+  known_versions:
+    - "26.04.21.1"
+    - "26.04.27.1"
+    - "26.04.27.2"
+    - "26.04.27.3"
+    - "26.04.27.4"
+    - "26.05.04.1"
+    - "26.05.19.1"
+
+firmware:
+  supported:
+    - "01.01.06.03"
+
+backup:
+  source_directory: "config"
+  label_prefix: "tltg-optimized-macros-before-optimize"
+
+state:
+  record_file: "config/tltg_optimized_state.yaml"
+
+preflight:
+  required_files:
+    - "config/printer.cfg"
+    - "config/klipper-macros-qd/bed_mesh.cfg"
+    - "config/klipper-macros-qd/filament.cfg"
+    - "config/klipper-macros-qd/kinematics.cfg"
+    - "config/klipper-macros-qd/start_end.cfg"
+
+  required_sections:
+    - file: "config/printer.cfg"
+      section: "save_variables"
+    - file: "config/klipper-macros-qd/bed_mesh.cfg"
+      section: "gcode_macro g29"
+    - file: "config/klipper-macros-qd/filament.cfg"
+      section: "gcode_macro CUT_FILAMENT_1"
+    - file: "config/klipper-macros-qd/start_end.cfg"
+      section: "gcode_macro print_start"
+
+  required_lines:
+    - file: "config/printer.cfg"
+      line: "[include klipper-macros-qd/*.cfg]"
+
+install:
+  ensure_directories:
+    - "config/tltg-optimized-macros"
+
+  managed_tree:
+    id: optimized_macro_tree
+    source: "klipper/tltg-optimized-macros"
+    destination: "config/tltg-optimized-macros"
+    mode: mirror
+    required_files:
+      - "bed_mesh.cfg"
+      - "cancel.cfg"
+      - "cooling.cfg"
+      - "filament.cfg"
+      - "globals.cfg"
+      - "heaters.cfg"
+      - "helpers.cfg"
+      - "kinematics.cfg"
+      - "motion.cfg"
+      - "start_end.cfg"
+
+  ensure_lines:
+    - id: include_optimized_macros
+      file: "config/printer.cfg"
+      line: "[include tltg-optimized-macros/*.cfg]"
+      after: "[include klipper-macros-qd/*.cfg]"
+
+patches:
+  set_options:
+    - id: stepper_x_homing_speed
+      file: "config/printer.cfg"
+      section: "stepper_x"
+      option: "homing_speed"
+      variants:
+        - firmwares: ["01.01.06.03"]
+          expected: "50"
+          desired: "65"
+
+    - id: stepper_x_second_homing_speed
+      file: "config/printer.cfg"
+      section: "stepper_x"
+      option: "second_homing_speed"
+      variants:
+        - firmwares: ["01.01.06.03"]
+          expected: "50.0"
+          desired: "55.0"
+
+    - id: stepper_x_homing_retract_dist
+      file: "config/printer.cfg"
+      section: "stepper_x"
+      option: "homing_retract_dist"
+      variants:
+        - firmwares: ["01.01.06.03"]
+          expected: "50.0"
+          desired: "20.0"
+
+    - id: stepper_x_homing_retract_speed
+      file: "config/printer.cfg"
+      section: "stepper_x"
+      option: "homing_retract_speed"
+      variants:
+        - firmwares: ["01.01.06.03"]
+          expected: "200.0"
+          desired: "1000.0"
+
+    - id: stepper_y_homing_speed
+      file: "config/printer.cfg"
+      section: "stepper_y"
+      option: "homing_speed"
+      variants:
+        - firmwares: ["01.01.06.03"]
+          expected: "50"
+          desired: "65"
+
+    - id: stepper_y_second_homing_speed
+      file: "config/printer.cfg"
+      section: "stepper_y"
+      option: "second_homing_speed"
+      variants:
+        - firmwares: ["01.01.06.03"]
+          expected: "50.0"
+          desired: "55.0"
+
+    - id: stepper_y_homing_retract_dist
+      file: "config/printer.cfg"
+      section: "stepper_y"
+      option: "homing_retract_dist"
+      variants:
+        - firmwares: ["01.01.06.03"]
+          expected: "50.0"
+          desired: "20.0"
+
+    - id: stepper_y_homing_retract_speed
+      file: "config/printer.cfg"
+      section: "stepper_y"
+      option: "homing_retract_speed"
+      variants:
+        - firmwares: ["01.01.06.03"]
+          expected: "200.0"
+          desired: "1000.0"
+
+    - id: stepper_z_homing_retract_dist
+      file: "config/printer.cfg"
+      section: "stepper_z"
+      option: "homing_retract_dist"
+      variants:
+        - firmwares: ["01.01.06.03"]
+          expected: "10.0"
+          desired: "5.0"
+
+    - id: z_tilt_speed
+      file: "config/printer.cfg"
+      section: "z_tilt"
+      option: "speed"
+      variants:
+        - firmwares: ["01.01.06.03"]
+          expected: "150"
+          desired: "600"
+
+    - id: bed_mesh_speed
+      file: "config/printer.cfg"
+      section: "bed_mesh"
+      option: "speed"
+      variants:
+        - firmwares: ["01.01.06.03"]
+          expected: "150"
+          desired: "600"
+
+    - id: virtual_sdcard_on_error_gcode
+      file: "config/printer.cfg"
+      section: "virtual_sdcard"
+      option: "on_error_gcode"
+      variants:
+        - firmwares: ["01.01.06.03"]
+          expected: "CANCEL_PRINT"
+          desired: "OPTIMIZED_CANCEL_PRINT_ON_ERROR"
+
+  delete_sections:
+    - id: kinematics_homing_override
+      file: "config/klipper-macros-qd/kinematics.cfg"
+      section: "homing_override"
+      variants:
+        - firmwares: ["01.01.06.03"]
+          expected_normalized_sha256: "6a924478b351dea193bf1060f5747b151bba3de4c5627c7faac741ad7b164cf4"
+
+postflight:
+  verify_lines:
+    - file: "config/printer.cfg"
+      line: "[include tltg-optimized-macros/*.cfg]"
+
+system_optimizations:
+  enabled_by_default: true
+  dns:
+    resolv_conf: /etc/resolv.conf
+    resolvconf_head: /etc/resolvconf/resolv.conf.d/head
+    resolvconf_tail: /etc/resolvconf/resolv.conf.d/tail
+    target_symlink: /run/resolvconf/resolv.conf
+    fallback_nameservers:
+      - 1.1.1.1
+      - 8.8.8.8
+  apt_sources:
+    file: /etc/apt/sources.list
+    content: |
+      deb http://deb.debian.org/debian bullseye main contrib
+      deb-src http://deb.debian.org/debian bullseye main contrib
+      deb http://security.debian.org/debian-security bullseye-security main contrib
+      deb-src http://security.debian.org/debian-security bullseye-security main contrib
+      deb http://deb.debian.org/debian bullseye-updates main contrib
+      deb-src http://deb.debian.org/debian bullseye-updates main contrib
+  services:
+    disable:
+      - xl2tpd
+      - bluetooth
+    optional_disable:
+      - id: algo_app
+        service: algo_app.service
+        prompt: Would you like us to disable QIDI AI detection features?
+  qidiclient_static_gifs:
+    archive: system/qidiclient-static-gifs.tar.gz
+    sha256: 616c11226addbc09c9d4dc83b0e1d359f15e2f4c1d84c1d8bb008f841d616fce
+    destination: /home/qidi/QIDI_Client/access
+    restart_service: qidi-client.service

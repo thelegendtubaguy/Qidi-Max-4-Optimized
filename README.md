@@ -1,55 +1,141 @@
 # Qidi Max 4 Optimized
 
-Opinionated and tuned configs to make your QIDI Max 4 run the way it should.
+Opinionated and Optimized Klipper macros and slicer machine GCode for the QIDI Max 4.
 
 > [!NOTE]
 > If you want to help support content like this, consider subscribing over on [YouTube](https://youtube.com/@TubaMakes)!
 
-For stock QIDI-shipped configs and firmware-version snapshots, see [Qidi-Max4-Defaults](https://github.com/thelegendtubaguy/Qidi-Max4-Defaults).
+> [!CAUTION]
+> I refuse to be responsible for your printer.  PLEASE watch prints start ensuring the printer doesn't do something horrible like gouge your bed and be ready to cut power at a moment's notice.
 
-> [!NOTE]
-> Stock slicer G-code and stock machine files remain compatible with the current config changes. The repo's custom slicer G-code packs are optional and opt in to the optimized flow through separate `OPTIMIZED_*` macros.
+## tl;dr
+1. SSH into your printer `qidi@<your printer's ip>`.
+2. Run this on your printer:
+```bash
+/bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/install-latest.sh)"
+```
+3. Follow the prompts
+4. Use Orca and subscribe to the OrcaCloud bundle shared [here](https://cloud.orcaslicer.com/b/4c4b3b74c745).  If you're not using Orca >= 2.4.0, see [the section on slicer configs](#slicer-machine-gcode-updates).
+5. Slice using the printer profile `Qidi X-Max 4 0.4 nozzle - TLTG Optimized GCode`
+6. Optional: Make a copy and customize the machine profile to your liking.
 
-> [!WARNING]
-> If you update the printer's firmware, it will wipe these changes away.
 
-> [!WARNING]
-> These configurations were created and tested using a printer with a single Qidi box.  They likely work with no Qidi box and multiple Qidi boxes, just something to keep in mind.
+### Installer Dry-Run
+If you'd rather do a dry-run before committing to a full install, you can run this:
 
-## What's in this repo
+```bash
+/bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/install-latest.sh)" -- --dry-run
+```
 
-- `config/`: Klipper configuration, macros, machine settings, and included support configs.
-- `docs/`: repo-local technical notes, flow documentation, and reference notes.
-- `orcaslicer_gcode/`: OrcaSlicer custom G-code snippets for this machine.
-- `qidistudio_gcode/`: QIDI Studio custom G-code snippets for this machine.
-- `scripts/`: local formatting and validation helpers used by this repo.
+### Automatic Updates
+
+The installer asks whether to enable hourly automatic optimized config updates before asking whether to restart Klipper. Auto-updates use a system-level systemd timer. Enabling auto-updates requires sudo once to install `/etc/systemd/system/tltg-optimized-auto-update.service` and `/etc/systemd/system/tltg-optimized-auto-update.timer`; the installer uses QIDI's public default sudo password (`qiditech`) unless the environment variable `TLTG_OPTIMIZED_SUDO_PASSWORD` is set, then prompts for a password if the initial sudo attempt fails. 
+
+Each hourly run checks the latest GitHub release checksum, skips while the printer is printing or paused, and then runs the normal installer with preflight checks and auto-approval.
+
+Disable auto-updates:
+
+```bash
+~/tltg-optimized-macros/auto-update.sh --disable-systemd
+```
+
+Run one auto-update check manually:
+
+```bash
+~/tltg-optimized-macros/auto-update.sh --run
+```
+
+### QIDI Box temperature from Fluidd
+
+The installer adds `TLTG_SET_BOX_TEMP`, a macro for setting the QIDI Box heater target because Qidi's Fluidd config is incapable of setting `heater_box1` correctly.
+
+Use:
+
+```gcode
+TLTG_SET_BOX_TEMP BOX=1 TARGET=45
+```
+
+Use `TARGET=0` to turn the box heater off:
+
+```gcode
+TLTG_SET_BOX_TEMP BOX=1 TARGET=0
+```
+
+The macro appears in Fluidd's Macros panel after install and Klipper restart. If the panel is not visible, edit the Fluidd layout and enable the Macros panel.
+
+![Fluidd TLTG_SET_BOX_TEMP macro](docs/images/fluidd-tltg-set-box-temp-macro.png)
+
+### Helpful Klipper tools
+
+After install and Klipper restart, the optimized macro set includes:
+
+```gcode
+TLTG_PROBE_ACCURACY_CENTER
+TLTG_CORNER_BED_SCREW_CHECK
+SCREWS_TILT_CALCULATE
+```
+
+`TLTG_PROBE_ACCURACY_CENTER [SAMPLES=20]` homes, moves to `X195 Y195 Z10`, and runs Klipper `PROBE_ACCURACY`.
+
+`TLTG_CORNER_BED_SCREW_CHECK` homes, runs `Z_TILT_ADJUST`, and runs `SCREWS_TILT_CALCULATE`.
+
+### Slicer Machine GCode Updates
+
+> [!TIP]
+> If you're using Orca >= 2.4.0, use the OrcaCloud [shared bundle you can subscribe to](https://cloud.orcaslicer.com/b/4c4b3b74c745)!  It will let you get future updates in your slicer easily and you don't have to manually copy/paste anything!
+
+You will need to manually copy the machine GCode to your slicer of choice to take advantage of the optimized path.  The stock print path remains in place for backwards compatibility, safety, and general user happiness :)
+
+Use the pack that matches your slicer. The two packs are functionally aligned, but their placeholder syntax is different due to variable type differences.
+   - OrcaSlicer: `orcaslicer_gcode/`
+   - QIDI Studio: `qidistudio_gcode/`
+
+Use the pack that matches your slicer. The two packs are functionally aligned, but their placeholder syntax is different.
+
+## Uninstall
+
+If `~/tltg-optimized-macros/` is still present on the printer:
+
+```bash
+~/tltg-optimized-macros/install.sh --uninstall --plain
+```
+
+You can also run uninstall by fetching the latest script directly from the web:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/install-latest.sh)" -- --uninstall
+```
+
+## If something goes wrong
+
+Read the installer output first. The installer stops before writing when firmware detection, preflight, printer state, or free-space checks fail.
+
+Installer-created backup `.zip` files are stored under `/home/qidi/printer_data/` with `tltg-optimized-macros-before-optimize-...zip` and `tltg-optimized-macros-before-uninstall-...zip` labels.
+
+You can restore interactively when SSH'd into the printer.
+
+```bash
+cd ~/tltg-optimized-macros && ./restore.sh
+```
+
+Restore a specific backup:
+
+```bash
+cd ~/tltg-optimized-macros && ./restore.sh --backup /home/qidi/printer_data/<backup-name>.zip
+```
+
+If restore completed and the recovery sentinel is still present, clear it with:
+
+```bash
+cd ~/tltg-optimized-macros && ./install.sh --clear-recovery-sentinel
+```
 
 ## Documentation
 
-- [Temperature Flow From The Optimized Orca And QIDIStudio Start G-Code](docs/orca-hotendtemp-purgetemp-flow.md): temperature timeline for the repo's optimized slicer packs through the active box-prep and prime-line sequence.
-- [QIDI Box Implementation Notes](docs/box_print_start_notes.md): reverse-engineering notes for QIDI's vendor-implemented `BOX_PRINT_START` and related box internals.
-- [Current Config Results Vs Stock QIDI Configs](docs/current-config-results-vs-stock-qidi-configs.md): summary of behavior changes and estimated time impact versus the stock configs shipped by QIDI.
+- [Behavior differences versus stock](docs/optimized_vs_stock.md)
+- [QIDI box internals and `BOX_PRINT_START`](docs/qidi_box/box_print_start_notes.md)
+- [Want to help with testing?](TESTING.md)
 
-## How to use this repo
+## Development
 
-_There will be a scripted installer in the future if you'd rather wait for that_
-
-- Review changes between your configs and what's present in `config` and merge intentionally rather than copying everything blindly onto a printer.
-- Expect some values to remain machine-specific, especially offsets, saved state, and hardware integration details.
-- If you keep the stock slicer machine G-code, the stock-named Klipper macro flow will continue to work.
-- If you want the optimized start, end, and toolchange flow, copy over the slicer G-code for either Orca (`orcaslicer_gcode/`) or QIDI Studio (`qidistudio_gcode/`) into your slicer's machine settings. Both packs are kept functionally in sync even though their placeholder syntax differs.
-
-## Validation
-
-- Use `python3 scripts/format_klipper_configs.py` to format editable Klipper config files in `config/`.
-- The formatter intentionally skips `config/fluidd.cfg` and `config/saved_variables.cfg`, and preserves the auto-generated `SAVE_CONFIG` block.
-- Use `python3 scripts/check_optimized_slicer_macros.py` to verify that the optimized OrcaSlicer and QIDI Studio G-code packs only reference commands and macros that exist in this repo.
-- GitHub Actions runs both checks on pull requests.
-
-## Important notes
-
-- Main printer and box MCU serial identifiers are redacted where applicable.
-- If you need to recover your own machine's specific device IDs, inspect `/dev/serial/by-id` on the printer via ssh with `ls -l /dev/serial/by-id/` and use the matching entries.
-- On-device, `config/fluidd.cfg` is read-only; behavior changes should be implemented in other files under `config/`.
-- Vendor-specific features and macros are present, including `multi_color_controller`, `box_config`, `probe_air`, and `closed_loop`.
-- This machine uses nozzle contact probing via `probe_air`, so `SCREWS_TILT_CALCULATE` can use the direct screw XY positions in `config/printer.cfg`.
+For development documentation, see [DEVELOPMENT](DEVELOPMENT.md).
