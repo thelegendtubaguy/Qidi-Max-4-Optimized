@@ -26,7 +26,7 @@ Source paths:
 - `installer/klipper/tltg-optimized-macros/*.cfg`
 
 Functional changes:
-- Before a fresh install, the installer detects legacy manually-copied optimized configs in stock QIDI paths, backs up `config/`, restores bundled QIDI stock-managed files from `installer/stock/qidi-max4-defaults/config/`, preserves `config/MCU_ID.cfg`, `config/box.cfg`, `config/fluidd.cfg`, and `config/saved_variables.cfg`, restarts `qidi-client.service`, then continues with the normal installer path.
+- Before a fresh install, the installer detects legacy manually-copied optimized configs in stock QIDI paths, backs up `config/`, restores bundled QIDI stock-managed files from `installer/stock/qidi-max4-defaults/config/`, preserves `config/MCU_ID.cfg`, `config/box.cfg`, `config/fluidd.cfg`, `config/saved_variables.cfg`, and direct `config/KAMP` symlinks, restarts `qidi-client.service`, then continues with the normal installer path.
 - The installer adds `[include tltg-optimized-macros/*.cfg]` after `[include klipper-macros-qd/*.cfg]`, so stock QIDI macros remain present and optimized macros override or wrap behavior through a separate include tree.
 - Guarded installer patches make X and Y homing faster, reduce repeated homing retraction distance, reduce Z homing retraction distance, increase Z-tilt travel speed, and increase bed-mesh point-to-point travel speed.
 - Guarded installer patches route virtual-SD print errors to `OPTIMIZED_CANCEL_PRINT_ON_ERROR`, which cancels without parking or moving the toolhead during error handling.
