@@ -33,6 +33,7 @@ PRESERVED_CONFIG_PATHS = (
     "config/fluidd.cfg",
     "config/saved_variables.cfg",
 )
+PRESERVED_CONFIG_SYMLINK_PATHS = ("config/KAMP", "config/fluidd.cfg")
 REMOVED_LEGACY_PATHS = ("config/tltg-optimized-macros",)
 
 
@@ -186,6 +187,8 @@ def _restore_stock_files(*, source_root: Path, paths: RuntimePaths, journal: Rol
         target = config_root / relative
         runtime_relative = target.relative_to(paths.printer_data_root).as_posix()
         if runtime_relative in PRESERVED_CONFIG_PATHS:
+            continue
+        if target.is_symlink() and runtime_relative in PRESERVED_CONFIG_SYMLINK_PATHS:
             continue
         ensure_runtime_path_has_no_symlink_components(
             printer_data_root=paths.printer_data_root,
