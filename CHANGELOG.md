@@ -1,5 +1,8 @@
 # Changelog
 
+## 26.05.21.1
+- Fixed legacy manual install reset when stock `config/KAMP` is a symlink
+
 ## 26.05.19.1
 - Removed the older QIDI Max 4 firmware baseline from installer support
 - Added system optimizations (DNS, APT, qidiclient, algo_app)

@@ -11,7 +11,14 @@ from installer.runtime.errors import ActivePrintError, OperationCancelled, Prefl
 from installer.runtime.manifest import load_manifest
 from installer.runtime.reporter import PlainReporter
 from installer.runtime.runner import run_install
-from installer.tests.helpers import REPO_ROOT, build_env, copy_base_runtime, MOONRAKER_QUERY_URL, moonraker_urlopen
+from installer.tests.helpers import (
+    MOONRAKER_QUERY_URL,
+    REPO_ROOT,
+    build_env,
+    copy_base_runtime,
+    moonraker_urlopen,
+    temp_path,
+)
 
 
 class InstallFlowTests(unittest.TestCase):
@@ -303,6 +310,48 @@ class InstallFlowTests(unittest.TestCase):
         self.assertIn(["sudo", "-S", "-p", "", "systemctl", "restart", "qidi-client.service"], calls)
         backups = sorted(printer_root.glob("tltg-optimized-macros-before-optimize-legacy-manual-reset-*.zip"))
         self.assertEqual(len(backups), 1)
+
+    def test_legacy_manual_reset_preserves_stock_kamp_symlink(self):
+        printer_root = copy_base_runtime()
+        (printer_root / "config/klipper-macros-qd/filament.cfg").write_text(
+            "[gcode_macro OPTIMIZED_CUT_FILAMENT]\ngcode:\n  M118 legacy\n",
+            encoding="utf-8",
+        )
+        kamp_target = temp_path("legacy-kamp-symlink-target-")
+        kamp_settings = kamp_target / "KAMP_Settings.cfg"
+        kamp_settings.write_text(
+            "[gcode_macro _KAMP_Settings]\ngcode:\n  M118 preserved\n",
+            encoding="utf-8",
+        )
+        (printer_root / "config/KAMP").symlink_to(kamp_target, target_is_directory=True)
+        stream = io.StringIO()
+        calls = []
+
+        def run(command, **kwargs):
+            calls.append(command)
+            return subprocess.CompletedProcess(command, 0)
+
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        with patch("installer.runtime.legacy_manual_install.shutil.which", return_value="/usr/bin/tool"):
+            run_install(
+                paths,
+                self.manifest,
+                reporter=PlainReporter(stream),
+                input_stream=io.StringIO("y\ny\nn\nn\nn\n"),
+                urlopen=moonraker_urlopen(),
+                run=run,
+            )
+
+        self.assertTrue((printer_root / "config/KAMP").is_symlink())
+        self.assertEqual((printer_root / "config/KAMP").readlink(), kamp_target)
+        self.assertIn("M118 preserved", kamp_settings.read_text(encoding="utf-8"))
+        self.assertTrue((paths.config_root / "tltg_optimized_state.yaml").exists())
+        backups = sorted(printer_root.glob("tltg-optimized-macros-before-optimize-legacy-manual-reset-*.zip"))
+        self.assertEqual(len(backups), 1)
+        self.assertIn(["sudo", "-S", "-p", "", "systemctl", "restart", "qidi-client.service"], calls)
 
     def test_legacy_manual_config_prompt_decline_cancels_without_reset(self):
         printer_root = copy_base_runtime()
