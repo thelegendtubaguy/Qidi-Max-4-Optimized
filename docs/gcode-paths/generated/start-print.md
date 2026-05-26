@@ -27,6 +27,7 @@ Forbidden patterns:
 - `HOTENDTEMP=`
 - `LOADTEMP=`
 - `PURGETEMP=[nozzle_temperature_initial_layer]`
+- `SET_INPUT_SHAPER`
 
 ### QIDI Studio start
 
@@ -50,6 +51,7 @@ Forbidden patterns:
 - `HOTENDTEMP=`
 - `LOADTEMP=`
 - `PURGETEMP=[nozzle_temperature_initial_layer]`
+- `SET_INPUT_SHAPER`
 
 ## Branches
 
