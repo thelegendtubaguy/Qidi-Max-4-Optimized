@@ -21,7 +21,8 @@
       "must_not_include": [
         "HOTENDTEMP=",
         "LOADTEMP=",
-        "PURGETEMP=[nozzle_temperature_initial_layer]"
+        "PURGETEMP=[nozzle_temperature_initial_layer]",
+        "SET_INPUT_SHAPER"
       ]
     },
     {
@@ -42,7 +43,8 @@
       "must_not_include": [
         "HOTENDTEMP=",
         "LOADTEMP=",
-        "PURGETEMP=[nozzle_temperature_initial_layer]"
+        "PURGETEMP=[nozzle_temperature_initial_layer]",
+        "SET_INPUT_SHAPER"
       ]
     }
   ],
