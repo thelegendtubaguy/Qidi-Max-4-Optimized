@@ -22,4 +22,6 @@ python3 scripts/check_gcode_paths.py
 
 Slicer start G-code passes `FIRSTLAYERTEMP=[nozzle_temperature_initial_layer]` and `PURGETEMP={nozzle_temperature_range_high[initial_tool]}` to `OPTIMIZED_START_PRINT_FILAMENT_PREP`; `T[initial_tool]` runs before the front prime line so startup extrusion is attributed to the selected initial object filament; the front prime line waits with `M109 S[nozzle_temperature_initial_layer]` after rear purge, Z tilt, and bed mesh, then runs the centered fat purge sequence `G1 E6 F300`, `G1 X178 E20 F1200`, and `G1 X173 E0.8` to consume heat-up ooze.
 
+Slicer start G-code does not call `SET_INPUT_SHAPER`; Klipper uses the saved `shaper_type_x` and `shaper_type_y` calibration state from `config/printer.cfg`.
+
 `docs/gcode-paths/start-print.path.json` records branch-level invariants only; exact command order comes from `orcaslicer_gcode/start.gcode`, `qidistudio_gcode/start.gcode`, and `installer/klipper/tltg-optimized-macros/*.cfg`.

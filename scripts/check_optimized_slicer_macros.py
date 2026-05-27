@@ -44,7 +44,6 @@ ALLOWED_EXTERNAL_COMMANDS = {
     "M400",
     "PAUSE",
     "PRINT_END",
-    "SET_INPUT_SHAPER",
     "SET_PRINT_MAIN_STATUS",
     "SET_PRINT_STATS_INFO",
     "TIMELAPSE_TAKE_FRAME",
@@ -55,6 +54,10 @@ ALLOWED_EXTERNAL_COMMANDS = {
 ALLOWED_EXTERNAL_DYNAMIC_PREFIXES = {
     "T",
     "UNLOAD_T",
+}
+
+BANNED_SLICER_COMMANDS = {
+    "SET_INPUT_SHAPER": "Klipper saved input-shaper calibration remains authoritative; slicer G-code must not override it.",
 }
 
 
@@ -129,6 +132,12 @@ def validate_repo(
 
     for path in checked_files:
         for line_number, command, segment, command_end in iter_commands(path):
+            banned_reason = BANNED_SLICER_COMMANDS.get(command)
+            if banned_reason:
+                failures.append(
+                    f"{path.relative_to(repo_root)}:{line_number}: banned command '{command}' in '{segment}': {banned_reason}"
+                )
+                continue
             if command in macros:
                 continue
             if is_dynamic_macro_call(command, segment, command_end, dynamic_prefixes):

@@ -1,5 +1,8 @@
 # Changelog
 
+## 26.05.27.1
+- Removed hardcoded shaper algo for x and y
+
 ## 26.05.21.1
 - Fixed legacy manual install reset when stock `config/KAMP` is a symlink
 
