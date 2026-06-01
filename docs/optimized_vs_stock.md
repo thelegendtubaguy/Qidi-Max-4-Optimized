@@ -79,7 +79,7 @@ Source paths:
 Functional changes:
 - `G28` supports full-home, XY-home, X-only, Y-only, and Z-only requests instead of collapsing most requests into the stock full-home path.
 - `G28 O ...` is honored as lazy homing, so helpers such as `OPTIMIZED_MOVE_TO_TRASH` can skip X/Y homing when those axes are already homed.
-- X/Y homing uses shorter stepper settle waits, shorter post-endstop backoff moves, and faster stock-patched homing speeds.
+- X/Y homing uses shorter stepper settle waits, shorter post-endstop backoff moves, faster stock-patched homing speeds, and no longer performs the stock pre-homing relative X/Y nudge.
 - Z-only homing is used when X and Y are already homed; a full home is used only when Z is requested before XY is known.
 - Z homing moves to a randomized point around the bed center using `variable_z_home_randomize_enable` and `variable_z_home_randomize_radius`, avoiding repeated probing of the same bed spot.
 - Homing restores the configured printer acceleration after temporary high-acceleration moves; stock homing can leave acceleration changed after the override.
@@ -126,10 +126,11 @@ Functional changes:
 - `OPTIMIZED_EXTRUSION_AND_FLUSH` uses a shorter initial extrusion before the high-volume flush loops, keeps the cleanup wait shorter than stock, and uses `OPTIMIZED_M1004` for polar-cooler handling.
 - `OPTIMIZED_END_PRINT_FILAMENT_PREP` can keep the active QIDI Box filament loaded between prints and records the retained/unloaded branch for end cleanup.
 - `OPTIMIZED_END_PRINT_FILAMENT_PREP` performs its end retract under relative extrusion inside saved/restored G-code state, so caller extrusion mode does not change the retract semantics.
-- `OPTIMIZED_UNLOAD_FILAMENT` clears retained-tool state before unloading, routes travel through `OPTIMIZED_MOVE_TO_TRASH`, keeps the post-unload extrusion relative, and restores caller motion state.
-- `OPTIMIZED_END_NOZZLE_CLEANUP` routes end cleanup through `OPTIMIZED_MOVE_TO_TRASH`, turns the hotend off, and calls `CLEAR_OOZE` / `CLEAR_FLUSH` only when retained box filament and `box_extras` are both present.
+- `OPTIMIZED_UNLOAD_FILAMENT` clears retained-tool state before unloading, routes travel through `OPTIMIZED_MOVE_TO_TRASH`, keeps the post-unload extrusion relative, and restores caller motion state; end-print unload suppresses the standalone unload cleanup so cooldown-based wiping owns the final nozzle wipe.
+- OrcaSlicer and QIDI Studio end G-code lift Z by 3 mm, call `OPTIMIZED_MOVE_TO_TRASH` immediately to leave the part, run `OPTIMIZED_END_PRINT_FILAMENT_PREP`, pass `complete_print_exhaust_fan_speed[current_extruder]` to the exhaust cooldown when completion air filtration is enabled, then lower the bed with the same slicer height rule.
+- `OPTIMIZED_END_NOZZLE_COOLDOWN_START` starts the part fan at full speed, records the hotend cooldown reference temperature, disables the QIDI Box heater when present, turns off chamber, bed, hotend, and sensors, leaves the polar cooler in its current state until `PRINT_END`, and starts `OPTIMIZED_END_FAN_COOLDOWN` only when slicer `activate_air_filtration_on_completion[current_extruder]` is enabled.
+- `OPTIMIZED_END_STAGED_NOZZLE_WIPE` waits for the hotend to cool 40 °C below the captured end temperature, runs `CLEAR_OOZE` / `CLEAR_FLUSH` when `box_extras` is present, waits for 140 °C, repeats the wipe, moves Y forward 30 mm, and then calls `PRINT_END`.
 - OrcaSlicer and QIDI Studio change-filament G-code call `OPTIMIZED_CUT_FILAMENT` and `OPTIMIZED_MOVE_TO_TRASH`.
-- OrcaSlicer and QIDI Studio end G-code call `OPTIMIZED_END_PRINT_FILAMENT_PREP`, `OPTIMIZED_END_NOZZLE_CLEANUP`, and `OPTIMIZED_END_FAN_COOLDOWN`.
 
 ## Motion helpers and cancellation
 
@@ -156,7 +157,7 @@ Functional changes:
 - `OPTIMIZED_M1004` defaults the polar cooler to off when `enable_polar_cooler` is unset.
 - `OPTIMIZED_DISABLE_BOX_HEATER` calls vendor `DISABLE_BOX_HEATER` only when `box_extras` exists.
 - `TLTG_SET_BOX_TEMP` validates the requested QIDI Box heater and max temperature before calling `SET_HEATER_TEMPERATURE`.
-- `OPTIMIZED_END_FAN_COOLDOWN` runs the `P3` chamber/exhaust fan after print end and skips the delayed shutdown when another print is active or paused.
+- `OPTIMIZED_END_FAN_COOLDOWN` runs the `P3` chamber/exhaust fan for the slicer-requested completion cooldown and skips the delayed shutdown when another print is active or paused.
 
 ## Calibration and user helpers
 
