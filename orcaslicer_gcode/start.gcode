@@ -26,10 +26,10 @@ M140 S[bed_temperature_initial_layer_single]
 M141 S[chamber_temperature]
 ; Use absolute coordinates for the front purge line.
 G90
-; Move to the centered front purge lead-in point before the first-layer nozzle wait.
+; Move to the front purge start point before the first-layer nozzle wait.
 G1 Z5 F1200
-G1 X210 Y0 F20000
-; Wait for nozzle to be fully back at first-layer temperature over the lead-in zone.
+G1 X218 Y0 F20000
+; Wait for nozzle to be fully back at first-layer temperature at the purge start.
 M109 S[nozzle_temperature_initial_layer]
 ; Use relative extrusion for the purge line.
 M83
@@ -37,7 +37,6 @@ M83
 G92 E0
 ; Draw a fat front purge line to consume high-temp ooze from the final heat-up.
 G1 Z0.5 F900
-G1 X218 Y0 F12000
 G1 Z{initial_layer_print_height} F1200
 G1 E6 F300
 M106 S200
