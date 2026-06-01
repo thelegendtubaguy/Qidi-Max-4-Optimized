@@ -52,6 +52,15 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertIn("_OPTIMIZED_HOME_Z_FROM_SAFE_POINT", z_home_gcode)
         self.assertNotIn("G28.6245197 Z", z_home_gcode)
 
+    def test_prep_xy_home_skips_lateral_staging_when_unsafe(self):
+        gcode = self._macro_gcode("_OPTIMIZED_PREP_XY_HOME")
+        self.assertIn("printer.toolhead.homed_axes|lower", gcode)
+        self.assertIn("xy_homed = 'x' in homed and 'y' in homed", gcode)
+        self.assertIn("printer.gcode_move.position.y > km.print_max[1]", gcode)
+        self.assertIn("at_chute_park or not xy_homed", gcode)
+        self.assertIn("move_x = 0", gcode)
+        self.assertIn("move_y = 0", gcode)
+
     def test_safe_z_home_raw_path_is_not_reentrant(self):
         public_gcode = self._macro_gcode("_OPTIMIZED_HOME_Z_FROM_SAFE_POINT")
         self.assertIn("G28 Z", public_gcode)

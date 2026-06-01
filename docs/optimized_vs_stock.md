@@ -83,6 +83,7 @@ Functional changes:
 - Z-only homing is used when X and Y are already homed; a full home is used only when Z is requested before XY is known.
 - Z homing moves to a randomized point around the bed center using `variable_z_home_randomize_enable` and `variable_z_home_randomize_radius`, avoiding repeated probing of the same bed spot.
 - Homing restores the configured printer acceleration after temporary high-acceleration moves; stock homing can leave acceleration changed after the override.
+- Full-home prep keeps the Z staging lift but skips the stock lateral `X`/`Y` nudge when X/Y are not homed (for example after `FIRMWARE_RESTART` with unknown position) or when the toolhead is already parked behind the printable bed (`Y` above `_km_globals.print_max`), so a chute-parked start does not jerk sideways before homing.
 - `OPTIMIZED_G29_ZSAFE` and print-start mesh preparation skip redundant XY rehoming when X and Y are already homed.
 - Bed mesh always clears the active mesh and recalibrates `PROFILE=kamp`; optimized print start does not load the saved `default` mesh through `_km_globals.bedmesh_before_print`.
 - Z-tilt and bed-mesh measurement moves run faster through installer-patched `[z_tilt] speed` and `[bed_mesh] speed` values.
