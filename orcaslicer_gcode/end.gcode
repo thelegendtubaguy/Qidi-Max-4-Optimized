@@ -1,13 +1,12 @@
 SET_PRINT_MAIN_STATUS MAIN_STATUS=print_end
-OPTIMIZED_DISABLE_BOX_HEATER
-M141 S0
-M140 S0
-DISABLE_ALL_SENSOR
 G0 Z{min(max_print_height, max_layer_z + 3)} F600
+OPTIMIZED_MOVE_TO_TRASH
 OPTIMIZED_END_PRINT_FILAMENT_PREP T=[current_extruder]
-OPTIMIZED_END_NOZZLE_CLEANUP
+{if activate_air_filtration_on_completion[current_extruder]}
+OPTIMIZED_END_NOZZLE_COOLDOWN_START EXHAUST_SPEED={complete_print_exhaust_fan_speed[current_extruder] * 255 / 100}
+{else}
+OPTIMIZED_END_NOZZLE_COOLDOWN_START EXHAUST_SPEED=0
+{endif}
 {if max_layer_z < max_print_height / 2}G1 Z{min(max_print_height, max_print_height / 2 + 10)} F600{else}G1 Z{min(max_print_height, max_layer_z + 3)} F600{endif}
-; Turn off Polar Cooler
-M106 P4 S0
-OPTIMIZED_END_FAN_COOLDOWN S=120 T=180
+OPTIMIZED_END_STAGED_NOZZLE_WIPE
 PRINT_END
