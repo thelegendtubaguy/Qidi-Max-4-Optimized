@@ -69,6 +69,12 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertEqual(homing_override.count("_OPTIMIZED_HOME_Z_FROM_SAFE_POINT_RAW"), 2)
         self.assertNotIn("\n      _OPTIMIZED_HOME_Z_FROM_SAFE_POINT\n", f"\n{homing_override}\n")
 
+    def test_homing_prep_does_not_nudge_xy_before_raw_homing(self):
+        homing_override = self._section_gcode(OPTIMIZED_MACRO_ROOT / "kinematics.cfg", "homing_override")
+        self.assertIn("_OPTIMIZED_PREP_XY_HOME SET_Z=1 MOVE_Z=5", homing_override)
+        self.assertNotIn("MOVE_X=", homing_override)
+        self.assertNotIn("MOVE_Y=", homing_override)
+
     def test_public_motion_helpers_restore_modal_state_and_acceleration(self):
         cut_gcode = self._macro_gcode("OPTIMIZED_CUT_FILAMENT")
         self.assertIn("saved_accel = printer.toolhead.max_accel|float", cut_gcode)
@@ -117,6 +123,62 @@ class OptimizedMacroContractTests(unittest.TestCase):
             "G1 E25 F300",
             "SET_VELOCITY_LIMIT ACCEL={saved_accel}",
             "RESTORE_GCODE_STATE NAME=optimized_unload_filament_state",
+        )
+
+    def test_end_sequence_waits_for_staged_hotend_cooldown_before_wiping(self):
+        for relative_path in (
+            "orcaslicer_gcode/end.gcode",
+            "qidistudio_gcode/end.gcode",
+        ):
+            end_gcode = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+            self.assert_ordered(
+                end_gcode,
+                "G0 Z{min(max_print_height, max_layer_z + 3)} F600",
+                "OPTIMIZED_MOVE_TO_TRASH",
+                "OPTIMIZED_END_PRINT_FILAMENT_PREP T=[current_extruder]",
+                "{if activate_air_filtration_on_completion[current_extruder]}",
+                "OPTIMIZED_END_NOZZLE_COOLDOWN_START EXHAUST_SPEED={complete_print_exhaust_fan_speed[current_extruder] * 255 / 100}",
+                "{else}",
+                "OPTIMIZED_END_NOZZLE_COOLDOWN_START EXHAUST_SPEED=0",
+                "G1 Z{min(max_print_height, max_print_height / 2 + 10)} F600",
+                "OPTIMIZED_END_STAGED_NOZZLE_WIPE",
+                "PRINT_END",
+            )
+            self.assertNotIn("OPTIMIZED_END_FAN_COOLDOWN", end_gcode)
+
+        cooldown_start = self._macro_gcode("OPTIMIZED_END_NOZZLE_COOLDOWN_START")
+        self.assert_ordered(
+            cooldown_start,
+            "M106 S255",
+            "exhaust_speed = params.EXHAUST_SPEED|default(0)|int",
+            "OPTIMIZED_DISABLE_BOX_HEATER",
+            "M141 S0",
+            "M140 S0",
+            "M104 S0",
+            "OPTIMIZED_END_FAN_COOLDOWN S={exhaust_speed} T={exhaust_duration}",
+        )
+
+        staged_wipe = self._macro_gcode("OPTIMIZED_END_STAGED_NOZZLE_WIPE")
+        self.assert_ordered(
+            staged_wipe,
+            "TEMPERATURE_WAIT SENSOR={extruder} MAXIMUM={first_wipe_temp}",
+            "CLEAR_OOZE",
+            "CLEAR_FLUSH",
+            "TEMPERATURE_WAIT SENSOR={extruder} MAXIMUM={final_wipe_temp}",
+            "CLEAR_OOZE",
+            "CLEAR_FLUSH",
+            "G1 Y-{pull_forward_y} F6000",
+        )
+
+        end_prep = self._macro_gcode("OPTIMIZED_END_PRINT_FILAMENT_PREP")
+        self.assertIn("OPTIMIZED_UNLOAD_FILAMENT T={tool} CLEANUP=0", end_prep)
+
+        cleanup_alias = self._macro_gcode("OPTIMIZED_END_NOZZLE_CLEANUP")
+        self.assert_ordered(
+            cleanup_alias,
+            "OPTIMIZED_MOVE_TO_TRASH",
+            "OPTIMIZED_END_NOZZLE_COOLDOWN_START {rawparams}",
+            "OPTIMIZED_END_STAGED_NOZZLE_WIPE",
         )
 
     def test_no_box_start_path_wipes_and_scrapes_without_rear_purge(self):
