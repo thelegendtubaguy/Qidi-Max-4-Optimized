@@ -96,11 +96,15 @@ Source paths:
 - `installer/klipper/tltg-optimized-macros/start_end.cfg`
 - `installer/klipper/tltg-optimized-macros/filament.cfg`
 - `installer/klipper/tltg-optimized-macros/bed_mesh.cfg`
+- `installer/klipper/tltg-optimized-macros/offset.cfg`
 
 Functional changes:
 - Slicer start G-code enters optimized startup through `OPTIMIZED_PRINT_START_HOME` and `OPTIMIZED_START_PRINT_FILAMENT_PREP` instead of the stock `print_start` path.
 - `OPTIMIZED_PRINT_START_HOME` cancels any pending `_optimized_end_fan_cooldown_off`, preheats the hotend to probing temperature, sets the UI sub-status, and runs optimized `G28`.
 - `OPTIMIZED_START_PRINT_FILAMENT_PREP` owns the retained-filament, QIDI Box fresh-load, and no-box external-spool branches.
+- `M1002 R1` captures `printer.save_variables.variables.z_offset|default(0)` into `_km_apply_print_offset.captured_z_offset`, clears the active runtime Z offset for homing, Z tilt, and KAMP mesh calibration, and leaves the captured value in volatile macro state.
+- `M1002 A1` applies `_km_apply_print_offset.captured_z_offset` after `SAVE_CONFIG_QD`; if no value was captured earlier in the session, it falls back to `printer.save_variables.variables.z_offset|default(0)`.
+- `_km_apply_print_offset` reports `Your Z Offset will be set to: x.xxx` immediately before `M1002 A1` applies the captured or fallback Z offset.
 - The retained-filament branch skips `BOX_PRINT_START` when the same tool, slot, filament ID, vendor ID, load slot, sync slot, and filament-present sensor state prove the prior box filament is still loaded.
 - The retained-filament branch reuses the loaded filament, moves to the chute before waiting, waits for bed/chamber targets as needed at the chute, performs chute-side cleanup, runs `Z_TILT_ADJUST`, and recalibrates KAMP mesh.
 - The QIDI Box fresh-load branch calls vendor `BOX_PRINT_START` with the slicer high purge temperature, runs optimized extrusion and flush, cools to scrape temperature in stages, wipes/scrapes the nozzle, then goes directly to bed/chamber waits, Z tilt, and KAMP mesh.

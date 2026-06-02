@@ -5,6 +5,7 @@ import unittest
 from dataclasses import dataclass
 from pathlib import Path
 
+from installer.runtime.manifest import load_manifest
 from installer.tests.helpers import REPO_ROOT
 
 
@@ -65,7 +66,10 @@ class MacroCallGraphTests(unittest.TestCase):
         self.assert_macro_graph_is_acyclic(files)
 
     def assert_macro_graph_is_acyclic(self, files: tuple[Path, ...]) -> None:
-        macros, duplicates = parse_macro_definitions(files)
+        macros, duplicates = parse_macro_definitions(
+            files,
+            excluded_sections=manifest_deleted_sections(),
+        )
         if duplicates:
             self.fail(
                 "Duplicate gcode_macro definitions:\n"
@@ -107,14 +111,27 @@ def unique_paths(paths) -> tuple[Path, ...]:
     return tuple(result)
 
 
+def manifest_deleted_sections() -> frozenset[tuple[Path, str]]:
+    manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
+    return frozenset(
+        ((REPO_ROOT / patch.file).resolve(), patch.section.lower())
+        for patch in manifest.patches.delete_sections
+    )
+
+
 def parse_macro_definitions(
-    files: tuple[Path, ...]
+    files: tuple[Path, ...],
+    *,
+    excluded_sections: frozenset[tuple[Path, str]] = frozenset(),
 ) -> tuple[dict[str, MacroDefinition], list[tuple[MacroDefinition, MacroDefinition]]]:
     macros: dict[str, MacroDefinition] = {}
     duplicates: list[tuple[MacroDefinition, MacroDefinition]] = []
     for path in files:
         lines = path.read_text(encoding="utf-8").splitlines()
+        resolved_path = path.resolve()
         for section_name, header_index, end_index in iter_sections(lines):
+            if (resolved_path, section_name.lower()) in excluded_sections:
+                continue
             match = GCODE_MACRO_RE.match(section_name)
             if not match:
                 continue

@@ -16,6 +16,7 @@ if str(REPO_ROOT) not in sys.path:
 from installer.tests.integration.test_macro_call_graph import (  # noqa: E402
     MacroDefinition,
     iter_static_commands,
+    manifest_deleted_sections,
     parse_macro_definitions,
 )
 
@@ -98,7 +99,10 @@ class ContractError(RuntimeError):
 def load_and_validate_contract(contract_path: Path) -> ContractReport:
     contract = json.loads(contract_path.read_text(encoding="utf-8"))
     macro_files = expand_macro_files(contract.get("macro_files", []), contract_path)
-    macros, duplicates = parse_macro_definitions(macro_files)
+    macros, duplicates = parse_macro_definitions(
+        macro_files,
+        excluded_sections=manifest_deleted_sections(),
+    )
     if duplicates:
         rows = [
             f"  {first.name}: {relative(first.path)}:{first.line_number} and {relative(second.path)}:{second.line_number}"

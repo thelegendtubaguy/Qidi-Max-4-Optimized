@@ -39,6 +39,23 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertIn("G31", gcode)
         self.assertLess(gcode.index("G31"), gcode.index("CLEAR_PAUSE"))
 
+    def test_print_offset_capture_uses_volatile_saved_value(self):
+        text = (OPTIMIZED_MACRO_ROOT / "offset.cfg").read_text(encoding="utf-8")
+        gcode = self._macro_gcode("_KM_APPLY_PRINT_OFFSET")
+        self.assertIn("variable_captured_z_offset: 0.0", text)
+        self.assertIn("variable_captured_z_offset_valid: 0", text)
+        self.assertIn("printer.save_variables.variables.z_offset|default(0)|float", gcode)
+        self.assertIn("SET_GCODE_VARIABLE MACRO=_km_apply_print_offset VARIABLE=captured_z_offset VALUE={z}", gcode)
+        self.assertIn("SET_GCODE_VARIABLE MACRO=_km_apply_print_offset VARIABLE=captured_z_offset_valid VALUE=1", gcode)
+        self.assertIn('action_respond_info("Your Z Offset will be set to: %.3f" % z)', gcode)
+        self.assert_ordered(
+            gcode,
+            "SET_GCODE_VARIABLE MACRO=_km_apply_print_offset VARIABLE=captured_z_offset VALUE={z}",
+            "SET_GCODE_OFFSET Z=0 MOVE=0",
+            "captured_z_offset|float",
+            "SET_GCODE_OFFSET Z={z} MOVE=0",
+        )
+
     def test_optimized_g29_always_calibrates_kamp_mesh(self):
         gcode = self._macro_gcode("OPTIMIZED_G29_ZSAFE")
         self.assertIn("BED_MESH_CLEAR", gcode)
