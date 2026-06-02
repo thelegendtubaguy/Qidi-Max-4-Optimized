@@ -125,6 +125,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
             "RESTORE_GCODE_STATE NAME=optimized_unload_filament_state",
         )
 
+
     def test_end_sequence_waits_for_staged_hotend_cooldown_before_wiping(self):
         orca_end_gcode = (REPO_ROOT / "orcaslicer_gcode/end.gcode").read_text(
             encoding="utf-8"
@@ -195,6 +196,28 @@ class OptimizedMacroContractTests(unittest.TestCase):
             "OPTIMIZED_END_NOZZLE_COOLDOWN_START {rawparams}",
             "OPTIMIZED_END_STAGED_NOZZLE_WIPE",
         )
+
+    def test_retained_filament_start_waits_for_bed_and_chamber_at_trash(self):
+        start_gcode = self._macro_gcode("OPTIMIZED_START_PRINT_FILAMENT_PREP")
+        retained_gcode = start_gcode[start_gcode.index("M118 Reusing retained filament on T{tool}") : start_gcode.index("{% elif box_enabled %}")]
+        self.assertNotIn("G1 X20 Y20", retained_gcode)
+        self.assert_ordered(
+            retained_gcode,
+            "G1 Z20 F480",
+            "OPTIMIZED_MOVE_TO_TRASH",
+            "OPTIMIZED_WAIT_BED S={bed_target} STATUS=wait_bed_temp",
+            "OPTIMIZED_WAIT_CHAMBER S={chamber_target} STATUS=wait_chamber_temp",
+            "OPTIMIZED_WAIT_HOTEND S={reuse_nozzle_target} STATUS=clear_nozzle",
+            "CLEAR_OOZE",
+            "CLEAR_FLUSH",
+            "Z_TILT_ADJUST",
+        )
+
+    def test_chamber_wait_accepts_three_degree_startup_window(self):
+        chamber_gcode = self._macro_gcode("OPTIMIZED_WAIT_CHAMBER")
+        self.assertIn('TEMPERATURE_WAIT SENSOR="heater_generic chamber" MINIMUM={([target - 3, 0]|max)}', chamber_gcode)
+        self.assertNotIn("target, 65", chamber_gcode)
+
 
     def test_no_box_start_path_wipes_and_scrapes_without_rear_purge(self):
         start_gcode = self._macro_gcode("OPTIMIZED_START_PRINT_FILAMENT_PREP")
