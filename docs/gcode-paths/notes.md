@@ -20,6 +20,8 @@ python3 scripts/check_gcode_paths.py
 
 `OPTIMIZED_START_PRINT_FILAMENT_PREP` owns the branch split between retained-filament reuse, QIDI Box fresh-load, and no-box external-spool startup.
 
+`M1002 R1` captures `printer.save_variables.variables.z_offset|default(0)` into volatile macro state before clearing the active runtime Z offset; `M1002 A1` reapplies that captured value after KAMP mesh `SAVE_CONFIG_QD` and falls back to `printer.save_variables.variables.z_offset|default(0)` only when no value was captured earlier in the session.
+
 Slicer start G-code passes `FIRSTLAYERTEMP=[nozzle_temperature_initial_layer]` and `PURGETEMP={nozzle_temperature_range_high[initial_tool]}` to `OPTIMIZED_START_PRINT_FILAMENT_PREP`; `T[initial_tool]` runs before the front prime line so startup extrusion is attributed to the selected initial object filament; the front prime line moves to `X218 Y0` at `Z5`, waits there with `M109 S[nozzle_temperature_initial_layer]` after rear purge, Z tilt, and bed mesh, then runs the centered fat purge sequence `G1 E6 F300`, `G1 X178 E20 F1200`, and `G1 X173 E0.8` to consume heat-up ooze.
 
 Slicer start G-code does not call `SET_INPUT_SHAPER`; Klipper uses the saved `shaper_type_x` and `shaper_type_y` calibration state from `config/printer.cfg`.
