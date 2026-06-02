@@ -126,25 +126,40 @@ class OptimizedMacroContractTests(unittest.TestCase):
         )
 
     def test_end_sequence_waits_for_staged_hotend_cooldown_before_wiping(self):
-        for relative_path in (
-            "orcaslicer_gcode/end.gcode",
-            "qidistudio_gcode/end.gcode",
-        ):
-            end_gcode = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
-            self.assert_ordered(
-                end_gcode,
-                "G0 Z{min(max_print_height, max_layer_z + 3)} F600",
-                "OPTIMIZED_MOVE_TO_TRASH",
-                "OPTIMIZED_END_PRINT_FILAMENT_PREP T=[current_extruder]",
-                "{if activate_air_filtration_on_completion[current_extruder]}",
-                "OPTIMIZED_END_NOZZLE_COOLDOWN_START EXHAUST_SPEED={complete_print_exhaust_fan_speed[current_extruder] * 255 / 100}",
-                "{else}",
-                "OPTIMIZED_END_NOZZLE_COOLDOWN_START EXHAUST_SPEED=0",
-                "G1 Z{min(max_print_height, max_print_height / 2 + 10)} F600",
-                "OPTIMIZED_END_STAGED_NOZZLE_WIPE",
-                "PRINT_END",
-            )
-            self.assertNotIn("OPTIMIZED_END_FAN_COOLDOWN", end_gcode)
+        orca_end_gcode = (REPO_ROOT / "orcaslicer_gcode/end.gcode").read_text(
+            encoding="utf-8"
+        )
+        self.assert_ordered(
+            orca_end_gcode,
+            "G0 Z{min(max_print_height, max_layer_z + 3)} F600",
+            "OPTIMIZED_MOVE_TO_TRASH",
+            "OPTIMIZED_END_PRINT_FILAMENT_PREP T=[current_extruder]",
+            "{if activate_air_filtration_on_completion[current_extruder]}",
+            "OPTIMIZED_END_NOZZLE_COOLDOWN_START EXHAUST_SPEED={complete_print_exhaust_fan_speed[current_extruder] * 255 / 100}",
+            "{else}",
+            "OPTIMIZED_END_NOZZLE_COOLDOWN_START EXHAUST_SPEED=0",
+            "G1 Z{min(max_print_height, max_print_height / 2 + 10)} F600",
+            "OPTIMIZED_END_STAGED_NOZZLE_WIPE",
+            "PRINT_END",
+        )
+        self.assertNotIn("OPTIMIZED_END_FAN_COOLDOWN", orca_end_gcode)
+
+        qidistudio_end_gcode = (REPO_ROOT / "qidistudio_gcode/end.gcode").read_text(
+            encoding="utf-8"
+        )
+        self.assert_ordered(
+            qidistudio_end_gcode,
+            "G0 Z{min(max_print_height, max_layer_z + 3)} F600",
+            "OPTIMIZED_MOVE_TO_TRASH",
+            "OPTIMIZED_END_PRINT_FILAMENT_PREP T=[current_extruder]",
+            "OPTIMIZED_END_NOZZLE_COOLDOWN_START EXHAUST_SPEED=0",
+            "G1 Z{min(max_print_height, max_print_height / 2 + 10)} F600",
+            "OPTIMIZED_END_STAGED_NOZZLE_WIPE",
+            "PRINT_END",
+        )
+        self.assertNotIn("activate_air_filtration_on_completion", qidistudio_end_gcode)
+        self.assertNotIn("complete_print_exhaust_fan_speed", qidistudio_end_gcode)
+        self.assertNotIn("OPTIMIZED_END_FAN_COOLDOWN", qidistudio_end_gcode)
 
         cooldown_start = self._macro_gcode("OPTIMIZED_END_NOZZLE_COOLDOWN_START")
         self.assert_ordered(
