@@ -18,6 +18,11 @@
 7. Update docs under `docs/` when behavior, assumptions, config flow, slicer flow, installer behavior, or integration details change.
 8. Translate comments only unless explicitly told otherwise. Leave runtime/status/warning strings unchanged unless the affected string set is approved.
 
+## Git workflow
+
+- Create feature, bugfix, and general work branches from the latest `origin/dev` unless explicitly told otherwise.
+- Open PRs against `dev` unless the PR is a release merge.
+
 ## QIDI Studio slicer G-code constraints
 
 - QIDI Studio is not OrcaSlicer with identical placeholder parsing; keep `qidistudio_gcode/` syntax separately tested instead of copying Orca expressions verbatim.
