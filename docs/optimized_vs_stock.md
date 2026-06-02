@@ -102,7 +102,7 @@ Functional changes:
 - `OPTIMIZED_PRINT_START_HOME` cancels any pending `_optimized_end_fan_cooldown_off`, preheats the hotend to probing temperature, sets the UI sub-status, and runs optimized `G28`.
 - `OPTIMIZED_START_PRINT_FILAMENT_PREP` owns the retained-filament, QIDI Box fresh-load, and no-box external-spool branches.
 - The retained-filament branch skips `BOX_PRINT_START` when the same tool, slot, filament ID, vendor ID, load slot, sync slot, and filament-present sensor state prove the prior box filament is still loaded.
-- The retained-filament branch reuses the loaded filament, performs chute-side cleanup, waits for bed/chamber targets as needed, runs `Z_TILT_ADJUST`, and recalibrates KAMP mesh.
+- The retained-filament branch reuses the loaded filament, moves to the chute before waiting, waits for bed/chamber targets as needed at the chute, performs chute-side cleanup, runs `Z_TILT_ADJUST`, and recalibrates KAMP mesh.
 - The QIDI Box fresh-load branch calls vendor `BOX_PRINT_START` with the slicer high purge temperature, runs optimized extrusion and flush, cools to scrape temperature in stages, wipes/scrapes the nozzle, then goes directly to bed/chamber waits, Z tilt, and KAMP mesh.
 - The QIDI Box fresh-load branch does not re-home Z between purge cleanup and the rear-bed scrape motion.
 - The no-box external-spool branch skips `BOX_PRINT_START`, skips `OPTIMIZED_EXTRUSION_AND_FLUSH`, skips rear extrusion purge, wipes/scrapes the nozzle without extrusion, then runs bed/chamber waits, Z tilt, and KAMP mesh.
@@ -154,7 +154,7 @@ Source paths:
 
 Functional changes:
 - `OPTIMIZED_WAIT_HOTEND`, `OPTIMIZED_WAIT_BED`, and `OPTIMIZED_WAIT_CHAMBER` preserve explicit UI sub-status values while waiting.
-- `OPTIMIZED_WAIT_CHAMBER` stops `chamber_circulation_fan` before waiting on chamber heat.
+- `OPTIMIZED_WAIT_CHAMBER` stops `chamber_circulation_fan` before waiting on chamber heat and continues when chamber temperature is within 3 °C of the requested target.
 - `OPTIMIZED_M1004` defaults the polar cooler to off when `enable_polar_cooler` is unset.
 - `OPTIMIZED_DISABLE_BOX_HEATER` calls vendor `DISABLE_BOX_HEATER` only when `box_extras` exists.
 - `TLTG_SET_BOX_TEMP` validates the requested QIDI Box heater and max temperature before calling `SET_HEATER_TEMPERATURE`.

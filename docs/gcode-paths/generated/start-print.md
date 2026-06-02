@@ -61,16 +61,16 @@ Forbidden patterns:
 
 Condition: `reuse_loaded`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:129-172`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:129-171`
 
 Direct visible macro calls in branch slice:
 
 - `m104`
 - `m140`
 - `m141`
+- `OPTIMIZED_MOVE_TO_TRASH`
 - `OPTIMIZED_WAIT_BED`
 - `OPTIMIZED_WAIT_CHAMBER`
-- `OPTIMIZED_MOVE_TO_TRASH`
 - `OPTIMIZED_WAIT_HOTEND`
 - `M106`
 - `_OPTIMIZED_G29_HOME_Z_OR_FULL`
@@ -82,6 +82,8 @@ Ordered invariants:
 
 - `SAVE_VARIABLE VARIABLE=retained_tool VALUE={tool}`
 - `OPTIMIZED_MOVE_TO_TRASH`
+- `OPTIMIZED_WAIT_BED S={bed_target} STATUS=wait_bed_temp`
+- `OPTIMIZED_WAIT_CHAMBER S={chamber_target} STATUS=wait_chamber_temp`
 - `OPTIMIZED_WAIT_HOTEND S={reuse_nozzle_target} STATUS=clear_nozzle`
 - `CLEAR_OOZE`
 - `CLEAR_FLUSH`
@@ -102,7 +104,7 @@ Forbidden patterns:
 
 Condition: `box_enabled && !reuse_loaded`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:173-238`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:172-237`
 
 Direct visible macro calls in branch slice:
 
@@ -141,7 +143,7 @@ Forbidden patterns:
 
 Condition: `!box_available || !enable_box`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:239-278`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:238-277`
 
 Direct visible macro calls in branch slice:
 

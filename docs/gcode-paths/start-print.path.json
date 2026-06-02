@@ -67,6 +67,8 @@
       "must_include_order": [
         "SAVE_VARIABLE VARIABLE=retained_tool VALUE={tool}",
         "OPTIMIZED_MOVE_TO_TRASH",
+        "OPTIMIZED_WAIT_BED S={bed_target} STATUS=wait_bed_temp",
+        "OPTIMIZED_WAIT_CHAMBER S={chamber_target} STATUS=wait_chamber_temp",
         "OPTIMIZED_WAIT_HOTEND S={reuse_nozzle_target} STATUS=clear_nozzle",
         "CLEAR_OOZE",
         "CLEAR_FLUSH",
