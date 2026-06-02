@@ -18,6 +18,13 @@
 7. Update docs under `docs/` when behavior, assumptions, config flow, slicer flow, installer behavior, or integration details change.
 8. Translate comments only unless explicitly told otherwise. Leave runtime/status/warning strings unchanged unless the affected string set is approved.
 
+## QIDI Studio slicer G-code constraints
+
+- QIDI Studio is not OrcaSlicer with identical placeholder parsing; keep `qidistudio_gcode/` syntax separately tested instead of copying Orca expressions verbatim.
+- Do not use `activate_air_filtration_on_completion[...]` or `complete_print_exhaust_fan_speed[...]` in `qidistudio_gcode/`; QIDI Studio 2.6 reports `Not a variable name` for indexed completion-air-filtration placeholders in end G-code. Use a constant `EXHAUST_SPEED=0` unless a QIDI Studio-tested replacement exists.
+- Keep QIDI Studio `{if}`, `{else}`, and `{endif}` blocks on separate lines when editing conditionals; this is the tested style used by `qidistudio_gcode/*.gcode`.
+- Do not add direct polar cooler controls such as `M106 P4 ...` to `qidistudio_gcode/` unless explicitly requested and validated in QIDI Studio.
+
 ## Required references
 
 - Stock-vs-optimized behavior: `docs/optimized_vs_stock.md`

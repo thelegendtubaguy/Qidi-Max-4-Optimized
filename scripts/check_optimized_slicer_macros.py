@@ -60,6 +60,18 @@ BANNED_SLICER_COMMANDS = {
     "SET_INPUT_SHAPER": "Klipper saved input-shaper calibration remains authoritative; slicer G-code must not override it.",
 }
 
+QIDISTUDIO_BANNED_SNIPPETS = {
+    "activate_air_filtration_on_completion[": "QIDI Studio rejects indexed completion-air-filtration placeholders in end G-code; keep them out of the QIDI Studio pack.",
+    "complete_print_exhaust_fan_speed[": "QIDI Studio rejects indexed completion-air-filtration placeholders in end G-code; keep them out of the QIDI Studio pack.",
+}
+
+QIDISTUDIO_BANNED_PATTERNS = (
+    (
+        re.compile(r"\bM106\s+P4\b", re.IGNORECASE),
+        "Direct polar cooler controls are not allowed in QIDI Studio G-code.",
+    ),
+)
+
 
 def iter_macro_names(macro_dir: Path = OPTIMIZED_MACRO_DIR) -> set[str]:
     macros: set[str] = set()
@@ -121,6 +133,26 @@ def is_allowed_external_command(command: str, segment: str, command_end: int) ->
     )
 
 
+def validate_qidistudio_compatibility(repo_root: Path, path: Path) -> list[str]:
+    if path.parent != repo_root / "qidistudio_gcode":
+        return []
+
+    failures: list[str] = []
+    for line_number, raw_line in enumerate(path.read_text().splitlines(), start=1):
+        line = raw_line.split(";", 1)[0]
+        for snippet, reason in QIDISTUDIO_BANNED_SNIPPETS.items():
+            if snippet in line:
+                failures.append(
+                    f"{path.relative_to(repo_root)}:{line_number}: QIDI Studio-incompatible placeholder '{snippet}': {reason}"
+                )
+        for pattern, reason in QIDISTUDIO_BANNED_PATTERNS:
+            if pattern.search(line):
+                failures.append(
+                    f"{path.relative_to(repo_root)}:{line_number}: QIDI Studio-incompatible G-code '{line.strip()}': {reason}"
+                )
+    return failures
+
+
 def validate_repo(
     repo_root: Path = REPO_ROOT,
 ) -> tuple[list[str], list[Path], set[str]]:
@@ -131,6 +163,7 @@ def validate_repo(
     checked_files = iter_slicer_files(repo_root)
 
     for path in checked_files:
+        failures.extend(validate_qidistudio_compatibility(repo_root, path))
         for line_number, command, segment, command_end in iter_commands(path):
             banned_reason = BANNED_SLICER_COMMANDS.get(command)
             if banned_reason:
