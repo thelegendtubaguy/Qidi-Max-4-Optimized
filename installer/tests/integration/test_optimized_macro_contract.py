@@ -143,6 +143,26 @@ class OptimizedMacroContractTests(unittest.TestCase):
         )
 
 
+    def test_retained_filament_tracks_active_box_sync_slot(self):
+        start_gcode = self._macro_gcode("OPTIMIZED_START_PRINT_FILAMENT_PREP")
+        self.assertIn("slot_sync = svv.slot_sync|default('slot-1')", start_gcode)
+        self.assertIn("retained_slot == tool_slot", start_gcode)
+        self.assertIn("slot_sync == retained_slot", start_gcode)
+        self.assertNotIn("last_load_slot == retained_slot", start_gcode)
+        self.assertNotIn("retained_tool == tool", start_gcode)
+
+        end_gcode = self._macro_gcode("OPTIMIZED_END_PRINT_FILAMENT_PREP")
+        self.assertIn("active_slot = slot_sync if slot_sync != 'slot-1' else tool_slot", end_gcode)
+        self.assertIn("active_tool = namespace(value=tool)", end_gcode)
+        self.assertIn("{% for candidate in range(16) %}", end_gcode)
+        self.assertIn("svv['value_t' ~ candidate]|default('slot' ~ candidate) == active_slot", end_gcode)
+        self.assertIn("SAVE_VARIABLE VARIABLE=retained_tool VALUE={active_tool.value}", end_gcode)
+        self.assertIn("SAVE_VARIABLE VARIABLE=retained_slot VALUE='\"{active_slot}\"'", end_gcode)
+        self.assertIn("SAVE_VARIABLE VARIABLE=retained_filament_id VALUE={active_filament_id}", end_gcode)
+        self.assertIn("SAVE_VARIABLE VARIABLE=retained_vendor_id VALUE={active_vendor_id}", end_gcode)
+        self.assertNotIn("SAVE_VARIABLE VARIABLE=retained_tool VALUE={tool}", end_gcode)
+        self.assertNotIn("SAVE_VARIABLE VARIABLE=retained_slot VALUE='\"{tool_slot}\"'", end_gcode)
+
     def test_end_sequence_waits_for_staged_hotend_cooldown_before_wiping(self):
         orca_end_gcode = (REPO_ROOT / "orcaslicer_gcode/end.gcode").read_text(
             encoding="utf-8"

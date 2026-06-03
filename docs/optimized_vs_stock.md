@@ -105,7 +105,7 @@ Functional changes:
 - `M1002 R1` captures `printer.save_variables.variables.z_offset|default(0)` into `_km_apply_print_offset.captured_z_offset`, clears the active runtime Z offset for homing, Z tilt, and KAMP mesh calibration, and leaves the captured value in volatile macro state.
 - `M1002 A1` applies `_km_apply_print_offset.captured_z_offset` after `SAVE_CONFIG_QD`; if no value was captured earlier in the session, it falls back to `printer.save_variables.variables.z_offset|default(0)`.
 - `_km_apply_print_offset` reports `Your Z Offset will be set to: x.xxx` immediately before `M1002 A1` applies the captured or fallback Z offset.
-- The retained-filament branch skips `BOX_PRINT_START` when the same tool, slot, filament ID, vendor ID, load slot, sync slot, and filament-present sensor state prove the prior box filament is still loaded.
+- The retained-filament branch skips `BOX_PRINT_START` when the requested tool maps to the retained slot, `slot_sync` still points at that slot, the slot filament ID and vendor ID still match, and the filament-present sensor proves box filament is still loaded.
 - The retained-filament branch reuses the loaded filament, moves to the chute before waiting, waits for bed/chamber targets as needed at the chute, performs chute-side cleanup, runs `Z_TILT_ADJUST`, and recalibrates KAMP mesh.
 - The QIDI Box fresh-load branch calls vendor `BOX_PRINT_START` with the slicer high purge temperature, runs optimized extrusion and flush, cools to scrape temperature in stages, wipes/scrapes the nozzle, then goes directly to bed/chamber waits, Z tilt, and KAMP mesh.
 - The QIDI Box fresh-load branch does not re-home Z between purge cleanup and the rear-bed scrape motion.
@@ -129,6 +129,7 @@ Functional changes:
 - `OPTIMIZED_CUT_FILAMENT` saves caller G-code state, forces absolute XY travel and relative extrusion internally, then restores acceleration and caller state before returning.
 - `OPTIMIZED_EXTRUSION_AND_FLUSH` uses a shorter initial extrusion before the high-volume flush loops, keeps the cleanup wait shorter than stock, and uses `OPTIMIZED_M1004` for polar-cooler handling.
 - `OPTIMIZED_END_PRINT_FILAMENT_PREP` can keep the active QIDI Box filament loaded between prints and records the retained/unloaded branch for end cleanup.
+- `OPTIMIZED_END_PRINT_FILAMENT_PREP` records retained filament from QIDI Box `slot_sync` when it is set, then reverse-maps that active slot through `value_tN` so auto-runout reloads can be reused on the next print even when the slicer `current_extruder` is stale.
 - `OPTIMIZED_END_PRINT_FILAMENT_PREP` performs its end retract under relative extrusion inside saved/restored G-code state, so caller extrusion mode does not change the retract semantics.
 - `OPTIMIZED_UNLOAD_FILAMENT` clears retained-tool state before unloading, routes travel through `OPTIMIZED_MOVE_TO_TRASH`, keeps the post-unload extrusion relative, and restores caller motion state; end-print unload suppresses the standalone unload cleanup so cooldown-based wiping owns the final nozzle wipe.
 - OrcaSlicer and QIDI Studio end G-code lift Z by 3 mm, call `OPTIMIZED_MOVE_TO_TRASH` immediately to leave the part, run `OPTIMIZED_END_PRINT_FILAMENT_PREP`, start nozzle cooldown, then lower the bed with the same slicer height rule.
