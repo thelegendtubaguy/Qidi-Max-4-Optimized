@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.06.02.1
+- Preserved the active print Z offset across startup reset, KAMP mesh save, and offset reapply.
+- Kept retained-filament startup waiting at the purge chute while bed and chamber reach target temperature.
+- Fixed QIDI Studio end G-code compatibility by avoiding unsupported indexed completion-air-filtration placeholders.
+
 ## 26.05.27.1
 - Removed hardcoded shaper algo for x and y
 
