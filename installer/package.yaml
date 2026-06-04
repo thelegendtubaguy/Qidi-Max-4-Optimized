@@ -75,6 +75,7 @@ install:
       - "motion.cfg"
       - "offset.cfg"
       - "start_end.cfg"
+      - "timelapse.cfg"
 
   ensure_lines:
     - id: include_optimized_macros

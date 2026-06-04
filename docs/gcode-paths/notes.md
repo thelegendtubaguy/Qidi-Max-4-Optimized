@@ -28,4 +28,6 @@ Slicer start G-code passes `FIRSTLAYERTEMP=[nozzle_temperature_initial_layer]` a
 
 Slicer start G-code does not call `SET_INPUT_SHAPER`; Klipper uses the saved `shaper_type_x` and `shaper_type_y` calibration state from `config/printer.cfg`.
 
+Slicer layer-change G-code routes timelapse through `OPTIMIZED_TIMELAPSE_TAKE_FRAME`; the Klipper macro checks `printer['gcode_macro TIMELAPSE_TAKE_FRAME'].enable` before running wipe-tower timelapse motion or calling stock `TIMELAPSE_TAKE_FRAME`.
+
 `docs/gcode-paths/start-print.path.json` records branch-level invariants only; exact command order comes from `orcaslicer_gcode/start.gcode`, `qidistudio_gcode/start.gcode`, and `installer/klipper/tltg-optimized-macros/*.cfg`.
