@@ -30,6 +30,7 @@ Functional changes:
 - The installer adds `[include tltg-optimized-macros/*.cfg]` after `[include klipper-macros-qd/*.cfg]`, so stock QIDI macros remain present and optimized macros override or wrap behavior through a separate include tree.
 - Guarded installer patches make X and Y homing faster, reduce repeated homing retraction distance, reduce Z homing retraction distance, increase Z-tilt travel speed, and increase bed-mesh point-to-point travel speed.
 - Guarded installer patches route virtual-SD print errors to `OPTIMIZED_CANCEL_PRINT_ON_ERROR`, which cancels without parking or moving the toolhead during error handling.
+- Guarded installer patches set stock `TIMELAPSE_TAKE_FRAME` `variable_verbose` to `False`, so disabled printer timelapse ignores slicer frame requests without per-layer console messages.
 - The installer deletes QIDI's stock `[homing_override]` from `config/klipper-macros-qd/kinematics.cfg` only when the stock section hash matches a supported firmware baseline, then runtime `G28` is handled by `installer/klipper/tltg-optimized-macros/kinematics.cfg`.
 - Uninstall restores the stored stock `[homing_override]` section when the optimized section deletion is still intact.
 
@@ -113,7 +114,6 @@ Functional changes:
 - `OPTIMIZED_WIPE_AND_SCRAPE_NOZZLE` heats only to the scrape target, waits for the hotend to be no hotter than the scrape window, runs chute cleanup only when `box_extras` exists, performs the rear-bed scrape pattern, and contains no `G1 E...` extrusion move.
 - `OPTIMIZED_WIPE_AND_SCRAPE_NOZZLE` no longer calls `_OPTIMIZED_HOME_Z_FROM_SAFE_POINT`; Z homing for mesh happens later through `_OPTIMIZED_G29_HOME_Z_OR_FULL`.
 - Slicer start G-code selects `T[initial_tool]` before the front prime line so prime extrusion is attributed to the initial object filament.
-- Slicer layer-change G-code calls `OPTIMIZED_TIMELAPSE_TAKE_FRAME`, which checks Klipper's `TIMELAPSE_TAKE_FRAME.enable` before doing wipe-tower timelapse motion or requesting a frame, so disabled printer timelapse does not emit per-layer `Timelapse: disabled, take frame ignored` console messages.
 - Slicer start G-code does not call `SET_INPUT_SHAPER`, so Klipper uses saved `shaper_type_x` / `shaper_type_y` calibration state from `config/printer.cfg` instead of forcing per-print algorithms.
 - The front prime line uses the first-layer nozzle temperature and performs a short centered prime at the front of the bed.
 

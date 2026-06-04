@@ -256,31 +256,6 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertNotIn("target, 65", chamber_gcode)
 
 
-    def test_layer_change_timelapse_is_silent_when_timelapse_is_disabled(self):
-        wrapper_gcode = self._macro_gcode("OPTIMIZED_TIMELAPSE_TAKE_FRAME")
-        self.assertIn("printer['gcode_macro TIMELAPSE_TAKE_FRAME'] is defined", wrapper_gcode)
-        self.assertIn("printer['gcode_macro TIMELAPSE_TAKE_FRAME'].enable", wrapper_gcode)
-        self.assertIn("{% if timelapse_type == 1 %}", wrapper_gcode)
-        self.assertIn("OPTIMIZED_MOVE_TO_TRASH", wrapper_gcode)
-        self.assertIn("TIMELAPSE_TAKE_FRAME", wrapper_gcode)
-        self.assert_ordered(
-            wrapper_gcode,
-            "printer['gcode_macro TIMELAPSE_TAKE_FRAME'].enable",
-            "TIMELAPSE_TAKE_FRAME",
-        )
-
-        for path in (
-            REPO_ROOT / "orcaslicer_gcode/layer_change.gcode",
-            REPO_ROOT / "qidistudio_gcode/layer_change.gcode",
-        ):
-            layer_gcode = path.read_text(encoding="utf-8")
-            self.assertIn(
-                "OPTIMIZED_TIMELAPSE_TAKE_FRAME TYPE={timelapse_type} LAYER_Z={layer_z} RETRACTION_LENGTH=[retraction_length]",
-                layer_gcode,
-            )
-            self.assertNotIn("TIMELAPSE_TAKE_FRAME\n", layer_gcode)
-            self.assertNotIn("OPTIMIZED_MOVE_TO_TRASH", layer_gcode)
-
     def test_no_box_start_path_wipes_and_scrapes_without_rear_purge(self):
         start_gcode = self._macro_gcode("OPTIMIZED_START_PRINT_FILAMENT_PREP")
         no_box_gcode = start_gcode[start_gcode.index("M118 Starting without QIDI Box filament prep") :]
