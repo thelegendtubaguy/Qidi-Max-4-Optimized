@@ -1,9 +1,10 @@
 # Changelog
 
-## 26.06.02.1
+## 26.06.03.1
 - Preserved the active print Z offset across startup reset, KAMP mesh save, and offset reapply.
 - Kept retained-filament startup waiting at the purge chute while bed and chamber reach target temperature.
 - Tracked retained QIDI Box filament from `slot_sync` so auto-runout reloads can be reused when the next print selects the reloaded slot.
+- Suppressed disabled-timelapse console noise by setting stock `TIMELAPSE_TAKE_FRAME` verbose output off during install.
 - Fixed QIDI Studio end G-code compatibility by avoiding unsupported indexed completion-air-filtration placeholders.
 
 ## 26.05.27.1

@@ -30,6 +30,7 @@ Functional changes:
 - The installer adds `[include tltg-optimized-macros/*.cfg]` after `[include klipper-macros-qd/*.cfg]`, so stock QIDI macros remain present and optimized macros override or wrap behavior through a separate include tree.
 - Guarded installer patches make X and Y homing faster, reduce repeated homing retraction distance, reduce Z homing retraction distance, increase Z-tilt travel speed, and increase bed-mesh point-to-point travel speed.
 - Guarded installer patches route virtual-SD print errors to `OPTIMIZED_CANCEL_PRINT_ON_ERROR`, which cancels without parking or moving the toolhead during error handling.
+- Guarded installer patches set stock `TIMELAPSE_TAKE_FRAME` `variable_verbose` to `False`, so disabled printer timelapse ignores slicer frame requests without per-layer console messages.
 - The installer deletes QIDI's stock `[homing_override]` from `config/klipper-macros-qd/kinematics.cfg` only when the stock section hash matches a supported firmware baseline, then runtime `G28` is handled by `installer/klipper/tltg-optimized-macros/kinematics.cfg`.
 - Uninstall restores the stored stock `[homing_override]` section when the optimized section deletion is still intact.
 

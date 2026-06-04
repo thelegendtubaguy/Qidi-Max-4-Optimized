@@ -6,7 +6,7 @@ package:
   id: qidi-max4-optimized
   display_name: QIDI Max 4 Optimized
   printer_model: qidi-max4
-  version: "26.06.02.1"
+  version: "26.06.03.1"
   known_versions:
     - "26.04.21.1"
     - "26.04.27.1"
@@ -20,6 +20,7 @@ package:
     - "26.05.27.1"
     - "26.06.01.1"
     - "26.06.02.1"
+    - "26.06.03.1"
 
 firmware:
   supported:
@@ -191,6 +192,15 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "CANCEL_PRINT"
           desired: "OPTIMIZED_CANCEL_PRINT_ON_ERROR"
+
+    - id: timelapse_take_frame_verbose
+      file: "config/timelapse.cfg"
+      section: "gcode_macro TIMELAPSE_TAKE_FRAME"
+      option: "variable_verbose"
+      variants:
+        - firmwares: ["01.01.06.03"]
+          expected: "True"
+          desired: "False"
 
   delete_sections:
     - id: kinematics_homing_override
