@@ -30,6 +30,7 @@ Functional changes:
 - The installer adds `[include tltg-optimized-macros/*.cfg]` after `[include klipper-macros-qd/*.cfg]`, so stock QIDI macros remain present and optimized macros override or wrap behavior through a separate include tree.
 - Guarded installer patches make X and Y homing faster, reduce repeated homing retraction distance, reduce Z homing retraction distance, increase Z-tilt travel speed, and increase bed-mesh point-to-point travel speed.
 - Guarded installer patches route virtual-SD print errors to `OPTIMIZED_CANCEL_PRINT_ON_ERROR`, which cancels without parking or moving the toolhead during error handling.
+- Guarded installer patches set stock `TIMELAPSE_TAKE_FRAME` `variable_verbose` to `False`, so disabled printer timelapse ignores slicer frame requests without per-layer console messages.
 - The installer deletes QIDI's stock `[homing_override]` from `config/klipper-macros-qd/kinematics.cfg` only when the stock section hash matches a supported firmware baseline, then runtime `G28` is handled by `installer/klipper/tltg-optimized-macros/kinematics.cfg`.
 - Uninstall restores the stored stock `[homing_override]` section when the optimized section deletion is still intact.
 
@@ -96,13 +97,17 @@ Source paths:
 - `installer/klipper/tltg-optimized-macros/start_end.cfg`
 - `installer/klipper/tltg-optimized-macros/filament.cfg`
 - `installer/klipper/tltg-optimized-macros/bed_mesh.cfg`
+- `installer/klipper/tltg-optimized-macros/offset.cfg`
 
 Functional changes:
 - Slicer start G-code enters optimized startup through `OPTIMIZED_PRINT_START_HOME` and `OPTIMIZED_START_PRINT_FILAMENT_PREP` instead of the stock `print_start` path.
 - `OPTIMIZED_PRINT_START_HOME` cancels any pending `_optimized_end_fan_cooldown_off`, preheats the hotend to probing temperature, sets the UI sub-status, and runs optimized `G28`.
 - `OPTIMIZED_START_PRINT_FILAMENT_PREP` owns the retained-filament, QIDI Box fresh-load, and no-box external-spool branches.
-- The retained-filament branch skips `BOX_PRINT_START` when the same tool, slot, filament ID, vendor ID, load slot, sync slot, and filament-present sensor state prove the prior box filament is still loaded.
-- The retained-filament branch reuses the loaded filament, performs chute-side cleanup, waits for bed/chamber targets as needed, runs `Z_TILT_ADJUST`, and recalibrates KAMP mesh.
+- `M1002 R1` captures `printer.save_variables.variables.z_offset|default(0)` into `_km_apply_print_offset.captured_z_offset`, clears the active runtime Z offset for homing, Z tilt, and KAMP mesh calibration, and leaves the captured value in volatile macro state.
+- `M1002 A1` applies `_km_apply_print_offset.captured_z_offset` after `SAVE_CONFIG_QD`; if no value was captured earlier in the session, it falls back to `printer.save_variables.variables.z_offset|default(0)`.
+- `_km_apply_print_offset` reports `Your Z Offset will be set to: x.xxx` immediately before `M1002 A1` applies the captured or fallback Z offset.
+- The retained-filament branch skips `BOX_PRINT_START` when the requested tool maps to the retained slot, `slot_sync` still points at that slot, the slot filament ID and vendor ID still match, and the filament-present sensor proves box filament is still loaded.
+- The retained-filament branch reuses the loaded filament, moves to the chute before waiting, waits for bed/chamber targets as needed at the chute, performs chute-side cleanup, runs `Z_TILT_ADJUST`, and recalibrates KAMP mesh.
 - The QIDI Box fresh-load branch calls vendor `BOX_PRINT_START` with the slicer high purge temperature, runs optimized extrusion and flush, cools to scrape temperature in stages, wipes/scrapes the nozzle, then goes directly to bed/chamber waits, Z tilt, and KAMP mesh.
 - The QIDI Box fresh-load branch does not re-home Z between purge cleanup and the rear-bed scrape motion.
 - The no-box external-spool branch skips `BOX_PRINT_START`, skips `OPTIMIZED_EXTRUSION_AND_FLUSH`, skips rear extrusion purge, wipes/scrapes the nozzle without extrusion, then runs bed/chamber waits, Z tilt, and KAMP mesh.
@@ -125,10 +130,12 @@ Functional changes:
 - `OPTIMIZED_CUT_FILAMENT` saves caller G-code state, forces absolute XY travel and relative extrusion internally, then restores acceleration and caller state before returning.
 - `OPTIMIZED_EXTRUSION_AND_FLUSH` uses a shorter initial extrusion before the high-volume flush loops, keeps the cleanup wait shorter than stock, and uses `OPTIMIZED_M1004` for polar-cooler handling.
 - `OPTIMIZED_END_PRINT_FILAMENT_PREP` can keep the active QIDI Box filament loaded between prints and records the retained/unloaded branch for end cleanup.
+- `OPTIMIZED_END_PRINT_FILAMENT_PREP` records retained filament from QIDI Box `slot_sync` when it is set, then reverse-maps that active slot through `value_tN` so auto-runout reloads can be reused on the next print even when the slicer `current_extruder` is stale.
 - `OPTIMIZED_END_PRINT_FILAMENT_PREP` performs its end retract under relative extrusion inside saved/restored G-code state, so caller extrusion mode does not change the retract semantics.
 - `OPTIMIZED_UNLOAD_FILAMENT` clears retained-tool state before unloading, routes travel through `OPTIMIZED_MOVE_TO_TRASH`, keeps the post-unload extrusion relative, and restores caller motion state; end-print unload suppresses the standalone unload cleanup so cooldown-based wiping owns the final nozzle wipe.
-- OrcaSlicer and QIDI Studio end G-code lift Z by 3 mm, call `OPTIMIZED_MOVE_TO_TRASH` immediately to leave the part, run `OPTIMIZED_END_PRINT_FILAMENT_PREP`, pass `complete_print_exhaust_fan_speed[current_extruder]` to the exhaust cooldown when completion air filtration is enabled, then lower the bed with the same slicer height rule.
-- `OPTIMIZED_END_NOZZLE_COOLDOWN_START` starts the part fan at full speed, records the hotend cooldown reference temperature, disables the QIDI Box heater when present, turns off chamber, bed, hotend, and sensors, leaves the polar cooler in its current state until `PRINT_END`, and starts `OPTIMIZED_END_FAN_COOLDOWN` only when slicer `activate_air_filtration_on_completion[current_extruder]` is enabled.
+- OrcaSlicer and QIDI Studio end G-code lift Z by 3 mm, call `OPTIMIZED_MOVE_TO_TRASH` immediately to leave the part, run `OPTIMIZED_END_PRINT_FILAMENT_PREP`, start nozzle cooldown, then lower the bed with the same slicer height rule.
+- OrcaSlicer passes `complete_print_exhaust_fan_speed[current_extruder]` to the exhaust cooldown when completion air filtration is enabled; QIDI Studio passes `EXHAUST_SPEED=0` because QIDI Studio rejects indexed filament placeholders such as `activate_air_filtration_on_completion[current_extruder]` in end-G-code conditionals.
+- `OPTIMIZED_END_NOZZLE_COOLDOWN_START` starts the part fan at full speed, records the hotend cooldown reference temperature, disables the QIDI Box heater when present, turns off chamber, bed, hotend, and sensors, leaves the polar cooler in its current state until `PRINT_END`, and starts `OPTIMIZED_END_FAN_COOLDOWN` when a nonzero `EXHAUST_SPEED` is passed.
 - `OPTIMIZED_END_STAGED_NOZZLE_WIPE` waits for the hotend to cool 40 °C below the captured end temperature, runs `CLEAR_OOZE` / `CLEAR_FLUSH` when `box_extras` is present, waits for 140 °C, repeats the wipe, moves Y forward 30 mm, and then calls `PRINT_END`.
 - OrcaSlicer and QIDI Studio change-filament G-code call `OPTIMIZED_CUT_FILAMENT` and `OPTIMIZED_MOVE_TO_TRASH`.
 
@@ -153,7 +160,7 @@ Source paths:
 
 Functional changes:
 - `OPTIMIZED_WAIT_HOTEND`, `OPTIMIZED_WAIT_BED`, and `OPTIMIZED_WAIT_CHAMBER` preserve explicit UI sub-status values while waiting.
-- `OPTIMIZED_WAIT_CHAMBER` stops `chamber_circulation_fan` before waiting on chamber heat.
+- `OPTIMIZED_WAIT_CHAMBER` stops `chamber_circulation_fan` before waiting on chamber heat and continues when chamber temperature is within 3 °C of the requested target.
 - `OPTIMIZED_M1004` defaults the polar cooler to off when `enable_polar_cooler` is unset.
 - `OPTIMIZED_DISABLE_BOX_HEATER` calls vendor `DISABLE_BOX_HEATER` only when `box_extras` exists.
 - `TLTG_SET_BOX_TEMP` validates the requested QIDI Box heater and max temperature before calling `SET_HEATER_TEMPERATURE`.

@@ -6,7 +6,7 @@ package:
   id: qidi-max4-optimized
   display_name: QIDI Max 4 Optimized
   printer_model: qidi-max4
-  version: "26.06.01.1"
+  version: "26.06.04.1"
   known_versions:
     - "26.04.21.1"
     - "26.04.27.1"
@@ -19,6 +19,9 @@ package:
     - "26.05.21.1"
     - "26.05.27.1"
     - "26.06.01.1"
+    - "26.06.02.1"
+    - "26.06.03.1"
+    - "26.06.04.1"
 
 firmware:
   supported:
@@ -72,6 +75,7 @@ install:
       - "helpers.cfg"
       - "kinematics.cfg"
       - "motion.cfg"
+      - "offset.cfg"
       - "start_end.cfg"
 
   ensure_lines:
@@ -190,6 +194,15 @@ patches:
           expected: "CANCEL_PRINT"
           desired: "OPTIMIZED_CANCEL_PRINT_ON_ERROR"
 
+    - id: timelapse_take_frame_verbose
+      file: "config/timelapse.cfg"
+      section: "gcode_macro TIMELAPSE_TAKE_FRAME"
+      option: "variable_verbose"
+      variants:
+        - firmwares: ["01.01.06.03"]
+          expected: "True"
+          desired: "False"
+
   delete_sections:
     - id: kinematics_homing_override
       file: "config/klipper-macros-qd/kinematics.cfg"
@@ -197,6 +210,13 @@ patches:
       variants:
         - firmwares: ["01.01.06.03"]
           expected_normalized_sha256: "6a924478b351dea193bf1060f5747b151bba3de4c5627c7faac741ad7b164cf4"
+
+    - id: start_end_apply_print_offset
+      file: "config/klipper-macros-qd/start_end.cfg"
+      section: "gcode_macro _km_apply_print_offset"
+      variants:
+        - firmwares: ["01.01.06.03"]
+          expected_normalized_sha256: "ea8be4dae3bc5bbe881b8e3ca5c49e0b28a74b17cb9a4d8515d598bd006ce3a7"
 
 postflight:
   verify_lines:

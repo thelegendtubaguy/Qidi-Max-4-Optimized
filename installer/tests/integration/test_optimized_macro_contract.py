@@ -39,6 +39,23 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertIn("G31", gcode)
         self.assertLess(gcode.index("G31"), gcode.index("CLEAR_PAUSE"))
 
+    def test_print_offset_capture_uses_volatile_saved_value(self):
+        text = (OPTIMIZED_MACRO_ROOT / "offset.cfg").read_text(encoding="utf-8")
+        gcode = self._macro_gcode("_KM_APPLY_PRINT_OFFSET")
+        self.assertIn("variable_captured_z_offset: 0.0", text)
+        self.assertIn("variable_captured_z_offset_valid: 0", text)
+        self.assertIn("printer.save_variables.variables.z_offset|default(0)|float", gcode)
+        self.assertIn("SET_GCODE_VARIABLE MACRO=_km_apply_print_offset VARIABLE=captured_z_offset VALUE={z}", gcode)
+        self.assertIn("SET_GCODE_VARIABLE MACRO=_km_apply_print_offset VARIABLE=captured_z_offset_valid VALUE=1", gcode)
+        self.assertIn('action_respond_info("Your Z Offset will be set to: %.3f" % z)', gcode)
+        self.assert_ordered(
+            gcode,
+            "SET_GCODE_VARIABLE MACRO=_km_apply_print_offset VARIABLE=captured_z_offset VALUE={z}",
+            "SET_GCODE_OFFSET Z=0 MOVE=0",
+            "captured_z_offset|float",
+            "SET_GCODE_OFFSET Z={z} MOVE=0",
+        )
+
     def test_optimized_g29_always_calibrates_kamp_mesh(self):
         gcode = self._macro_gcode("OPTIMIZED_G29_ZSAFE")
         self.assertIn("BED_MESH_CLEAR", gcode)
@@ -125,26 +142,62 @@ class OptimizedMacroContractTests(unittest.TestCase):
             "RESTORE_GCODE_STATE NAME=optimized_unload_filament_state",
         )
 
+
+    def test_retained_filament_tracks_active_box_sync_slot(self):
+        start_gcode = self._macro_gcode("OPTIMIZED_START_PRINT_FILAMENT_PREP")
+        self.assertIn("slot_sync = svv.slot_sync|default('slot-1')", start_gcode)
+        self.assertIn("retained_slot == tool_slot", start_gcode)
+        self.assertIn("slot_sync == retained_slot", start_gcode)
+        self.assertNotIn("last_load_slot == retained_slot", start_gcode)
+        self.assertNotIn("retained_tool == tool", start_gcode)
+
+        end_gcode = self._macro_gcode("OPTIMIZED_END_PRINT_FILAMENT_PREP")
+        self.assertIn("active_slot = slot_sync if slot_sync != 'slot-1' else tool_slot", end_gcode)
+        self.assertIn("active_tool = namespace(value=tool)", end_gcode)
+        self.assertIn("{% for candidate in range(16) %}", end_gcode)
+        self.assertIn("svv['value_t' ~ candidate]|default('slot' ~ candidate) == active_slot", end_gcode)
+        self.assertIn("SAVE_VARIABLE VARIABLE=retained_tool VALUE={active_tool.value}", end_gcode)
+        self.assertIn("SAVE_VARIABLE VARIABLE=retained_slot VALUE='\"{active_slot}\"'", end_gcode)
+        self.assertIn("SAVE_VARIABLE VARIABLE=retained_filament_id VALUE={active_filament_id}", end_gcode)
+        self.assertIn("SAVE_VARIABLE VARIABLE=retained_vendor_id VALUE={active_vendor_id}", end_gcode)
+        self.assertNotIn("SAVE_VARIABLE VARIABLE=retained_tool VALUE={tool}", end_gcode)
+        self.assertNotIn("SAVE_VARIABLE VARIABLE=retained_slot VALUE='\"{tool_slot}\"'", end_gcode)
+
     def test_end_sequence_waits_for_staged_hotend_cooldown_before_wiping(self):
-        for relative_path in (
-            "orcaslicer_gcode/end.gcode",
-            "qidistudio_gcode/end.gcode",
-        ):
-            end_gcode = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
-            self.assert_ordered(
-                end_gcode,
-                "G0 Z{min(max_print_height, max_layer_z + 3)} F600",
-                "OPTIMIZED_MOVE_TO_TRASH",
-                "OPTIMIZED_END_PRINT_FILAMENT_PREP T=[current_extruder]",
-                "{if activate_air_filtration_on_completion[current_extruder]}",
-                "OPTIMIZED_END_NOZZLE_COOLDOWN_START EXHAUST_SPEED={complete_print_exhaust_fan_speed[current_extruder] * 255 / 100}",
-                "{else}",
-                "OPTIMIZED_END_NOZZLE_COOLDOWN_START EXHAUST_SPEED=0",
-                "G1 Z{min(max_print_height, max_print_height / 2 + 10)} F600",
-                "OPTIMIZED_END_STAGED_NOZZLE_WIPE",
-                "PRINT_END",
-            )
-            self.assertNotIn("OPTIMIZED_END_FAN_COOLDOWN", end_gcode)
+        orca_end_gcode = (REPO_ROOT / "orcaslicer_gcode/end.gcode").read_text(
+            encoding="utf-8"
+        )
+        self.assert_ordered(
+            orca_end_gcode,
+            "G0 Z{min(max_print_height, max_layer_z + 3)} F600",
+            "OPTIMIZED_MOVE_TO_TRASH",
+            "OPTIMIZED_END_PRINT_FILAMENT_PREP T=[current_extruder]",
+            "{if activate_air_filtration_on_completion[current_extruder]}",
+            "OPTIMIZED_END_NOZZLE_COOLDOWN_START EXHAUST_SPEED={complete_print_exhaust_fan_speed[current_extruder] * 255 / 100}",
+            "{else}",
+            "OPTIMIZED_END_NOZZLE_COOLDOWN_START EXHAUST_SPEED=0",
+            "G1 Z{min(max_print_height, max_print_height / 2 + 10)} F600",
+            "OPTIMIZED_END_STAGED_NOZZLE_WIPE",
+            "PRINT_END",
+        )
+        self.assertNotIn("OPTIMIZED_END_FAN_COOLDOWN", orca_end_gcode)
+
+        qidistudio_end_gcode = (REPO_ROOT / "qidistudio_gcode/end.gcode").read_text(
+            encoding="utf-8"
+        )
+        self.assert_ordered(
+            qidistudio_end_gcode,
+            "G0 Z{min(max_print_height, max_layer_z + 3)} F600",
+            "OPTIMIZED_MOVE_TO_TRASH",
+            "OPTIMIZED_END_PRINT_FILAMENT_PREP T=[current_extruder]",
+            "OPTIMIZED_END_NOZZLE_COOLDOWN_START EXHAUST_SPEED=0",
+            "G1 Z{min(max_print_height, max_print_height / 2 + 10)} F600",
+            "OPTIMIZED_END_STAGED_NOZZLE_WIPE",
+            "PRINT_END",
+        )
+        self.assertNotIn("activate_air_filtration_on_completion", qidistudio_end_gcode)
+        self.assertNotIn("complete_print_exhaust_fan_speed", qidistudio_end_gcode)
+        self.assertNotIn("OPTIMIZED_END_FAN_COOLDOWN", qidistudio_end_gcode)
 
         cooldown_start = self._macro_gcode("OPTIMIZED_END_NOZZLE_COOLDOWN_START")
         self.assert_ordered(
@@ -180,6 +233,28 @@ class OptimizedMacroContractTests(unittest.TestCase):
             "OPTIMIZED_END_NOZZLE_COOLDOWN_START {rawparams}",
             "OPTIMIZED_END_STAGED_NOZZLE_WIPE",
         )
+
+    def test_retained_filament_start_waits_for_bed_and_chamber_at_trash(self):
+        start_gcode = self._macro_gcode("OPTIMIZED_START_PRINT_FILAMENT_PREP")
+        retained_gcode = start_gcode[start_gcode.index("M118 Reusing retained filament on T{tool}") : start_gcode.index("{% elif box_enabled %}")]
+        self.assertNotIn("G1 X20 Y20", retained_gcode)
+        self.assert_ordered(
+            retained_gcode,
+            "G1 Z20 F480",
+            "OPTIMIZED_MOVE_TO_TRASH",
+            "OPTIMIZED_WAIT_BED S={bed_target} STATUS=wait_bed_temp",
+            "OPTIMIZED_WAIT_CHAMBER S={chamber_target} STATUS=wait_chamber_temp",
+            "OPTIMIZED_WAIT_HOTEND S={reuse_nozzle_target} STATUS=clear_nozzle",
+            "CLEAR_OOZE",
+            "CLEAR_FLUSH",
+            "Z_TILT_ADJUST",
+        )
+
+    def test_chamber_wait_accepts_three_degree_startup_window(self):
+        chamber_gcode = self._macro_gcode("OPTIMIZED_WAIT_CHAMBER")
+        self.assertIn('TEMPERATURE_WAIT SENSOR="heater_generic chamber" MINIMUM={([target - 3, 0]|max)}', chamber_gcode)
+        self.assertNotIn("target, 65", chamber_gcode)
+
 
     def test_no_box_start_path_wipes_and_scrapes_without_rear_purge(self):
         start_gcode = self._macro_gcode("OPTIMIZED_START_PRINT_FILAMENT_PREP")

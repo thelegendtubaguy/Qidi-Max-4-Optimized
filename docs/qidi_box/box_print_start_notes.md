@@ -30,6 +30,8 @@ OPTIMIZED_EXTRUSION_AND_FLUSH PURGETEMP={purge_temp} CHAMBER={chamber_target}
 
 The optimized start path bypasses `BOX_PRINT_START` in the reuse branch and no-box branch, and calls it only in the box-enabled non-reuse branch. Slicer start G-code passes `FIRSTLAYERTEMP=[nozzle_temperature_initial_layer]` and `PURGETEMP={nozzle_temperature_range_high[initial_tool]}` to `OPTIMIZED_START_PRINT_FILAMENT_PREP`; `PURGETEMP` is forwarded to vendor `BOX_PRINT_START` as its required `HOTENDTEMP` parameter and to the rear purge path. Slicer start G-code emits `T[initial_tool]` before the front prime line so Orca/QIDI Studio annotate the startup extrusion with the selected initial object filament. The final first-layer temperature remains the later slicer `M109 S[nozzle_temperature_initial_layer]` before the front prime line.
 
+`OPTIMIZED_END_PRINT_FILAMENT_PREP` records retained filament from `slot_sync` when QIDI Box reports an active synced slot. The macro reverse-maps that slot through `value_t0`..`value_t15` before writing `retained_tool`, so a vendor auto-runout reload from `slot0` to `slot1` can be reused by a later print whose slicer initial tool maps to `slot1`.
+
 ## Active box stack on this machine
 
 `config/printer.cfg` includes `config/box.cfg` and declares `[multi_color_controller]`.
@@ -619,6 +621,7 @@ Observed branch behavior:
 
 - if `target_slot == current_slot` but `slot_sync != current_slot`, print start does not trust the already-loaded path
 - same-slot state can still trigger reload/resync behavior
+- optimized retained-filament state uses `slot_sync` as the active loaded-slot signal at end print and requires `slot_sync == retained_slot` at the next start before bypassing `BOX_PRINT_START`
 
 Recovered lower-level sync methods in `box_stepper.so`:
 

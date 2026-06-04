@@ -1,4 +1,6 @@
 *.DS_Store
+/*.3mf
+/*.gcode
 .ruff_cache/
 __pycache__/
 tmp/

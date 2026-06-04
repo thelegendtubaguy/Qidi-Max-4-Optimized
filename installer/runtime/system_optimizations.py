@@ -551,6 +551,9 @@ def _apply_service(service: str, *, root: Path, sudo_password: str | None, run, 
         result = run_sudo(["systemctl", "disable", "--now", service], run=run, password=sudo_password or "")
         if result.returncode != 0 and preimage.get("exists", True):
             raise SystemOptimizationError(messages.SYSTEM_OPTIMIZATIONS_FAILED)
+        run_sudo_ignore_failure(["systemctl", "stop", service], run=run, password=sudo_password or "")
+        if "." not in service:
+            run_sudo_ignore_failure([f"/etc/init.d/{service}", "stop"], run=run, password=sudo_password or "")
 
 
 

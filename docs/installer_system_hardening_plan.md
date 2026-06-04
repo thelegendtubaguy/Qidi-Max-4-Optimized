@@ -125,9 +125,9 @@ system_optimizations:
 
 - Preflight should run `systemctl is-enabled <service>` and `systemctl is-active <service>` for `xl2tpd`, `bluetooth`, and `algo_app.service`.
 - Missing `xl2tpd` or `bluetooth` units should be recorded as `missing` and skipped without failing the config install.
-- Install should run `systemctl disable --now xl2tpd` when the unit exists.
-- Install should run `systemctl disable --now bluetooth` when the unit exists.
-- Install should run `systemctl disable --now algo_app.service` only when the AI prompt or `--disable-ai-detection` selects disablement.
+- Install should run `systemctl disable --now xl2tpd`, `systemctl stop xl2tpd`, and `/etc/init.d/xl2tpd stop` when the unit exists.
+- Install should run `systemctl disable --now bluetooth`, `systemctl stop bluetooth`, and `/etc/init.d/bluetooth stop` when the unit exists.
+- Install should run `systemctl disable --now algo_app.service` and `systemctl stop algo_app.service` only when the AI prompt or `--disable-ai-detection` selects disablement.
 - Disabling `algo_app.service` should be treated as backend disablement only; the installer should not assume touchscreen AI toggle state has been cleared.
 - Postflight should run `systemctl is-enabled` and `systemctl is-active` after each disable operation and accept `disabled`, `masked`, `inactive`, or `not-found` according to the recorded unit state.
 
