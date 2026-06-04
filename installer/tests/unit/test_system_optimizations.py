@@ -19,6 +19,7 @@ from installer.runtime.models import SystemOptimizationCliOptions
 from installer.runtime.system_optimizations import (
     SYSTEM_ROOT_ENV,
     SystemOptimizationError,
+    _apply_service,
     _restore_file_preimage,
     _restore_service,
     _service_state,
@@ -151,6 +152,53 @@ class SystemOptimizationTests(unittest.TestCase):
         self.assertTrue(state["exists"])
         self.assertEqual(state["enabled"], "disabled")
         self.assertEqual(state["active"], "inactive")
+
+    def test_apply_service_runs_explicit_stop_fallbacks_for_sysv_service(self):
+        commands = []
+
+        def run(command, **kwargs):
+            commands.append(command)
+            return subprocess.CompletedProcess(command, 0)
+
+        _apply_service(
+            "xl2tpd",
+            root=Path("/"),
+            sudo_password="qiditech",
+            run=run,
+            preimage={"exists": True},
+        )
+
+        self.assertEqual(
+            commands,
+            [
+                ["sudo", "-S", "-p", "", "systemctl", "disable", "--now", "xl2tpd"],
+                ["sudo", "-S", "-p", "", "systemctl", "stop", "xl2tpd"],
+                ["sudo", "-S", "-p", "", "/etc/init.d/xl2tpd", "stop"],
+            ],
+        )
+
+    def test_apply_service_skips_init_script_fallback_for_dotted_service(self):
+        commands = []
+
+        def run(command, **kwargs):
+            commands.append(command)
+            return subprocess.CompletedProcess(command, 0)
+
+        _apply_service(
+            "algo_app.service",
+            root=Path("/"),
+            sudo_password="qiditech",
+            run=run,
+            preimage={"exists": True},
+        )
+
+        self.assertEqual(
+            commands,
+            [
+                ["sudo", "-S", "-p", "", "systemctl", "disable", "--now", "algo_app.service"],
+                ["sudo", "-S", "-p", "", "systemctl", "stop", "algo_app.service"],
+            ],
+        )
 
     def test_missing_default_service_is_recorded_without_restore_preimage(self):
         printer_root, system_root = _runtime_with_fake_system()
