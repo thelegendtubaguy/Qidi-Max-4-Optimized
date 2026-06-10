@@ -14,9 +14,10 @@
    - Installer/runtime metadata belongs under `installer/`.
    - If a stock-mapped `config/` edit is unavoidable, call it out before editing and keep the diff minimal.
 5. Use QIDI stock baseline for comparisons: `https://github.com/thelegendtubaguy/Qidi-Max4-Defaults`.
-6. Keep OrcaSlicer and QIDI Studio G-code packs functionally aligned while preserving each slicer's syntax/placeholders. Exception: do not add polar cooler controls to `qidistudio_gcode/` unless explicitly asked.
-7. Update docs under `docs/` when behavior, assumptions, config flow, slicer flow, installer behavior, or integration details change.
-8. Translate comments only unless explicitly told otherwise. Leave runtime/status/warning strings unchanged unless the affected string set is approved.
+6. Do not update slicer G-code in `orcaslicer_gcode/` or `qidistudio_gcode/` when the behavior can reasonably be implemented printer-side through Klipper config, optimized macros, or installer patches.
+7. Keep OrcaSlicer and QIDI Studio G-code packs functionally aligned while preserving each slicer's syntax/placeholders. Exception: do not add polar cooler controls to `qidistudio_gcode/` unless explicitly asked.
+8. Update docs under `docs/` when behavior, assumptions, config flow, slicer flow, installer behavior, or integration details change.
+9. Translate comments only unless explicitly told otherwise. Leave runtime/status/warning strings unchanged unless the affected string set is approved.
 
 ## Git workflow
 
