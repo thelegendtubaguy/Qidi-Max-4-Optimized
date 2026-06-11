@@ -25,6 +25,7 @@ from .firmware import detect_firmware_version
 from .interaction import confirm_yes, maybe_restart_klipper
 from .legacy_manual_install import maybe_reset_legacy_manual_install
 from .fs_atomic import atomic_write_text
+from .manifest import active_patch_entries
 from .mirror import (
     collect_source_hashes,
     detect_install_managed_tree_drift,
@@ -196,7 +197,7 @@ def run_install(
         managed_tree_files=len(plan.managed_tree_files),
     )
     if dry_run:
-        _emit_install_dry_run_counters(reporter, manifest)
+        _emit_install_dry_run_counters(reporter, manifest, detected_firmware)
         result = InstallResult(
             patch_results=plan.patch_results,
             managed_tree_drift=plan.managed_tree_drift,
@@ -300,12 +301,14 @@ def _execute_install(
         source_directory=manifest.backup.source_directory,
     )
     patch_results = []
-    install_counters = _install_counters_template(manifest)
+    active_patches = _active_install_patches(manifest, detected_firmware)
+    active_section_patches = _active_install_section_patches(manifest, detected_firmware)
+    install_counters = _install_counters_template(manifest, detected_firmware)
     try:
         touched_files = {state_path, paths.config_root / "saved_variables.cfg"}
         touched_files.update(paths.printer_data_root / spec.file for spec in manifest.install.ensure_lines)
-        touched_files.update(paths.printer_data_root / patch.file for patch in manifest.patches.set_options)
-        touched_files.update(paths.printer_data_root / patch.file for patch in manifest.patches.delete_sections)
+        touched_files.update(paths.printer_data_root / patch.file for patch in active_patches)
+        touched_files.update(paths.printer_data_root / patch.file for patch in active_section_patches)
         for touched in touched_files:
             journal.track_file(touched)
         journal.track_tree(paths.printer_data_root / manifest.managed_tree.destination)
@@ -345,7 +348,7 @@ def _execute_install(
         install_counters["managed_trees"][0] = 1
         reporter.emit_install_counters(**_freeze_counters(install_counters))
 
-        for patch in manifest.patches.set_options:
+        for patch in active_patches:
             path = paths.printer_data_root / patch.file
             text = klipper_cfg.read_text(path)
             resolved = klipper_cfg.resolve_unique_option(text, patch.section, patch.option)
@@ -359,7 +362,7 @@ def _execute_install(
                 atomic_write_text(path, new_text)
             install_counters["patches"][0] += 1
 
-        for patch in manifest.patches.delete_sections:
+        for patch in active_section_patches:
             path = paths.printer_data_root / patch.file
             text = klipper_cfg.read_text(path)
             current_section = _resolve_section_text_or_none(text, patch.section)
@@ -498,18 +501,30 @@ def _collect_install_patch_results(
     prior_state: InstalledState | None,
 ) -> tuple:
     results = []
-    for patch in manifest.patches.set_options:
+    for patch in _active_install_patches(manifest, detected_firmware):
         path = paths.printer_data_root / patch.file
         text = klipper_cfg.read_text(path)
         resolved = klipper_cfg.resolve_unique_option(text, patch.section, patch.option)
         results.append(patches.classify_install_patch(resolved.value, patch, detected_firmware))
-    for patch in manifest.patches.delete_sections:
+    for patch in _active_install_section_patches(manifest, detected_firmware):
         path = paths.printer_data_root / patch.file
         text = klipper_cfg.read_text(path)
         current_section = _resolve_section_text_or_none(text, patch.section)
         result = patches.classify_install_section_delete(current_section, patch, detected_firmware)
         results.append(_preserve_prior_section_expected(result, prior_state))
     return tuple(results)
+
+
+
+def _active_install_patches(manifest: Manifest, detected_firmware: str):
+    active = set(active_patch_entries(manifest, detected_firmware))
+    return tuple(patch for patch in manifest.patches.set_options if patch in active)
+
+
+
+def _active_install_section_patches(manifest: Manifest, detected_firmware: str):
+    active = set(active_patch_entries(manifest, detected_firmware))
+    return tuple(patch for patch in manifest.patches.delete_sections if patch in active)
 
 
 
@@ -577,20 +592,26 @@ def _source_hashes(paths: RuntimePaths, manifest: Manifest) -> dict[str, str]:
 
 
 
-def _install_counters_template(manifest: Manifest) -> dict[str, list[int]]:
+def _install_counters_template(
+    manifest: Manifest, detected_firmware: str | None = None
+) -> dict[str, list[int]]:
+    if detected_firmware is None:
+        patch_count = len(manifest.patches.set_options) + len(manifest.patches.delete_sections)
+    else:
+        patch_count = len(active_patch_entries(manifest, detected_firmware))
     return {
         "ensure_directories": [0, len(manifest.install.ensure_directories)],
         "managed_trees": [0, 1],
         "ensure_lines": [0, len(manifest.install.ensure_lines)],
-        "patches": [0, len(manifest.patches.set_options) + len(manifest.patches.delete_sections)],
+        "patches": [0, patch_count],
         "postflight": [0, 1],
         "state_write": [0, 1],
     }
 
 
 
-def _emit_install_dry_run_counters(reporter, manifest: Manifest) -> None:
-    counters = _install_counters_template(manifest)
+def _emit_install_dry_run_counters(reporter, manifest: Manifest, detected_firmware: str) -> None:
+    counters = _install_counters_template(manifest, detected_firmware)
     for name in counters:
         counters[name][0] = counters[name][1]
         reporter.emit_install_counters(**_freeze_counters(counters))

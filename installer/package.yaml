@@ -6,7 +6,7 @@ package:
   id: qidi-max4-optimized
   display_name: QIDI Max 4 Optimized
   printer_model: qidi-max4
-  version: "26.06.04.1"
+  version: "26.06.11.1"
   known_versions:
     - "26.04.21.1"
     - "26.04.27.1"
@@ -22,10 +22,12 @@ package:
     - "26.06.02.1"
     - "26.06.03.1"
     - "26.06.04.1"
+    - "26.06.11.1"
 
 firmware:
   supported:
     - "01.01.06.03"
+    - "01.01.06.04"
 
 backup:
   source_directory: "config"
@@ -94,6 +96,9 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "50"
           desired: "65"
+        - firmwares: ["01.01.06.04"]
+          expected: "50"
+          desired: "65"
 
     - id: stepper_x_second_homing_speed
       file: "config/printer.cfg"
@@ -101,6 +106,9 @@ patches:
       option: "second_homing_speed"
       variants:
         - firmwares: ["01.01.06.03"]
+          expected: "50.0"
+          desired: "55.0"
+        - firmwares: ["01.01.06.04"]
           expected: "50.0"
           desired: "55.0"
 
@@ -112,6 +120,9 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "50.0"
           desired: "20.0"
+        - firmwares: ["01.01.06.04"]
+          expected: "50.0"
+          desired: "20.0"
 
     - id: stepper_x_homing_retract_speed
       file: "config/printer.cfg"
@@ -119,6 +130,9 @@ patches:
       option: "homing_retract_speed"
       variants:
         - firmwares: ["01.01.06.03"]
+          expected: "200.0"
+          desired: "1000.0"
+        - firmwares: ["01.01.06.04"]
           expected: "200.0"
           desired: "1000.0"
 
@@ -130,6 +144,9 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "50"
           desired: "65"
+        - firmwares: ["01.01.06.04"]
+          expected: "50"
+          desired: "65"
 
     - id: stepper_y_second_homing_speed
       file: "config/printer.cfg"
@@ -137,6 +154,9 @@ patches:
       option: "second_homing_speed"
       variants:
         - firmwares: ["01.01.06.03"]
+          expected: "50.0"
+          desired: "55.0"
+        - firmwares: ["01.01.06.04"]
           expected: "50.0"
           desired: "55.0"
 
@@ -148,6 +168,9 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "50.0"
           desired: "20.0"
+        - firmwares: ["01.01.06.04"]
+          expected: "50.0"
+          desired: "20.0"
 
     - id: stepper_y_homing_retract_speed
       file: "config/printer.cfg"
@@ -155,6 +178,9 @@ patches:
       option: "homing_retract_speed"
       variants:
         - firmwares: ["01.01.06.03"]
+          expected: "200.0"
+          desired: "1000.0"
+        - firmwares: ["01.01.06.04"]
           expected: "200.0"
           desired: "1000.0"
 
@@ -166,6 +192,9 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "10.0"
           desired: "5.0"
+        - firmwares: ["01.01.06.04"]
+          expected: "10.0"
+          desired: "5.0"
 
     - id: z_tilt_speed
       file: "config/printer.cfg"
@@ -173,6 +202,9 @@ patches:
       option: "speed"
       variants:
         - firmwares: ["01.01.06.03"]
+          expected: "150"
+          desired: "600"
+        - firmwares: ["01.01.06.04"]
           expected: "150"
           desired: "600"
 
@@ -184,6 +216,9 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "150"
           desired: "600"
+        - firmwares: ["01.01.06.04"]
+          expected: "150"
+          desired: "600"
 
     - id: virtual_sdcard_on_error_gcode
       file: "config/printer.cfg"
@@ -191,6 +226,9 @@ patches:
       option: "on_error_gcode"
       variants:
         - firmwares: ["01.01.06.03"]
+          expected: "CANCEL_PRINT"
+          desired: "OPTIMIZED_CANCEL_PRINT_ON_ERROR"
+        - firmwares: ["01.01.06.04"]
           expected: "CANCEL_PRINT"
           desired: "OPTIMIZED_CANCEL_PRINT_ON_ERROR"
 
@@ -202,6 +240,108 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "True"
           desired: "False"
+        - firmwares: ["01.01.06.04"]
+          expected: "True"
+          desired: "False"
+
+    - id: closed_loop_x_query_cycle
+      file: "config/printer.cfg"
+      section: "closed_loop x"
+      option: "query_cycle"
+      variants:
+        - firmwares: ["01.01.06.04"]
+          expected: "5"
+          desired: "10"
+
+    - id: closed_loop_y_query_cycle
+      file: "config/printer.cfg"
+      section: "closed_loop y"
+      option: "query_cycle"
+      variants:
+        - firmwares: ["01.01.06.04"]
+          expected: "5"
+          desired: "10"
+
+    - id: closed_loop_x_trigger_current
+      file: "config/printer.cfg"
+      section: "closed_loop x"
+      option: "trigger_current"
+      variants:
+        - firmwares: ["01.01.06.04"]
+          expected: "400"
+          desired: "400"
+
+    - id: closed_loop_x_trigger_time
+      file: "config/printer.cfg"
+      section: "closed_loop x"
+      option: "trigger_time"
+      variants:
+        - firmwares: ["01.01.06.04"]
+          expected: "2"
+          desired: "2"
+
+    - id: closed_loop_x_trigger_speed
+      file: "config/printer.cfg"
+      section: "closed_loop x"
+      option: "trigger_speed"
+      variants:
+        - firmwares: ["01.01.06.04"]
+          expected: "50"
+          desired: "50"
+
+    - id: closed_loop_y_trigger_current
+      file: "config/printer.cfg"
+      section: "closed_loop y"
+      option: "trigger_current"
+      variants:
+        - firmwares: ["01.01.06.04"]
+          expected: "400"
+          desired: "400"
+
+    - id: closed_loop_y_trigger_time
+      file: "config/printer.cfg"
+      section: "closed_loop y"
+      option: "trigger_time"
+      variants:
+        - firmwares: ["01.01.06.04"]
+          expected: "2"
+          desired: "2"
+
+    - id: closed_loop_y_trigger_speed
+      file: "config/printer.cfg"
+      section: "closed_loop y"
+      option: "trigger_speed"
+      variants:
+        - firmwares: ["01.01.06.04"]
+          expected: "50"
+          desired: "50"
+
+    - id: chamber_thermal_protection_sensor_max_temp
+      file: "config/printer.cfg"
+      section: "temperature_sensor Chamber_Thermal_Protection_Sensor"
+      option: "max_temp"
+      variants:
+        - firmwares: ["01.01.06.04"]
+          expected: "150"
+          desired: "170"
+
+    - id: official_fila25_filament
+      file: "config/officiall_filas_list.cfg"
+      section: "fila25"
+      option: "filament"
+      variants:
+        - firmwares: ["01.01.06.04"]
+          expected: "PA-CF"
+          desired: "PA6-CF"
+
+    - id: official_fila25_type
+      file: "config/officiall_filas_list.cfg"
+      section: "fila25"
+      option: "type"
+      variants:
+        - firmwares: ["01.01.06.04"]
+          expected: "PA-CF"
+          desired: "PA6-CF"
 
   delete_sections:
     - id: kinematics_homing_override
@@ -210,12 +350,16 @@ patches:
       variants:
         - firmwares: ["01.01.06.03"]
           expected_normalized_sha256: "6a924478b351dea193bf1060f5747b151bba3de4c5627c7faac741ad7b164cf4"
+        - firmwares: ["01.01.06.04"]
+          expected_normalized_sha256: "6a924478b351dea193bf1060f5747b151bba3de4c5627c7faac741ad7b164cf4"
 
     - id: start_end_apply_print_offset
       file: "config/klipper-macros-qd/start_end.cfg"
       section: "gcode_macro _km_apply_print_offset"
       variants:
         - firmwares: ["01.01.06.03"]
+          expected_normalized_sha256: "ea8be4dae3bc5bbe881b8e3ca5c49e0b28a74b17cb9a4d8515d598bd006ce3a7"
+        - firmwares: ["01.01.06.04"]
           expected_normalized_sha256: "ea8be4dae3bc5bbe881b8e3ca5c49e0b28a74b17cb9a4d8515d598bd006ce3a7"
 
 postflight:

@@ -306,6 +306,18 @@ def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec 
 
 
 
+def patch_applies_to_firmware(patch: PatchSpec | SectionPatchSpec, firmware_version: str) -> bool:
+    return any(firmware_version in variant.firmwares for variant in patch.variants)
+
+
+def active_patch_entries(manifest: Manifest, firmware_version: str):
+    return tuple(
+        patch
+        for patch in (*manifest.patches.set_options, *manifest.patches.delete_sections)
+        if patch_applies_to_firmware(patch, firmware_version)
+    )
+
+
 def select_patch_variant(patch: PatchSpec | SectionPatchSpec, firmware_version: str):
     matches = [
         variant
@@ -326,16 +338,20 @@ def validate_relative_path(path: str, *, allowed_roots: Iterable[str]) -> str:
 def _validate_patch_variant_coverage(
     patch: PatchSpec | SectionPatchSpec, supported_firmwares: tuple[str, ...]
 ) -> None:
-    for firmware_version in supported_firmwares:
-        matches = [
-            variant
-            for variant in patch.variants
-            if firmware_version in variant.firmwares
-        ]
-        if len(matches) != 1:
-            raise ManifestValidationError(
-                f"Patch {patch.id} must define exactly one variant for firmware {firmware_version}."
-            )
+    covered: set[str] = set()
+    for variant in patch.variants:
+        for firmware_version in variant.firmwares:
+            if firmware_version not in supported_firmwares:
+                raise ManifestValidationError(
+                    f"Patch {patch.id} references unsupported firmware {firmware_version}."
+                )
+            if firmware_version in covered:
+                raise ManifestValidationError(
+                    f"Patch {patch.id} defines multiple variants for firmware {firmware_version}."
+                )
+            covered.add(firmware_version)
+    if not covered:
+        raise ManifestValidationError(f"Patch {patch.id} must define at least one firmware variant.")
 
 
 def _validate_relative_path(path: str, *, allowed_roots: tuple[str, ...]) -> str:

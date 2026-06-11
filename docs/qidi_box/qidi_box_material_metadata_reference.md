@@ -62,7 +62,7 @@ Runtime status in `docs/qidi_box/qidi_box_runtime_observations.md` showed:
 | `22` | empty | empty | empty | empty | empty | empty |
 | `23` | `PC` | `PC` | `240` | `280` | `0` | `0` |
 | `24` | `UltraPA` | `UltraPA` | `260` | `300` | `0` | `55` |
-| `25` | `PA-CF` | `PA-CF` | `260` | `300` | `0` | `65` |
+| `25` | `PA6-CF` | `PA6-CF` | `260` | `300` | `0` | `65` |
 | `26` | `UltraPA-CF25` | `UltraPA-CF25` | `300` | `320` | `0` | `65` |
 | `27` | `PA12-CF` | `PA12-CF` | `260` | `300` | `0` | `65` |
 | `28` | empty | empty | empty | empty | empty | empty |

@@ -3,7 +3,7 @@
 Installer metadata used by the runtime:
 - `installer/package.yaml package.version` is the bundle package version.
 - `installer/package.yaml package.known_versions` contains the installed package versions accepted from `config/tltg_optimized_state.yaml` during install and must exactly match the supported prior-version keys in `installer/supported_upgrade_sources.yaml`.
-- `installer/package.yaml firmware.supported` contains the install-supported firmware.
+- `installer/package.yaml firmware.supported` contains install-supported firmware versions `01.01.06.03` and `01.01.06.04`.
 - `installer/package.yaml backup.source_directory` is `config`.
 - `installer/package.yaml backup.label_prefix` is the install backup label prefix.
 - `installer/package.yaml state.record_file` is `config/tltg_optimized_state.yaml`.
@@ -41,9 +41,10 @@ Managed-tree drift semantics:
 - Differences between the prior installed-state ledger and the new bundle contents are expected bundle changes by themselves and are not reported as local managed-tree drift.
 
 Patch manifest semantics:
-- Manifest validation rejects any `installer/package.yaml patches.set_options[]` or `patches.delete_sections[]` block unless it provides exactly one matching `variants[]` entry for every `installer/package.yaml firmware.supported[]` value.
-- A supported firmware with zero matching `variants[]` entries or multiple matching `variants[]` entries is a manifest validation failure.
-- Because of that manifest constraint, install preflight validates every unique patch target from `patches.set_options[]` and `patches.delete_sections[]` regardless of detected firmware; variant selection changes `expected`/`desired` values for option patches and `expected_normalized_sha256` for section deletion patches.
+- Manifest validation rejects any `installer/package.yaml patches.set_options[]` or `patches.delete_sections[]` block unless it provides at least one `variants[]` firmware entry, references only values from `installer/package.yaml firmware.supported[]`, and defines no more than one variant for the same firmware.
+- Existing optimized patch targets provide variants for both `01.01.06.03` and `01.01.06.04`; `.04`-only stock-baseline targets such as closed-loop `trigger_*` options define only `01.01.06.04` variants.
+- Install preflight validates patch targets active for the detected firmware; `.04`-only patch targets are not required on `01.01.06.03` configs.
+- Variant selection changes `expected`/`desired` values for option patches and `expected_normalized_sha256` for section deletion patches.
 
 Install statuses and terminal messages:
 - Status `checking firmware version` covers reading `/home/qidi/update/firmware_manifest.json`, parsing `SOC.version`, and comparing it against `installer/package.yaml firmware.supported`.
@@ -59,7 +60,7 @@ Install statuses and terminal messages:
 - Failure during `performing preflight checks` returns `There is not enough free space to continue.` when available free space is less than the reserved total for zip backup bytes, rollback preimages, new/rewritten files, same-directory atomic temp files, and a safety margin of `max(64 MiB, 20% of the subtotal)`.
 - The Moonraker printer-state query runs before legacy manual-copy detection; an active or paused print stops before any legacy rollback prompt or config write.
 - When no installer state file exists and legacy manually-copied optimized config markers are found in `config/printer.cfg`, `config/klipper-macros-qd/filament.cfg`, `config/klipper-macros-qd/start_end.cfg`, `config/klipper-macros-qd/kinematics.cfg`, `config/klipper-macros-qd/globals.cfg`, or `config/tltg-optimized-macros/`, interactive install prompts before normal install confirmation.
-- Accepted legacy rollback creates a `tltg-optimized-macros-before-optimize-legacy-manual-reset-...zip` backup of `config/`, restores the bundled QIDI stock snapshot from `installer/stock/qidi-max4-defaults/config/`, removes `config/tltg-optimized-macros/`, preserves `config/MCU_ID.cfg`, `config/box.cfg`, `config/fluidd.cfg`, `config/saved_variables.cfg`, and any direct `config/KAMP` symlink, restarts `qidi-client.service`, then continues with normal install preflight and installation.
+- Accepted legacy rollback creates a `tltg-optimized-macros-before-optimize-legacy-manual-reset-...zip` backup of `config/`, restores the bundled QIDI stock snapshot from `installer/stock/qidi-max4-defaults/firmwares/<detected-firmware>/config/`, removes `config/tltg-optimized-macros/`, preserves `config/MCU_ID.cfg`, `config/box.cfg`, `config/fluidd.cfg`, `config/saved_variables.cfg`, and any direct `config/KAMP` symlink, restarts `qidi-client.service`, then continues with normal install preflight and installation.
 - Declined legacy rollback prints `Legacy config rollback declined. Installation cancelled.` and exits zero before backup creation or any write under `config/`.
 - After install preflight succeeds and before backup creation when `--dry-run` is not active, the runtime prompts `Would you like us to take a backup of your configs and proceed with installation?` and accepts `Y` or `Yes` case-insensitively.
 - Any other install confirmation input returns `Installation cancelled.` and exits zero before backup creation or any write under `config/`.
@@ -294,7 +295,7 @@ Required uninstall flow:
 41. Print `Could not restart Klipper automatically. Restart Klipper to apply changes.` when the restart request fails.
 42. Print `Restart Klipper to apply changes.` and exit without restarting when the restart confirmation input is anything else.
 Patch semantics:
-- Manifest validation requires every `installer/package.yaml patches.set_options[]` and `patches.delete_sections[]` block to provide exactly one matching `variants[]` entry for every `installer/package.yaml firmware.supported[]` value.
+- Manifest validation requires every `installer/package.yaml patches.set_options[]` and `patches.delete_sections[]` block to provide at least one firmware-scoped `variants[]` entry, reference only supported firmware values, and define no duplicate variant for the same firmware; install preflight validates only patch targets active for the detected firmware.
 - `installer/package.yaml patches.set_options[] variants[].expected` is the runtime value the installer expects to find before writing a guarded install patch.
 - `installer/package.yaml patches.set_options[] variants[].desired` is the runtime value the installer writes when the current runtime value still matches `expected`.
 - Patch target section resolution requires exactly one active section header with the requested name.
