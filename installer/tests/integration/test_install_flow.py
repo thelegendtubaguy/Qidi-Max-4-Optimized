@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import io
+import shutil
 import subprocess
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from installer.runtime import klipper_cfg
@@ -42,6 +44,16 @@ class InstallFlowTests(unittest.TestCase):
             raise
         return True
 
+    def _set_firmware_version(self, printer_root, version):
+        (printer_root / "firmware_manifest.json").write_text(
+            f'{"{"}"SOC": {{"version": "{version}"}}{"}"}\n',
+            encoding="utf-8",
+        )
+
+    def _overlay_stock_snapshot(self, printer_root, version):
+        source = REPO_ROOT / "installer/stock/qidi-max4-defaults/firmwares" / version / "config"
+        shutil.copytree(source, printer_root / "config", dirs_exist_ok=True)
+
     def test_happy_path_install(self):
         printer_root = copy_base_runtime()
         stream = io.StringIO()
@@ -73,6 +85,84 @@ class InstallFlowTests(unittest.TestCase):
         self.assertIn("Installed.", output)
         self.assertIn("Restart Klipper to apply changes.", output)
         self.assertTrue(result.backup_zip_path.exists())
+
+    def test_happy_path_install_on_firmware_04_stock_config(self):
+        printer_root = copy_base_runtime()
+        self._set_firmware_version(printer_root, "01.01.06.04")
+        self._overlay_stock_snapshot(printer_root, "01.01.06.04")
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        run_install(paths, self.manifest, reporter=PlainReporter(io.StringIO()), urlopen=moonraker_urlopen())
+
+        printer_cfg = (paths.config_root / "printer.cfg").read_text(encoding="utf-8")
+        official_filaments = (paths.config_root / "officiall_filas_list.cfg").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("[include tltg-optimized-macros/*.cfg]", printer_cfg)
+        self.assertEqual(
+            klipper_cfg.resolve_unique_option(printer_cfg, "stepper_x", "homing_speed").value,
+            "65",
+        )
+        self.assertEqual(
+            klipper_cfg.resolve_unique_option(printer_cfg, "closed_loop x", "query_cycle").value,
+            "10",
+        )
+        self.assertEqual(
+            klipper_cfg.resolve_unique_option(printer_cfg, "closed_loop x", "trigger_current").value,
+            "400",
+        )
+        self.assertEqual(
+            klipper_cfg.resolve_unique_option(
+                printer_cfg, "temperature_sensor Chamber_Thermal_Protection_Sensor", "max_temp"
+            ).value,
+            "170",
+        )
+        self.assertEqual(
+            klipper_cfg.resolve_unique_option(official_filaments, "fila25", "filament").value,
+            "PA6-CF",
+        )
+        self.assertTrue((paths.config_root / "tltg_optimized_state.yaml").exists())
+
+    def test_install_patches_firmware_04_stock_drift_when_targets_exist(self):
+        printer_root = copy_base_runtime()
+        self._set_firmware_version(printer_root, "01.01.06.04")
+        self._overlay_stock_snapshot(printer_root, "01.01.06.04")
+        printer_cfg_path = printer_root / "config/printer.cfg"
+        printer_cfg_path.write_text(
+            printer_cfg_path.read_text(encoding="utf-8")
+            .replace("query_cycle:10", "query_cycle:5", 1)
+            .replace("max_temp:170", "max_temp:150", 1),
+            encoding="utf-8",
+        )
+        official_path = printer_root / "config/officiall_filas_list.cfg"
+        official_path.write_text(
+            official_path.read_text(encoding="utf-8").replace("PA6-CF", "PA-CF", 2),
+            encoding="utf-8",
+        )
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        run_install(paths, self.manifest, reporter=PlainReporter(io.StringIO()), urlopen=moonraker_urlopen())
+
+        printer_cfg = printer_cfg_path.read_text(encoding="utf-8")
+        official_filaments = official_path.read_text(encoding="utf-8")
+        self.assertEqual(
+            klipper_cfg.resolve_unique_option(printer_cfg, "closed_loop x", "query_cycle").value,
+            "10",
+        )
+        self.assertEqual(
+            klipper_cfg.resolve_unique_option(
+                printer_cfg, "temperature_sensor Chamber_Thermal_Protection_Sensor", "max_temp"
+            ).value,
+            "170",
+        )
+        self.assertEqual(
+            klipper_cfg.resolve_unique_option(official_filaments, "fila25", "filament").value,
+            "PA6-CF",
+        )
 
     def test_install_patches_virtual_sdcard_on_error_with_inline_comment(self):
         printer_root = copy_base_runtime()
@@ -310,6 +400,79 @@ class InstallFlowTests(unittest.TestCase):
         self.assertIn(["sudo", "-S", "-p", "", "systemctl", "restart", "qidi-client.service"], calls)
         backups = sorted(printer_root.glob("tltg-optimized-macros-before-optimize-legacy-manual-reset-*.zip"))
         self.assertEqual(len(backups), 1)
+
+    def test_legacy_manual_configs_reset_to_firmware_04_stock_before_install(self):
+        printer_root = copy_base_runtime()
+        self._set_firmware_version(printer_root, "01.01.06.04")
+        (printer_root / "config/klipper-macros-qd/filament.cfg").write_text(
+            "[gcode_macro OPTIMIZED_CUT_FILAMENT]\ngcode:\n  M118 legacy\n",
+            encoding="utf-8",
+        )
+        stream = io.StringIO()
+        calls = []
+
+        def run(command, **kwargs):
+            calls.append(command)
+            return subprocess.CompletedProcess(command, 0)
+
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        with patch("installer.runtime.legacy_manual_install.shutil.which", return_value="/usr/bin/tool"):
+            run_install(
+                paths,
+                self.manifest,
+                reporter=PlainReporter(stream),
+                input_stream=io.StringIO("y\ny\nn\nn\nn\n"),
+                urlopen=moonraker_urlopen(),
+                run=run,
+            )
+
+        printer_cfg = (paths.config_root / "printer.cfg").read_text(encoding="utf-8")
+        official_filaments = (paths.config_root / "officiall_filas_list.cfg").read_text(
+            encoding="utf-8"
+        )
+        self.assertEqual(
+            klipper_cfg.resolve_unique_option(printer_cfg, "closed_loop x", "query_cycle").value,
+            "10",
+        )
+        self.assertEqual(
+            klipper_cfg.resolve_unique_option(printer_cfg, "closed_loop x", "trigger_speed").value,
+            "50",
+        )
+        self.assertEqual(
+            klipper_cfg.resolve_unique_option(official_filaments, "fila25", "filament").value,
+            "PA6-CF",
+        )
+        self.assertIn(["sudo", "-S", "-p", "", "systemctl", "restart", "qidi-client.service"], calls)
+        self.assertTrue((paths.config_root / "tltg_optimized_state.yaml").exists())
+
+    def test_legacy_manual_config_reset_missing_firmware_snapshot_fails_before_overwrite(self):
+        printer_root = copy_base_runtime()
+        filament = printer_root / "config/klipper-macros-qd/filament.cfg"
+        legacy_text = "[gcode_macro OPTIMIZED_CUT_FILAMENT]\ngcode:\n  M118 legacy\n"
+        filament.write_text(legacy_text, encoding="utf-8")
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        with patch("installer.runtime.legacy_manual_install.shutil.which", return_value="/usr/bin/tool"):
+            with patch(
+                "installer.runtime.legacy_manual_install.STOCK_CONFIG_ROOT",
+                Path("stock/qidi-max4-defaults/missing-firmwares"),
+            ):
+                with self.assertRaises(Exception):
+                    run_install(
+                        paths,
+                        self.manifest,
+                        reporter=PlainReporter(io.StringIO()),
+                        input_stream=io.StringIO("y\n"),
+                        urlopen=moonraker_urlopen(),
+                        run=lambda command, **kwargs: subprocess.CompletedProcess(command, 0),
+                    )
+        self.assertEqual(filament.read_text(encoding="utf-8"), legacy_text)
+        self.assertFalse((paths.config_root / "tltg_optimized_state.yaml").exists())
 
     def test_legacy_manual_reset_preserves_stock_kamp_symlink(self):
         printer_root = copy_base_runtime()

@@ -18,7 +18,7 @@ from .sudo import SudoError, authenticate_sudo, run_sudo_or_raise
 
 LEGACY_RESET_FIRMWARE_TOKEN = "legacy-manual-reset"
 QIDICLIENT_SERVICE = "qidi-client.service"
-STOCK_CONFIG_SOURCE = Path("stock/qidi-max4-defaults/config")
+STOCK_CONFIG_ROOT = Path("stock/qidi-max4-defaults/firmwares")
 LEGACY_MARKERS = (
     ("config/printer.cfg", "[include tltg-optimized-macros/*.cfg]"),
     ("config/klipper-macros-qd/filament.cfg", "[gcode_macro OPTIMIZED_CUT_FILAMENT]"),
@@ -97,7 +97,13 @@ def maybe_reset_legacy_manual_install(
         detected_firmware=detected_firmware,
     )
     reporter.line(f"{messages.LEGACY_MANUAL_INSTALL_BACKUP_CREATED} {backup_path}")
-    _restore_stock_config(paths=paths, manifest=manifest, reporter=reporter, backup_path=backup_path)
+    _restore_stock_config(
+        paths=paths,
+        manifest=manifest,
+        reporter=reporter,
+        backup_path=backup_path,
+        detected_firmware=detected_firmware,
+    )
     _restart_qidiclient(reporter=reporter, input_stream=input_stream, environ=environ, run=run)
     reporter.line(messages.LEGACY_MANUAL_INSTALL_RESET_COMPLETE)
     reporter.debug(
@@ -150,8 +156,15 @@ def _backup_legacy_config(*, paths: RuntimePaths, manifest: Manifest, detected_f
     )
 
 
-def _restore_stock_config(*, paths: RuntimePaths, manifest: Manifest, reporter, backup_path: Path) -> None:
-    source_root = paths.installer_root / STOCK_CONFIG_SOURCE
+def _restore_stock_config(
+    *,
+    paths: RuntimePaths,
+    manifest: Manifest,
+    reporter,
+    backup_path: Path,
+    detected_firmware: str,
+) -> None:
+    source_root = _stock_config_source(paths=paths, detected_firmware=detected_firmware)
     if not source_root.exists():
         raise LegacyManualInstallError(f"Bundled stock config snapshot is missing: {source_root}")
     validate_managed_tree_source(source_root)
@@ -170,6 +183,10 @@ def _restore_stock_config(*, paths: RuntimePaths, manifest: Manifest, reporter, 
                 backup_zip_path=backup_path,
             )
         raise
+
+
+def _stock_config_source(*, paths: RuntimePaths, detected_firmware: str) -> Path:
+    return paths.installer_root / STOCK_CONFIG_ROOT / detected_firmware / "config"
 
 
 def _restore_stock_files(*, source_root: Path, paths: RuntimePaths, journal: RollbackJournal) -> None:

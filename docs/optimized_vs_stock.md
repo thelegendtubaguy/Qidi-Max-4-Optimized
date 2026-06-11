@@ -20,18 +20,19 @@ Excluded comparisons:
 Source paths:
 - `installer/package.yaml`
 - `installer/runtime/legacy_manual_install.py`
-- `installer/stock/qidi-max4-defaults/config/`
+- `installer/stock/qidi-max4-defaults/firmwares/<firmware>/config/`
 - `config/printer.cfg`
 - `config/klipper-macros-qd/kinematics.cfg`
 - `installer/klipper/tltg-optimized-macros/*.cfg`
 
 Functional changes:
-- Before a fresh install, the installer detects legacy manually-copied optimized configs in stock QIDI paths, backs up `config/`, restores bundled QIDI stock-managed files from `installer/stock/qidi-max4-defaults/config/`, preserves `config/MCU_ID.cfg`, `config/box.cfg`, `config/fluidd.cfg`, `config/saved_variables.cfg`, and direct `config/KAMP` symlinks, restarts `qidi-client.service`, then continues with the normal installer path.
+- Before a fresh install, the installer detects legacy manually-copied optimized configs in stock QIDI paths, backs up `config/`, restores bundled QIDI stock-managed files from `installer/stock/qidi-max4-defaults/firmwares/<detected-firmware>/config/`, preserves `config/MCU_ID.cfg`, `config/box.cfg`, `config/fluidd.cfg`, `config/saved_variables.cfg`, and direct `config/KAMP` symlinks, restarts `qidi-client.service`, then continues with the normal installer path.
 - The installer adds `[include tltg-optimized-macros/*.cfg]` after `[include klipper-macros-qd/*.cfg]`, so stock QIDI macros remain present and optimized macros override or wrap behavior through a separate include tree.
 - Guarded installer patches make X and Y homing faster, reduce repeated homing retraction distance, reduce Z homing retraction distance, increase Z-tilt travel speed, and increase bed-mesh point-to-point travel speed.
-- Guarded installer patches route virtual-SD print errors to `OPTIMIZED_CANCEL_PRINT_ON_ERROR`, which cancels without parking or moving the toolhead during error handling.
+- Guarded installer patches route virtual-SD print errors to `OPTIMIZED_CANCEL_PRINT_ON_ERROR`, which cancels without parking or moving the toolhead during error handling and calls `_KM_CANCEL_PRINT_BASE` after heater shutdown, fan shutdown, pause-state restore, `G31`, and `CLEAR_PAUSE`.
 - Guarded installer patches set stock `TIMELAPSE_TAKE_FRAME` `variable_verbose` to `False`, so disabled printer timelapse ignores slicer frame requests without per-layer console messages.
 - The installer deletes QIDI's stock `[homing_override]` from `config/klipper-macros-qd/kinematics.cfg` only when the stock section hash matches a supported firmware baseline, then runtime `G28` is handled by `installer/klipper/tltg-optimized-macros/kinematics.cfg`.
+- On firmware `01.01.06.04`, guarded stock-baseline patches preserve QIDI's closed-loop X/Y `query_cycle:10` and `trigger_*` fields, `Chamber_Thermal_Protection_Sensor max_temp:170`, and official `[fila25]` `PA6-CF` naming; firmware `01.01.06.03` does not require `.04`-only `trigger_*` fields.
 - Uninstall restores the stored stock `[homing_override]` section when the optimized section deletion is still intact.
 
 ## System hardening and OS optimizations
