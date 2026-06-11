@@ -48,8 +48,9 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("bundle smoke test is missing restore.sh")
     if not (bundle_root / "installer/system/qidiclient-static-gifs.tar.gz").exists():
         raise SystemExit("bundle smoke test is missing qidiclient static GIF archive")
-    if not (bundle_root / "installer/stock/qidi-max4-defaults/config/printer.cfg").exists():
-        raise SystemExit("bundle smoke test is missing stock config snapshot")
+    for firmware in ("01.01.06.03", "01.01.06.04"):
+        if not (bundle_root / f"installer/stock/qidi-max4-defaults/firmwares/{firmware}/config/printer.cfg").exists():
+            raise SystemExit(f"bundle smoke test is missing {firmware} stock config snapshot")
     package_version = read_package_version(bundle_root / "installer/package.yaml")
     help_output = run_command([str(bundle_root / "install.sh"), "--help"], cwd=bundle_root, env=os.environ.copy())
     if help_output.returncode != 0:

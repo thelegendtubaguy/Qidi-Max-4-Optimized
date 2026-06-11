@@ -7,7 +7,7 @@ from typing import Callable, Iterable
 
 from . import klipper_cfg, patches, safety
 from .ensure_lines import has_active_line
-from .manifest import select_patch_variant
+from .manifest import active_patch_entries, select_patch_variant
 from .errors import PreflightTargetsError
 from .mirror import validate_managed_tree_source
 from .path_safety import (
@@ -99,7 +99,7 @@ def run_install_config_preflight(
         detected_firmware=detected_firmware,
         prior_state=prior_state,
     )
-    patch_entries = (*manifest.patches.set_options, *manifest.patches.delete_sections)
+    patch_entries = _install_patch_entries(manifest, detected_firmware)
     unique_patch_targets = _count_unique_patch_targets(patch_entries)
     if reporter is not None:
         reporter.emit_install_preflight_counters(
@@ -144,7 +144,7 @@ def build_install_preflight_report(
             missing_lines.append(spec)
     patch_target_issues = _patch_target_issues(
         paths=paths,
-        patch_entries=(*manifest.patches.set_options, *manifest.patches.delete_sections),
+        patch_entries=_install_patch_entries(manifest, detected_firmware),
         detected_firmware=detected_firmware,
         prior_state=prior_state,
     )
@@ -322,6 +322,13 @@ def _uninstall_rollup_paths(
     if managed_tree_root.exists():
         rollup.update(item for item in managed_tree_root.rglob("*") if item.is_file())
     return rollup
+
+
+
+def _install_patch_entries(manifest: Manifest, detected_firmware: str | None) -> tuple[object, ...]:
+    if detected_firmware is None:
+        return (*manifest.patches.set_options, *manifest.patches.delete_sections)
+    return active_patch_entries(manifest, detected_firmware)
 
 
 

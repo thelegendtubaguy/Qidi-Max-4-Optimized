@@ -15,10 +15,10 @@ SECTION_DELETED = "__TLTG_SECTION_DELETED__"
 
 def classify_install_patch(current: str, patch: PatchSpec, firmware_version: str) -> PatchResult:
     variant = select_patch_variant(patch, firmware_version)
-    if current == variant.expected:
-        classification = INSTALL_APPLIED
-    elif current == variant.desired:
+    if current == variant.desired:
         classification = INSTALL_NOOP_DESIRED
+    elif current == variant.expected:
+        classification = INSTALL_APPLIED
     else:
         classification = USER_MODIFIED
     return PatchResult(
