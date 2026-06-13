@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import io
+import json
 import unittest
 from unittest.mock import call, patch
 
+from installer.runtime import klipper_cfg
 from installer.runtime.auto_update import AutoUpdateRunResult
 from installer.runtime.backup import create_config_backup
 from installer.runtime.errors import LockAcquisitionError
@@ -94,6 +96,78 @@ class CliTests(unittest.TestCase):
         self.assertEqual(rc, 1)
         auto_update_check.assert_not_called()
         self.assertIn("locked", stream.getvalue())
+
+    def test_auto_update_check_reconciles_qidi_box_tool_slots_without_prior_observed_count(self):
+        printer_root = copy_base_runtime()
+        saved_variables_path = printer_root / "config/saved_variables.cfg"
+        saved_variables_path.write_text(
+            "[Variables]\n"
+            "box_count = 2\n"
+            "enable_box = 1\n"
+            "value_t0 = 'slot0'\n"
+            "value_t1 = 'slot1'\n"
+            "value_t2 = 'slot2'\n"
+            "value_t3 = 'slot3'\n",
+            encoding="utf-8",
+        )
+        state_path = printer_root / "config/tltg_optimized_runtime_state.json"
+        stream = io.StringIO()
+        with moonraker_server("standby") as url, patch(
+            "installer.runtime.cli.run_auto_update_check",
+            return_value=AutoUpdateRunResult(action="skipped-checksum-unavailable"),
+        ):
+            rc = main(
+                ["auto-update-check", "--plain", "--yes"],
+                stream=stream,
+                bundle_root=REPO_ROOT,
+                environ=build_env(printer_root, moonraker_url=url),
+            )
+
+        self.assertEqual(rc, 0)
+        saved_variables = saved_variables_path.read_text(encoding="utf-8")
+        for tool in range(8):
+            self.assertEqual(
+                klipper_cfg.resolve_unique_option(
+                    saved_variables, "Variables", f"value_t{tool}"
+                ).value,
+                f"'slot{tool}'",
+            )
+        self.assertEqual(json.loads(state_path.read_text(encoding="utf-8"))["last_observed_box_count"], 2)
+        self.assertIn("QIDI Box count changed to 2", stream.getvalue())
+
+    def test_auto_update_check_skips_qidi_box_tool_slots_when_printer_busy(self):
+        printer_root = copy_base_runtime()
+        saved_variables_path = printer_root / "config/saved_variables.cfg"
+        saved_variables_path.write_text(
+            "[Variables]\n"
+            "box_count = 2\n"
+            "enable_box = 1\n"
+            "value_t0 = 'slot0'\n"
+            "value_t1 = 'slot1'\n"
+            "value_t2 = 'slot2'\n"
+            "value_t3 = 'slot3'\n",
+            encoding="utf-8",
+        )
+        state_path = printer_root / "config/tltg_optimized_runtime_state.json"
+        state_path.write_text('{"last_observed_box_count": 1}\n', encoding="utf-8")
+        stream = io.StringIO()
+        with moonraker_server("printing") as url, patch(
+            "installer.runtime.cli.run_auto_update_check",
+            return_value=AutoUpdateRunResult(action="skipped-active-print"),
+        ):
+            rc = main(
+                ["auto-update-check", "--plain", "--yes"],
+                stream=stream,
+                bundle_root=REPO_ROOT,
+                environ=build_env(printer_root, moonraker_url=url),
+            )
+
+        self.assertEqual(rc, 0)
+        saved_variables = saved_variables_path.read_text(encoding="utf-8")
+        with self.assertRaises(klipper_cfg.TargetResolutionError):
+            klipper_cfg.resolve_unique_option(saved_variables, "Variables", "value_t4")
+        self.assertEqual(json.loads(state_path.read_text(encoding="utf-8"))["last_observed_box_count"], 1)
+        self.assertIn("QIDI Box tool-slot reconcile skipped because the printer is busy.", stream.getvalue())
 
     def test_auto_update_check_reconciles_system_optimizations_when_already_current(self):
         printer_root = copy_base_runtime()

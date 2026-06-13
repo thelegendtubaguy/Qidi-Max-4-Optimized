@@ -311,7 +311,7 @@ def timer_text() -> str:
         "[Unit]\n"
         "Description=Run TLTG optimized config auto-update hourly\n\n"
         "[Timer]\n"
-        "OnBootSec=10min\n"
+        "OnBootSec=5min\n"
         "OnUnitActiveSec=1h\n"
         "Persistent=true\n\n"
         "[Install]\n"

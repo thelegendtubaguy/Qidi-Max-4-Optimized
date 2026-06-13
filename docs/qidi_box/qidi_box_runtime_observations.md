@@ -1,5 +1,21 @@
 # QIDI Box runtime observations
 
+## Non-motion refresh 2026-06-13 dual-box topology
+
+Moonraker `/printer/objects/list` reported `mcu mcu_box1`, `mcu mcu_box2`, `box_stepper slot0` through `box_stepper slot7`, `heater_generic heater_box1`, `heater_generic heater_box2`, `temperature_sensor heater_temp_a_box1`, `temperature_sensor heater_temp_a_box2`, and `multi_color_controller`.
+
+`/home/qidi/printer_data/config/box.cfg` contained `[box_config box0]` using `mcu_box1` and `[box_config box1]` using `mcu_box2`; `box0` controller fan covered `slot0, slot1, slot2, slot3`, and `box1` controller fan covered `slot4, slot5, slot6, slot7`.
+
+`multi_color_controller.hardware.box_count` and `save_variables.variables.box_count` were both `2`; `save_variables.variables.enable_box` was `1`.
+
+`save_variables.variables` contained `value_t0 = 'slot0'` through `value_t3 = 'slot3'`; `value_t4`, `value_t5`, `value_t6`, and `value_t7` were not present after QIDI Client added the second box.
+
+`multi_color_controller.config` contained `filament_slot4`, `color_slot4`, `vendor_slot4`, through `filament_slot7`, `color_slot7`, and `vendor_slot7`, so material metadata existed for second-box slots even though tool mapping variables were absent.
+
+`box_extras.so` harnessed on the printer returned `EXTRUDER_LOAD SLOT=slot16` for `BOX_PRINT_START EXTRUDER=4` when `value_t4` was absent and `EXTRUDER_LOAD SLOT=slot4` when `value_t4 = 'slot4'`; the same behavior was observed for `EXTRUDER=7` and `value_t7 = 'slot7'`.
+
+Installer runtime now writes missing or empty `value_tN = 'slotN'` entries required by `box_count`; the auto-update service also checks `box_count` against `config/tltg_optimized_runtime_state.json last_observed_box_count` on boot/hourly runs and performs the same write only when Klipper is reachable and idle.
+
 ## Non-motion capture 2026-05-07 14:51
 
 Capture directory:

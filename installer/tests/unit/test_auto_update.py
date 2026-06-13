@@ -21,6 +21,7 @@ from installer.runtime.auto_update import (
     run_auto_update_check,
     service_text,
     state_path,
+    timer_text,
 )
 from installer.runtime.cli import resolve_runtime_paths
 from installer.runtime.naming import BUNDLE_ROOT_NAME
@@ -369,6 +370,12 @@ class AutoUpdateTests(unittest.TestCase):
 
         self.assertTrue(handled)
         self.assertIn("Could not repair auto-updates. sudo authentication failed.", stream.getvalue())
+
+    def test_timer_runs_five_minutes_after_boot(self):
+        text = timer_text()
+
+        self.assertIn("OnBootSec=5min\n", text)
+        self.assertIn("OnUnitActiveSec=1h\n", text)
 
     def test_service_text_clears_url_override_environment(self):
         printer_root = copy_base_runtime()
