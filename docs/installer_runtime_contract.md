@@ -10,7 +10,8 @@ Installer metadata used by the runtime:
 - `installer/package.yaml preflight.required_files`, `preflight.required_sections`, and `preflight.required_lines` define aggregated install preflight targets.
 - `config/box.cfg` and `[box_extras]` are not install preflight targets; `OPTIMIZED_START_PRINT_FILAMENT_PREP` branches around the QIDI Box stack when `printer["box_extras"]` is not defined or `enable_box != 1`.
 - During interactive install, when `config/box.cfg` contains `[box_extras]`, `config/saved_variables.cfg [Variables] box_count` is greater than `0`, and `[Variables] enable_box` is `0`, the runtime prompts to set `enable_box = 1`; this saved-variable edit is not recorded in `config/tltg_optimized_state.yaml` and uninstall does not revert it.
-- During interactive install, when existing `config/saved_variables.cfg [Variables] value_tN` entries do not equal `'slotN'`, the runtime prompts to rewrite each mismatched existing `value_tN` to `'slotN'`; this saved-variable edit is not recorded in `config/tltg_optimized_state.yaml` and uninstall does not revert it.
+- During install, when `config/saved_variables.cfg [Variables] box_count` requires `value_tN` entries that are missing or empty, the runtime writes each required `value_tN = 'slotN'` without prompting; this saved-variable edit is not recorded in `config/tltg_optimized_state.yaml` and uninstall does not revert it.
+- During interactive install, when existing non-empty `config/saved_variables.cfg [Variables] value_tN` entries do not equal `'slotN'`, the runtime prompts to rewrite each mismatched `value_tN` to `'slotN'`; this saved-variable edit is not recorded in `config/tltg_optimized_state.yaml` and uninstall does not revert it.
 - `installer/package.yaml install.ensure_directories`, `install.managed_tree`, and `install.ensure_lines` define the installer-managed runtime changes under `config/`.
 - `installer/package.yaml patches.set_options[]` defines guarded `file + section + option` runtime value patches.
 - `installer/package.yaml patches.delete_sections[]` defines guarded `file + section` runtime section deletion patches; each variant stores `expected_normalized_sha256` for the normalized section text that must be present before deletion.
@@ -74,8 +75,9 @@ Install statuses and terminal messages:
 - Before managed-tree writes during `installing`, install prompts `We see {box_count} QIDI Box unit(s) recorded in saved_variables.cfg, but enable_box is 0. Would you like to enable QIDI Box support now?` when `[box_extras]` exists, `box_count > 0`, `enable_box == 0`, and input is interactive.
 - Accepted QIDI Box enablement writes `enable_box = 1` in `config/saved_variables.cfg [Variables]`, prints `QIDI Box support enabled in saved_variables.cfg.`, and leaves the change out of the optimized install-state ledger.
 - Any other QIDI Box enablement input prints `QIDI Box support left disabled.` and preserves the existing saved variable.
-- Before managed-tree writes during `installing`, install prints each mismatched `value_tN: <current> -> slotN` and prompts `Tool numbers do not line up with slot numbers. Would you like us to correct this?` when any existing `config/saved_variables.cfg [Variables] value_tN` does not resolve to `slotN` after stripping surrounding string quotes.
-- Accepted tool-slot correction writes each mismatched existing `value_tN = 'slotN'` in `config/saved_variables.cfg [Variables]`, prints `Tool-slot mappings corrected in saved_variables.cfg.`, and leaves the change out of the optimized install-state ledger.
+- Before managed-tree writes during `installing`, install writes missing or empty `value_t0` through `value_t<min(box_count * 4, 16) - 1>` entries to `slotN`, prints `Added {count} missing QIDI Box tool-slot mapping(s) to saved_variables.cfg.`, and leaves the change out of the optimized install-state ledger.
+- Before managed-tree writes during `installing`, install prints each mismatched `value_tN: <current> -> slotN` and prompts `Tool numbers do not line up with slot numbers. Would you like us to correct this?` when any existing non-empty `config/saved_variables.cfg [Variables] value_tN` does not resolve to `slotN` after stripping surrounding string quotes.
+- Accepted tool-slot correction writes each mismatched `value_tN = 'slotN'` in `config/saved_variables.cfg [Variables]`, prints `Tool-slot mappings corrected in saved_variables.cfg.`, and leaves the change out of the optimized install-state ledger.
 - Any other tool-slot correction input prints `Tool-slot mappings left unchanged.` and preserves the existing saved variables.
 - After install state-file write and before final install success output, interactive install prompts `Would you like to apply system hardening and OS optimizations?` when `installer/package.yaml system_optimizations` is present.
 - Accepted system optimization confirmation writes or reconciles DHCP-first DNS with `1.1.1.1` and `8.8.8.8` fallbacks, Debian Bullseye APT sources, qidiclient static GIFs, disabled `xl2tpd`, disabled `bluetooth`, and optional `algo_app.service` disablement.
@@ -96,7 +98,9 @@ Install statuses and terminal messages:
 - Accepted auto-update confirmation attempts to fetch the latest release `.sha256`; when the fetch succeeds it writes `config/tltg_optimized_auto_update_state.json`, and when the fetch fails the failure is silent because the first successful timer run initializes auto-update state without installing.
 - Accepted auto-update confirmation runs quiet sudo commands through `sudo -S -p ''` using `TLTG_OPTIMIZED_SUDO_PASSWORD` when set, otherwise QIDI's public default password `qiditech`; if the initial `sudo -v` attempt fails and input is interactive, it prints `Initial sudo authentication failed.`, prompts `Enter sudo password to continue:`, retries `sudo -v` with that password, then uses that password for the remaining sudo commands.
 - Accepted auto-update confirmation installs `/etc/systemd/system/tltg-optimized-auto-update.service` and `/etc/systemd/system/tltg-optimized-auto-update.timer`, runs `systemctl daemon-reload`, runs `systemctl enable tltg-optimized-auto-update.timer`, and runs `systemctl restart tltg-optimized-auto-update.timer` through sudo.
+- The installed auto-update timer runs `~/tltg-optimized-macros/auto-update.sh --run` five minutes after boot and then one hour after each active run.
 - The installed auto-update service unsets `TLTG_AUTO_UPDATE_ARCHIVE_URL`, `TLTG_AUTO_UPDATE_CHECKSUM_URL`, `TLTG_INSTALLER_ARCHIVE_URL`, and `TLTG_INSTALLER_CHECKSUM_URL` before running `~/tltg-optimized-macros/auto-update.sh --run`.
+- Each `auto-update-check` run first checks Moonraker print state; when Klipper is reachable and the printer is idle, it compares `config/saved_variables.cfg [Variables] box_count` against `config/tltg_optimized_runtime_state.json last_observed_box_count`, writes missing or empty required `value_tN = 'slotN'` entries after a changed count, and updates the observed count. If the printer is busy or state is unavailable, the QIDI Box tool-slot reconcile is skipped without writing.
 - Auto-update systemd setup failure prints `Could not enable auto-updates. <reason>` and does not change the successful install result.
 - After auto-update repair, after the auto-update prompt returns, or when auto-update prompting is skipped, the runtime prompts `Would you like me to restart Klipper to apply changes?` and accepts `Y` or `Yes` case-insensitively.
 - Accepted restart confirmation triggers a local Moonraker `POST /printer/restart` request.
@@ -224,32 +228,33 @@ Required install flow:
 30. When an existing installed-state ledger is present, compare current managed-tree file hashes against `managed_tree.files[]` from that ledger and record local managed-tree drift before mirror mode.
 31. Compare prior `managed_tree.files[]` ledger hashes against the new bundle contents to distinguish expected bundle-version changes from local drift.
 32. When `config/box.cfg [box_extras]` exists, `config/saved_variables.cfg [Variables] box_count > 0`, and `[Variables] enable_box == 0`, prompt to set `enable_box = 1` before managed-tree writes; accepted confirmation writes only `config/saved_variables.cfg` and does not add the value to `config/tltg_optimized_state.yaml`.
-33. When existing `config/saved_variables.cfg [Variables] value_tN` entries do not equal `'slotN'`, prompt to rewrite each mismatched existing entry to `'slotN'` before managed-tree writes; accepted confirmation writes only `config/saved_variables.cfg` and does not add the values to `config/tltg_optimized_state.yaml`.
-34. Create each directory listed in `installer/package.yaml install.ensure_directories` before mirroring installer-managed files.
-35. Mirror `installer/klipper/tltg-optimized-macros/` into runtime `config/tltg-optimized-macros/` according to `installer/package.yaml install.managed_tree` without adding the optimized include line yet.
-36. Select the matching `variants[]` entry in each `installer/package.yaml patches.set_options[]` block with a matching `variants[].firmwares[]` entry.
-37. Read the current value for each `file + section + option` target in `installer/package.yaml patches.set_options[]` from the runtime file before writing.
-38. Write `desired` when the current runtime value equals `expected` in the selected `variants[]` entry.
-39. Record a silent no-op for that patch when the current runtime value already equals `desired` in the selected `variants[]` entry.
-40. Record that patch as user-modified when the current runtime value differs from both `expected` and `desired` in the selected `variants[]` entry.
-41. For each `installer/package.yaml patches.delete_sections[]` target, delete the runtime section only when the current normalized section text SHA-256 equals the selected `variants[].expected_normalized_sha256`; store the deleted section text in `config/tltg_optimized_state.yaml patch_ledger[].expected` and store `__TLTG_SECTION_DELETED__` in `patch_ledger[].desired`.
-42. Treat a missing `patches.delete_sections[]` target as an install no-op only when a prior valid installed-state ledger already contains that section-deletion patch target.
-43. Record a section deletion patch as user-modified when the current section exists and its normalized SHA-256 does not match `variants[].expected_normalized_sha256`.
-44. Ensure `[include tltg-optimized-macros/*.cfg]` exists in runtime `config/printer.cfg` after `[include klipper-macros-qd/*.cfg]` according to `installer/package.yaml install.ensure_lines`, moving or deduping active include lines as needed, only after `patches.delete_sections[]` processing completes.
-45. Validate every runtime file implied by `installer/package.yaml install.managed_tree` by SHA-256 and every `file + line` target in `installer/package.yaml postflight.verify_lines` after the managed tree mirror, guarded patches, and include-line write complete.
-46. Write `config/tltg_optimized_state.yaml` only after the install postflight checks pass.
-47. Store `package.id`, `package.version`, detected install firmware, backup label, install timestamp, managed-tree file hashes, and the guarded patch ledger in `config/tltg_optimized_state.yaml`.
-48. Trigger automatic rollback on any failure after the first runtime write, not only on postflight failure.
-49. Leave the previous `config/tltg_optimized_state.yaml` content unchanged when the run stops before install postflight completion.
-50. Print `Installed.`, then the final user-modified patch report, then `Managed tree drift overwritten:` when present.
-51. Repair existing auto-update systemd units before restart prompting; when no auto-update unit exists, prompt for auto-update setup when input is interactive.
-52. During auto-update repair or accepted auto-update setup confirmation, attempt to fetch and store the latest release checksum, authenticate with sudo, install the systemd service/timer units, reload systemd, enable `tltg-optimized-auto-update.timer`, and restart `tltg-optimized-auto-update.timer`.
-53. Continue systemd timer setup when the initial checksum seed fails; the first successful timer check initializes `config/tltg_optimized_auto_update_state.json` without installing when no previous state exists.
-54. Treat auto-update repair and setup failure as non-fatal after install success.
-55. Prompt `Would you like me to restart Klipper to apply changes?` and accept only `Y` or `Yes` case-insensitively.
-56. During accepted restart confirmation, request local Moonraker `POST /printer/restart`.
-57. Print `Could not restart Klipper automatically. Restart Klipper to apply changes.` when the restart request fails.
-58. Print `Restart Klipper to apply changes.` and exit without restarting when the restart confirmation input is anything else.
+33. When `min(config/saved_variables.cfg [Variables] box_count * 4, 16)` requires missing or empty `value_tN` entries, write each required entry to `'slotN'` before managed-tree writes; write only `config/saved_variables.cfg` and do not add the values to `config/tltg_optimized_state.yaml`.
+34. When existing non-empty `config/saved_variables.cfg [Variables] value_tN` entries do not equal `'slotN'`, prompt to write each mismatched entry to `'slotN'` before managed-tree writes; accepted confirmation writes only `config/saved_variables.cfg` and does not add the values to `config/tltg_optimized_state.yaml`.
+35. Create each directory listed in `installer/package.yaml install.ensure_directories` before mirroring installer-managed files.
+36. Mirror `installer/klipper/tltg-optimized-macros/` into runtime `config/tltg-optimized-macros/` according to `installer/package.yaml install.managed_tree` without adding the optimized include line yet.
+37. Select the matching `variants[]` entry in each `installer/package.yaml patches.set_options[]` block with a matching `variants[].firmwares[]` entry.
+38. Read the current value for each `file + section + option` target in `installer/package.yaml patches.set_options[]` from the runtime file before writing.
+39. Write `desired` when the current runtime value equals `expected` in the selected `variants[]` entry.
+40. Record a silent no-op for that patch when the current runtime value already equals `desired` in the selected `variants[]` entry.
+41. Record that patch as user-modified when the current runtime value differs from both `expected` and `desired` in the selected `variants[]` entry.
+42. For each `installer/package.yaml patches.delete_sections[]` target, delete the runtime section only when the current normalized section text SHA-256 equals the selected `variants[].expected_normalized_sha256`; store the deleted section text in `config/tltg_optimized_state.yaml patch_ledger[].expected` and store `__TLTG_SECTION_DELETED__` in `patch_ledger[].desired`.
+43. Treat a missing `patches.delete_sections[]` target as an install no-op only when a prior valid installed-state ledger already contains that section-deletion patch target.
+44. Record a section deletion patch as user-modified when the current section exists and its normalized SHA-256 does not match `variants[].expected_normalized_sha256`.
+45. Ensure `[include tltg-optimized-macros/*.cfg]` exists in runtime `config/printer.cfg` after `[include klipper-macros-qd/*.cfg]` according to `installer/package.yaml install.ensure_lines`, moving or deduping active include lines as needed, only after `patches.delete_sections[]` processing completes.
+46. Validate every runtime file implied by `installer/package.yaml install.managed_tree` by SHA-256 and every `file + line` target in `installer/package.yaml postflight.verify_lines` after the managed tree mirror, guarded patches, and include-line write complete.
+47. Write `config/tltg_optimized_state.yaml` only after the install postflight checks pass.
+48. Store `package.id`, `package.version`, detected install firmware, backup label, install timestamp, managed-tree file hashes, and the guarded patch ledger in `config/tltg_optimized_state.yaml`.
+49. Trigger automatic rollback on any failure after the first runtime write, not only on postflight failure.
+50. Leave the previous `config/tltg_optimized_state.yaml` content unchanged when the run stops before install postflight completion.
+51. Print `Installed.`, then the final user-modified patch report, then `Managed tree drift overwritten:` when present.
+52. Repair existing auto-update systemd units before restart prompting; when no auto-update unit exists, prompt for auto-update setup when input is interactive.
+53. During auto-update repair or accepted auto-update setup confirmation, attempt to fetch and store the latest release checksum, authenticate with sudo, install the systemd service/timer units, reload systemd, enable `tltg-optimized-auto-update.timer`, and restart `tltg-optimized-auto-update.timer`.
+54. Continue systemd timer setup when the initial checksum seed fails; the first successful timer check initializes `config/tltg_optimized_auto_update_state.json` without installing when no previous state exists.
+55. Treat auto-update repair and setup failure as non-fatal after install success.
+56. Prompt `Would you like me to restart Klipper to apply changes?` and accept only `Y` or `Yes` case-insensitively.
+57. During accepted restart confirmation, request local Moonraker `POST /printer/restart`.
+58. Print `Could not restart Klipper automatically. Restart Klipper to apply changes.` when the restart request fails.
+59. Print `Restart Klipper to apply changes.` and exit without restarting when the restart confirmation input is anything else.
 
 Required uninstall flow:
 1. Acquire the single-run advisory lock before visible status changes.

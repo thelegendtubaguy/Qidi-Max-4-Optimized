@@ -27,6 +27,7 @@ Source paths:
 
 Functional changes:
 - Before a fresh install, the installer detects legacy manually-copied optimized configs in stock QIDI paths, backs up `config/`, restores bundled QIDI stock-managed files from `installer/stock/qidi-max4-defaults/firmwares/<detected-firmware>/config/`, preserves `config/MCU_ID.cfg`, `config/box.cfg`, `config/fluidd.cfg`, `config/saved_variables.cfg`, and direct `config/KAMP` symlinks, restarts `qidi-client.service`, then continues with the normal installer path.
+- During install, the installer writes missing or empty `value_tN = 'slotN'` entries required by `box_count` into `config/saved_variables.cfg`, so QIDI Box startup maps tools to physical slots before vendor `BOX_PRINT_START` runs; non-empty mismatches still require confirmation before rewrite.
 - The installer adds `[include tltg-optimized-macros/*.cfg]` after `[include klipper-macros-qd/*.cfg]`, so stock QIDI macros remain present and optimized macros override or wrap behavior through a separate include tree.
 - Guarded installer patches make X and Y homing faster, reduce repeated homing retraction distance, reduce Z homing retraction distance, increase Z-tilt travel speed, and increase bed-mesh point-to-point travel speed.
 - Guarded installer patches route virtual-SD print errors to `OPTIMIZED_CANCEL_PRINT_ON_ERROR`, which cancels without parking or moving the toolhead during error handling and calls `_KM_CANCEL_PRINT_BASE` after heater shutdown, fan shutdown, pause-state restore, `G31`, and `CLEAR_PAUSE`.
@@ -50,6 +51,7 @@ Functional changes:
 - `qidiclient` animated spinner GIFs are replaced from the bundled static GIF archive, reducing touchscreen CPU load from repeated GIF decoding; replaced files are backed up under `/home/qidi/QIDI_Client/access/.gif-backup-<timestamp>` and keep their existing owner and mode.
 - AI detection remains enabled unless the operator chooses to disable the backend service; when kept enabled, `algo_app.service` state is recorded without changing the unit, and when disabled, `algo_app.service` is stopped and disabled while touchscreen `Settings -> Printing Options -> Spaghetti Detection` and `Foreign Object Detection` toggles remain `qidiclient` UI state.
 - Auto-update reapplies opted-in system hardening when QIDI firmware updates or manual changes revert DNS, APT, service, or qidiclient GIF state.
+- Auto-update service runs reconcile QIDI Box tool-slot mappings on boot and hourly checks when Klipper is reachable and idle; if `box_count` changed since the last observed count, it writes missing or empty `value_tN = 'slotN'` entries required by the new box count.
 - Uninstall asks whether to restore system settings changed by the optimized installer; declining removes only Klipper config changes.
 
 ## CommunityWiki system-hardening mapping

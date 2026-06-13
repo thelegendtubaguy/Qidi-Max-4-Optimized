@@ -9,6 +9,7 @@ from pathlib import Path
 
 from . import messages, safety
 from .auto_update import LOCK_HELD_ENV, AutoUpdateError, disable_auto_updates, enable_auto_updates, run_auto_update_check
+from .box_enablement import maybe_reconcile_tool_slots_after_box_count_change
 from .backup import BackupArchiveError
 from .compatibility import CompatibilityValidationError, load_supported_upgrade_sources, validate_manifest_compatibility
 from .demo import resolve_demo_tui_delay_seconds, run_demo
@@ -89,6 +90,7 @@ def main(
                     event="cli.recovery_sentinel.clear",
                     sentinel_path=paths.recovery_sentinel_path,
                 )
+                maybe_reconcile_tool_slots_after_box_count_change(paths=paths, reporter=reporter)
                 result = run_auto_update_check(paths=paths, reporter=reporter, environ=env)
                 if result.action == "already-current":
                     try:

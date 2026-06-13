@@ -382,6 +382,8 @@ Meaning:
 - current slot = last loaded slot
 - sync state = whether the loaded path is bound/trusted
 
+`box_extras.so` uses `slot16` as the missing-`value_tN` default inside `BOX_PRINT_START`; harnessed `EXTRUDER=4` without `value_t4` emitted `EXTRUDER_LOAD SLOT=slot16`, and `EXTRUDER=7` without `value_t7` emitted `EXTRUDER_LOAD SLOT=slot16`. Explicit `value_t4 = 'slot4'` and `value_t7 = 'slot7'` emitted `EXTRUDER_LOAD SLOT=slot4` and `EXTRUDER_LOAD SLOT=slot7`.
+
 ### High-level branch map
 
 Branch model:
