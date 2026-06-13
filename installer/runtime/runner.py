@@ -10,7 +10,11 @@ from .auto_update import (
     maybe_prompt_enable_auto_updates,
     maybe_repair_configured_auto_updates,
 )
-from .box_enablement import maybe_prompt_align_tool_slots, maybe_prompt_enable_box
+from .box_enablement import (
+    maybe_prompt_align_tool_slots,
+    maybe_prompt_enable_box,
+    maybe_write_required_tool_slot_variables,
+)
 from .backup import (
     build_install_backup_label,
     create_config_backup,
@@ -322,6 +326,11 @@ def _execute_install(
             paths=paths,
             reporter=reporter,
             input_stream=input_stream,
+            journal=journal,
+        )
+        maybe_write_required_tool_slot_variables(
+            paths=paths,
+            reporter=reporter,
             journal=journal,
         )
         maybe_prompt_align_tool_slots(

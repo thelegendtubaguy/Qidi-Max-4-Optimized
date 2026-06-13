@@ -316,6 +316,48 @@ class InstallFlowTests(unittest.TestCase):
         self.assertIn("value_t3: slot0 -> slot3", output)
         self.assertIn("Tool-slot mappings corrected in saved_variables.cfg.", output)
 
+    def test_install_adds_missing_value_t_slots_for_second_box(self):
+        printer_root = copy_base_runtime()
+        saved_variables_path = printer_root / "config/saved_variables.cfg"
+        saved_variables_path.write_text(
+            "[Variables]\n"
+            "box_count = 2\n"
+            "enable_box = 1\n"
+            "value_t0 = 'slot0'\n"
+            "value_t1 = 'slot1'\n"
+            "value_t2 = 'slot2'\n"
+            "value_t3 = 'slot3'\n",
+            encoding="utf-8",
+        )
+        stream = io.StringIO()
+        paths = resolve_runtime_paths(
+            bundle_root=REPO_ROOT,
+            environ=build_env(printer_root, moonraker_url=MOONRAKER_QUERY_URL),
+        )
+        run_install(
+            paths,
+            self.manifest,
+            reporter=PlainReporter(stream),
+            input_stream=io.StringIO("y\nn\nn\n"),
+            urlopen=moonraker_urlopen(),
+        )
+
+        saved_variables = saved_variables_path.read_text(encoding="utf-8")
+        for tool in range(8):
+            self.assertEqual(
+                klipper_cfg.resolve_unique_option(
+                    saved_variables, "Variables", f"value_t{tool}"
+                ).value,
+                f"'slot{tool}'",
+            )
+        state_text = (paths.config_root / "tltg_optimized_state.yaml").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("value_t", state_text)
+        output = stream.getvalue()
+        self.assertIn("Added 4 missing QIDI Box tool-slot mapping", output)
+        self.assertNotIn("Tool numbers do not line up with slot numbers", output)
+
     def test_install_preserves_value_t_slot_mismatches_when_declined(self):
         printer_root = copy_base_runtime()
         saved_variables_path = printer_root / "config/saved_variables.cfg"
