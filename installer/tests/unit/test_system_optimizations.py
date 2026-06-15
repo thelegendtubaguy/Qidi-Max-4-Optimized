@@ -67,6 +67,37 @@ class SystemOptimizationTests(unittest.TestCase):
         self.assertEqual(output.getvalue().count(messages.SYSTEM_OPTIMIZATIONS_PROMPT), 2)
         self.assertNotIn(messages.SYSTEM_OPTIMIZATIONS_SKIPPED, output.getvalue())
 
+    def test_interactive_reinstall_prompts_when_prior_system_policy_was_disabled(self):
+        printer_root, system_root = _runtime_with_fake_system()
+        env = _env(printer_root, system_root)
+        paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
+        manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
+        run_install(
+            paths,
+            manifest,
+            PlainReporter(io.StringIO()),
+            input_stream=io.StringIO("yes\nno\nno\n"),
+            urlopen=moonraker_urlopen(),
+            environ=env,
+        )
+        state = load_installed_state(printer_root / manifest.state_file)
+        self.assertEqual(state.system_ledger["policy"], {"system_optimizations": "disabled", "ai_detection": "unset"})
+
+        output = io.StringIO()
+        run_install(
+            paths,
+            manifest,
+            PlainReporter(output),
+            input_stream=io.StringIO("yes\nYES\nNO\nno\nno\n"),
+            urlopen=moonraker_urlopen(),
+            environ=env,
+        )
+
+        self.assertIn(messages.SYSTEM_OPTIMIZATIONS_PROMPT, output.getvalue())
+        state = load_installed_state(printer_root / manifest.state_file)
+        self.assertEqual(state.system_ledger["policy"], {"system_optimizations": "enabled", "ai_detection": "keep_enabled"})
+        self.assertTrue((system_root / "etc/resolv.conf").is_symlink())
+
     def test_state_file_round_trips_system_ledger(self):
         printer_root = copy_base_runtime()
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid")

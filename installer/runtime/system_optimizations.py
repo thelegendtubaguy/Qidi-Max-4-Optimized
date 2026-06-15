@@ -238,7 +238,12 @@ def resolve_policy(
     cli_options: SystemOptimizationCliOptions,
     auto_update_child: bool,
 ) -> dict[str, str] | None:
-    explicit = _noninteractive_policy(prior_ledger, cli_options, auto_update_child=auto_update_child)
+    explicit = _noninteractive_policy(
+        prior_ledger,
+        cli_options,
+        auto_update_child=auto_update_child,
+        interactive=input_stream is not None,
+    )
     if explicit is not None:
         return explicit
     if auto_update_child:
@@ -1017,11 +1022,22 @@ def _validate_archive_members(members: list[tarfile.TarInfo]) -> None:
             raise SystemOptimizationError("qidiclient static GIF archive contains an unsafe entry type.")
 
 
-def _noninteractive_policy(prior_ledger: dict[str, Any] | None, cli_options: SystemOptimizationCliOptions, *, auto_update_child: bool) -> dict[str, str] | None:
+def _noninteractive_policy(
+    prior_ledger: dict[str, Any] | None,
+    cli_options: SystemOptimizationCliOptions,
+    *,
+    auto_update_child: bool,
+    interactive: bool = False,
+) -> dict[str, str] | None:
     if cli_options.skip_system_optimizations:
         return {"system_optimizations": "disabled", "ai_detection": "unset"}
     prior_policy = prior_ledger.get("policy") if isinstance(prior_ledger, dict) else None
-    if isinstance(prior_policy, dict) and (auto_update_child or not (cli_options.disable_ai_detection or cli_options.keep_ai_detection)):
+    use_prior_policy = (
+        isinstance(prior_policy, dict)
+        and (auto_update_child or not interactive)
+        and not (cli_options.disable_ai_detection or cli_options.keep_ai_detection)
+    )
+    if use_prior_policy:
         return {
             "system_optimizations": str(prior_policy.get("system_optimizations", "disabled")),
             "ai_detection": str(prior_policy.get("ai_detection", "unset")),
