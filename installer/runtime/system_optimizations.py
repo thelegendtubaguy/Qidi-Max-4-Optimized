@@ -13,7 +13,7 @@ from typing import Any
 
 from . import messages
 from .errors import InstallerError
-from .interaction import confirm_yes
+from .interaction import confirm_yes, prompt_yes
 from .models import (
     InstalledState,
     Manifest,
@@ -253,12 +253,12 @@ def resolve_policy(
         cancel_message=messages.SYSTEM_OPTIMIZATIONS_SKIPPED,
     ):
         return {"system_optimizations": "disabled", "ai_detection": "unset"}
-    reporter.emit_prompt(
+    if prompt_yes(
+        reporter=reporter,
+        input_stream=input_stream,
         question=messages.AI_DETECTION_PROMPT,
         instruction=messages.AI_DETECTION_PROMPT_INSTRUCTION,
-    )
-    response = input_stream.readline().strip().lower()
-    if response in {"y", "yes"}:
+    ):
         reporter.line(AI_TOUCHSCREEN_WARNING)
         return {"system_optimizations": "enabled", "ai_detection": "disable"}
     return {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}

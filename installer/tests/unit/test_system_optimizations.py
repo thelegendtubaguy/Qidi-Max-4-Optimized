@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from installer.runtime import messages
 from installer.runtime.auto_update import LOCK_HELD_ENV
 from installer.runtime.cli import resolve_runtime_paths
 from installer.runtime.compatibility import load_supported_upgrade_sources
@@ -50,6 +51,21 @@ class SystemOptimizationTests(unittest.TestCase):
         self.assertEqual(system.dns.fallback_nameservers, ("1.1.1.1", "8.8.8.8"))
         self.assertEqual(system.qidiclient_static_gifs.archive, "system/qidiclient-static-gifs.tar.gz")
         self.assertEqual(system.services.disable, ("xl2tpd", "bluetooth"))
+
+    def test_system_optimization_prompt_reprompts_after_stray_input(self):
+        output = io.StringIO()
+
+        policy = resolve_policy(
+            prior_ledger=None,
+            reporter=PlainReporter(output),
+            input_stream=io.StringIO("\\\n YES \n no \n"),
+            cli_options=SystemOptimizationCliOptions(),
+            auto_update_child=False,
+        )
+
+        self.assertEqual(policy, {"system_optimizations": "enabled", "ai_detection": "keep_enabled"})
+        self.assertEqual(output.getvalue().count(messages.SYSTEM_OPTIMIZATIONS_PROMPT), 2)
+        self.assertNotIn(messages.SYSTEM_OPTIMIZATIONS_SKIPPED, output.getvalue())
 
     def test_state_file_round_trips_system_ledger(self):
         printer_root = copy_base_runtime()

@@ -63,8 +63,9 @@ Install statuses and terminal messages:
 - When no installer state file exists and legacy manually-copied optimized config markers are found in `config/printer.cfg`, `config/klipper-macros-qd/filament.cfg`, `config/klipper-macros-qd/start_end.cfg`, `config/klipper-macros-qd/kinematics.cfg`, `config/klipper-macros-qd/globals.cfg`, or `config/tltg-optimized-macros/`, interactive install prompts before normal install confirmation.
 - Accepted legacy rollback creates a `tltg-optimized-macros-before-optimize-legacy-manual-reset-...zip` backup of `config/`, restores the bundled QIDI stock snapshot from `installer/stock/qidi-max4-defaults/firmwares/<detected-firmware>/config/`, removes `config/tltg-optimized-macros/`, preserves `config/MCU_ID.cfg`, `config/box.cfg`, `config/fluidd.cfg`, `config/saved_variables.cfg`, and any direct `config/KAMP` symlink, restarts `qidi-client.service`, then continues with normal install preflight and installation.
 - Declined legacy rollback prints `Legacy config rollback declined. Installation cancelled.` and exits zero before backup creation or any write under `config/`.
-- After install preflight succeeds and before backup creation when `--dry-run` is not active, the runtime prompts `Would you like us to take a backup of your configs and proceed with installation?` and accepts `Y` or `Yes` case-insensitively.
-- Any other install confirmation input returns `Installation cancelled.` and exits zero before backup creation or any write under `config/`.
+- Interactive yes/no prompts backed by `installer/runtime/interaction.py` strip surrounding whitespace, uppercase the response, accept `Y` or `YES`, decline `N` or `NO`, and re-render the same prompt for any other input including blank input.
+- After install preflight succeeds and before backup creation when `--dry-run` is not active, the runtime prompts `Would you like us to take a backup of your configs and proceed with installation?`.
+- Install confirmation input normalized to `N` or `NO` returns `Installation cancelled.` and exits zero before backup creation or any write under `config/`.
 - Status `creating backup` covers backup label creation and `.zip` archive creation for `/home/qidi/printer_data/config`; backup creation fails when `config/` is missing, not a directory, empty, or contains symlinks other than direct `config/KAMP` and `config/fluidd.cfg` symlinks.
 - After a successful new installer backup is created during `install`, the runtime prunes installer-created backup zip files under `/home/qidi/printer_data/` to retain only the newest three archives across install and uninstall backup prefixes; unrelated `.zip` files are ignored and `--dry-run` never prunes.
 - Status `installing` starts before the first runtime write under `config/` and stays active through optional `config/saved_variables.cfg [Variables] enable_box = 1` and `value_tN = 'slotN'` prompt/writes, drift detection, `install.managed_tree`, `patches.set_options[]`, `patches.delete_sections[]`, `install.ensure_lines`, managed-tree postflight verification, `postflight.verify_lines`, and the final state-file write.
@@ -74,11 +75,11 @@ Install statuses and terminal messages:
 - Final install success output does not list `patches.set_options[]` targets that already matched `desired` before the run.
 - Before managed-tree writes during `installing`, install prompts `We see {box_count} QIDI Box unit(s) recorded in saved_variables.cfg, but enable_box is 0. Would you like to enable QIDI Box support now?` when `[box_extras]` exists, `box_count > 0`, `enable_box == 0`, and input is interactive.
 - Accepted QIDI Box enablement writes `enable_box = 1` in `config/saved_variables.cfg [Variables]`, prints `QIDI Box support enabled in saved_variables.cfg.`, and leaves the change out of the optimized install-state ledger.
-- Any other QIDI Box enablement input prints `QIDI Box support left disabled.` and preserves the existing saved variable.
+- QIDI Box enablement input normalized to `N` or `NO` prints `QIDI Box support left disabled.` and preserves the existing saved variable.
 - Before managed-tree writes during `installing`, install writes missing or empty `value_t0` through `value_t<min(box_count * 4, 16) - 1>` entries to `slotN`, prints `Added {count} missing QIDI Box tool-slot mapping(s) to saved_variables.cfg.`, and leaves the change out of the optimized install-state ledger.
 - Before managed-tree writes during `installing`, install prints each mismatched `value_tN: <current> -> slotN` and prompts `Tool numbers do not line up with slot numbers. Would you like us to correct this?` when any existing non-empty `config/saved_variables.cfg [Variables] value_tN` does not resolve to `slotN` after stripping surrounding string quotes.
 - Accepted tool-slot correction writes each mismatched `value_tN = 'slotN'` in `config/saved_variables.cfg [Variables]`, prints `Tool-slot mappings corrected in saved_variables.cfg.`, and leaves the change out of the optimized install-state ledger.
-- Any other tool-slot correction input prints `Tool-slot mappings left unchanged.` and preserves the existing saved variables.
+- Tool-slot correction input normalized to `N` or `NO` prints `Tool-slot mappings left unchanged.` and preserves the existing saved variables.
 - After install state-file write and before final install success output, interactive install prompts `Would you like to apply system hardening and OS optimizations?` when `installer/package.yaml system_optimizations` is present.
 - Accepted system optimization confirmation writes or reconciles DHCP-first DNS with `1.1.1.1` and `8.8.8.8` fallbacks, Debian Bullseye APT sources, qidiclient static GIFs, disabled `xl2tpd`, disabled `bluetooth`, and optional `algo_app.service` disablement.
 - Service operations record `systemctl is-enabled` and `systemctl is-active` state before changing units; missing units are recorded with action status `missing` and are skipped without a restore preimage.
@@ -86,7 +87,7 @@ Install statuses and terminal messages:
 - When AI detection is kept enabled, `algo_app.service` is recorded with action status `skipped_by_policy` and no restore preimage.
 - The qidiclient static GIF operation requires `/home/qidi/QIDI_Client/access` to exist, backs up replaced files under `/home/qidi/QIDI_Client/access/.gif-backup-<timestamp>`, preserves existing replaced-file owner and mode, restarts `qidi-client.service` when present, and verifies installed GIF hashes against `installer/system/qidiclient-static-gifs.tar.gz`.
 - Declined system optimization confirmation writes `system_ledger.policy.system_optimizations = disabled` and skips DNS, APT, qidiclient GIF, VPN, Bluetooth, and AI backend changes.
-- When system optimizations are accepted, install prompts `Would you like us to disable QIDI AI detection features?`; accepted confirmation disables the backend service and prints touchscreen guidance for `Settings -> Printing Options -> Spaghetti Detection` and `Foreign Object Detection`, and any other response preserves `algo_app.service`.
+- When system optimizations are accepted, install prompts `Would you like us to disable QIDI AI detection features?`; accepted confirmation disables the backend service and prints touchscreen guidance for `Settings -> Printing Options -> Spaghetti Detection` and `Foreign Object Detection`, and input normalized to `N` or `NO` preserves `algo_app.service`.
 - `install.sh --skip-system-optimizations` records disabled system optimization policy and skips OS hardening.
 - `install.sh --disable-ai-detection` records `system_ledger.policy.ai_detection = disable`; `install.sh --keep-ai-detection` records `system_ledger.policy.ai_detection = keep_enabled`.
 - System optimization failures print `System optimizations were not fully applied. Klipper config installation remains installed.` and leave the verified Klipper config install in place.
@@ -102,10 +103,10 @@ Install statuses and terminal messages:
 - The installed auto-update service unsets `TLTG_AUTO_UPDATE_ARCHIVE_URL`, `TLTG_AUTO_UPDATE_CHECKSUM_URL`, `TLTG_INSTALLER_ARCHIVE_URL`, and `TLTG_INSTALLER_CHECKSUM_URL` before running `~/tltg-optimized-macros/auto-update.sh --run`.
 - Each `auto-update-check` run first checks Moonraker print state; when Klipper is reachable and the printer is idle, it compares `config/saved_variables.cfg [Variables] box_count` against `config/tltg_optimized_runtime_state.json last_observed_box_count`, writes missing or empty required `value_tN = 'slotN'` entries after a changed count, and updates the observed count. If the printer is busy or state is unavailable, the QIDI Box tool-slot reconcile is skipped without writing.
 - Auto-update systemd setup failure prints `Could not enable auto-updates. <reason>` and does not change the successful install result.
-- After auto-update repair, after the auto-update prompt returns, or when auto-update prompting is skipped, the runtime prompts `Would you like me to restart Klipper to apply changes?` and accepts `Y` or `Yes` case-insensitively.
+- After auto-update repair, after the auto-update prompt returns, or when auto-update prompting is skipped, the runtime prompts `Would you like me to restart Klipper to apply changes?`.
 - Accepted restart confirmation triggers a local Moonraker `POST /printer/restart` request.
 - Failed automatic restart prints `Could not restart Klipper automatically. Restart Klipper to apply changes.` and does not change the successful install result.
-- Any other restart confirmation input returns without restarting and prints `Restart Klipper to apply changes.`.
+- Restart confirmation input normalized to `N` or `NO` returns without restarting and prints `Restart Klipper to apply changes.`.
 - `install.sh --yes` suppresses interactive legacy rollback confirmation, install confirmation, restart confirmation, and auto-update setup prompts; preflight checks still run. Existing auto-update systemd units are still repaired without prompting. If legacy manually-copied optimized configs are detected, `--yes` backs up and restores stock-managed configs before install. If QIDI Box enablement or tool-slot correction is detected, `--yes` applies the saved-variable change without prompting.
 - `install.sh -h` and `install.sh --help` print `QIDI Max 4 Optimized installer <package.version>` before usage text, where `<package.version>` is read from `installer/package.yaml package.version`.
 - `install.sh -v` and `install.sh --version` print `QIDI Max 4 Optimized installer <package.version>` and exit without running install, uninstall, preflight, or runtime checks.
@@ -135,8 +136,8 @@ Uninstall statuses and terminal messages:
 - Failure during `performing uninstall preflight checks` returns `Could not determine printer state.` when local Moonraker `print_stats.state` data is unavailable, malformed, or inconsistent.
 - Failure during `performing uninstall preflight checks` returns `Cannot continue while a print is active or paused.` when local Moonraker `print_stats.state` is `printing` or `paused`.
 - Failure during `performing uninstall preflight checks` returns `There is not enough free space to continue.` when available free space is less than the reserved total for zip backup bytes, rollback preimages, new/rewritten files, same-directory atomic temp files, and a safety margin of `max(64 MiB, 20% of the subtotal)`.
-- After uninstall preflight succeeds and before backup creation when `--dry-run` is not active, the runtime prompts `Are you sure you want to uninstall?` and accepts `Y` or `Yes` case-insensitively.
-- Any other uninstall confirmation input returns `Uninstall cancelled.` and exits zero before backup creation or any write under `config/`.
+- After uninstall preflight succeeds and before backup creation when `--dry-run` is not active, the runtime prompts `Are you sure you want to uninstall?`.
+- Uninstall confirmation input normalized to `N` or `NO` returns `Uninstall cancelled.` and exits zero before backup creation or any write under `config/`.
 - Status `creating backup` covers uninstall backup label creation and `.zip` archive creation for `/home/qidi/printer_data/config`; direct `config/KAMP` and `config/fluidd.cfg` symlinks are allowed and are not traversed into the backup archive.
 - After a successful new installer backup is created during `uninstall`, the runtime prunes installer-created backup zip files under `/home/qidi/printer_data/` to retain only the newest three archives across install and uninstall backup prefixes; unrelated `.zip` files are ignored and `--dry-run` never prunes.
 - Status `uninstalling` starts before the first uninstall write under `config/` and stays active through guarded patch reversal, include removal, managed-tree removal, uninstall postflight, and final state-file deletion.
@@ -150,10 +151,10 @@ Uninstall statuses and terminal messages:
 - `install.sh --uninstall --keep-system-optimizations` skips system setting restore while uninstalling Klipper config changes.
 - After final uninstall success output, uninstall removes `/etc/systemd/system/tltg-optimized-auto-update.service` and `/etc/systemd/system/tltg-optimized-auto-update.timer` through sudo when either unit file exists; sudo uses `TLTG_OPTIMIZED_SUDO_PASSWORD` when set, otherwise QIDI's public default password `qiditech`, and prompts for a password when the initial sudo attempt fails and input is interactive.
 - Auto-update removal failure prints `Could not disable auto-updates. <reason>` and does not change the successful uninstall result.
-- After auto-update removal returns or when no auto-update unit is installed, the runtime prompts `Would you like me to restart Klipper to apply changes?` and accepts `Y` or `Yes` case-insensitively.
+- After auto-update removal returns or when no auto-update unit is installed, the runtime prompts `Would you like me to restart Klipper to apply changes?`.
 - Accepted restart confirmation triggers a local Moonraker `POST /printer/restart` request.
 - Failed automatic restart prints `Could not restart Klipper automatically. Restart Klipper to apply changes.` and does not change the successful uninstall result.
-- Any other restart confirmation input returns without restarting and prints `Restart Klipper to apply changes.`.
+- Restart confirmation input normalized to `N` or `NO` returns without restarting and prints `Restart Klipper to apply changes.`.
 
 Interrupt handling:
 - `Ctrl+C` raises `KeyboardInterrupt`, prints `Interrupted. No further installer actions will run.`, returns exit code `130`, and does not print a Python traceback.
@@ -219,8 +220,8 @@ Required install flow:
 21. Preflight free space for zip backup bytes, rollback preimages, new/rewritten files, same-directory atomic temp files, and the configured safety margin before creating a backup or modifying runtime files.
 22. Collect every missing file, section, line, and patch-target result in one pass instead of stopping on the first missing target.
 23. Stop the run before backup or writes when any install preflight target is missing, printer-state data cannot be trusted, the printer is printing or paused, or free space is insufficient.
-24. During non-dry-run install, prompt `Would you like us to take a backup of your configs and proceed with installation?` and accept only `Y` or `Yes` case-insensitively.
-25. During non-dry-run install, print `Installation cancelled.` and exit zero before backup or writes when the confirmation input is anything else.
+24. During non-dry-run install, prompt `Would you like us to take a backup of your configs and proceed with installation?`; strip surrounding whitespace, uppercase the response, and re-render the prompt for input that does not normalize to `Y`, `YES`, `N`, or `NO`.
+25. During non-dry-run install, print `Installation cancelled.` and exit zero before backup or writes when the confirmation input normalizes to `N` or `NO`.
 26. Set the visible status to `creating backup` after aggregated preflight checks pass and install confirmation succeeds.
 27. Build the backup label from `installer/package.yaml backup.label_prefix`, the detected install firmware, `installer/package.yaml package.version`, and an install timestamp.
 28. Create a `.zip` backup of `/home/qidi/printer_data/config` before any write to any file under `config/`; direct `config/KAMP` and `config/fluidd.cfg` symlinks are allowed and are not traversed into the backup archive.
@@ -251,10 +252,10 @@ Required install flow:
 53. During auto-update repair or accepted auto-update setup confirmation, attempt to fetch and store the latest release checksum, authenticate with sudo, install the systemd service/timer units, reload systemd, enable `tltg-optimized-auto-update.timer`, and restart `tltg-optimized-auto-update.timer`.
 54. Continue systemd timer setup when the initial checksum seed fails; the first successful timer check initializes `config/tltg_optimized_auto_update_state.json` without installing when no previous state exists.
 55. Treat auto-update repair and setup failure as non-fatal after install success.
-56. Prompt `Would you like me to restart Klipper to apply changes?` and accept only `Y` or `Yes` case-insensitively.
+56. Prompt `Would you like me to restart Klipper to apply changes?`; strip surrounding whitespace, uppercase the response, and re-render the prompt for input that does not normalize to `Y`, `YES`, `N`, or `NO`.
 57. During accepted restart confirmation, request local Moonraker `POST /printer/restart`.
 58. Print `Could not restart Klipper automatically. Restart Klipper to apply changes.` when the restart request fails.
-59. Print `Restart Klipper to apply changes.` and exit without restarting when the restart confirmation input is anything else.
+59. Print `Restart Klipper to apply changes.` and exit without restarting when the restart confirmation input normalizes to `N` or `NO`.
 
 Required uninstall flow:
 1. Acquire the single-run advisory lock before visible status changes.
@@ -277,8 +278,8 @@ Required uninstall flow:
 18. Preflight free space for zip backup bytes, rollback preimages, new/rewritten files, same-directory atomic temp files, and the configured safety margin before creating a backup or modifying runtime files.
 19. Detect and record managed-tree drift against the installed-state file manifest before deletion.
 20. Stop the run before backup or writes when uninstall preflight targets are missing or ambiguous, printer-state data cannot be trusted, the printer is printing or paused, or free space is insufficient.
-21. During non-dry-run uninstall, prompt `Are you sure you want to uninstall?` and accept only `Y` or `Yes` case-insensitively.
-22. During non-dry-run uninstall, print `Uninstall cancelled.` and exit zero before backup or writes when the confirmation input is anything else.
+21. During non-dry-run uninstall, prompt `Are you sure you want to uninstall?`; strip surrounding whitespace, uppercase the response, and re-render the prompt for input that does not normalize to `Y`, `YES`, `N`, or `NO`.
+22. During non-dry-run uninstall, print `Uninstall cancelled.` and exit zero before backup or writes when the confirmation input normalizes to `N` or `NO`.
 23. Set the visible status to `creating backup`.
 24. Build the uninstall backup label as `tltg-optimized-macros-before-uninstall-<current-firmware-or-unknown-firmware>-<stored-package.version>-<timestamp>`, where the exact fallback token is `unknown-firmware`.
 25. Create a `.zip` backup of `/home/qidi/printer_data/config` before any uninstall write to any file under `config/`; direct `config/KAMP` and `config/fluidd.cfg` symlinks are allowed and are not traversed into the backup archive.
@@ -295,10 +296,10 @@ Required uninstall flow:
 36. Print `Uninstalled.`, then preserved user-modified patch targets, then managed-tree drift when present.
 37. Remove the auto-update systemd service/timer after successful uninstall when either unit file exists.
 38. Treat auto-update removal failure as non-fatal after uninstall success.
-39. Prompt `Would you like me to restart Klipper to apply changes?` and accept only `Y` or `Yes` case-insensitively.
+39. Prompt `Would you like me to restart Klipper to apply changes?`; strip surrounding whitespace, uppercase the response, and re-render the prompt for input that does not normalize to `Y`, `YES`, `N`, or `NO`.
 40. During accepted restart confirmation, request local Moonraker `POST /printer/restart`.
 41. Print `Could not restart Klipper automatically. Restart Klipper to apply changes.` when the restart request fails.
-42. Print `Restart Klipper to apply changes.` and exit without restarting when the restart confirmation input is anything else.
+42. Print `Restart Klipper to apply changes.` and exit without restarting when the restart confirmation input normalizes to `N` or `NO`.
 Patch semantics:
 - Manifest validation requires every `installer/package.yaml patches.set_options[]` and `patches.delete_sections[]` block to provide at least one firmware-scoped `variants[]` entry, reference only supported firmware values, and define no duplicate variant for the same firmware; install preflight validates only patch targets active for the detected firmware.
 - `installer/package.yaml patches.set_options[] variants[].expected` is the runtime value the installer expects to find before writing a guarded install patch.
