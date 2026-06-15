@@ -9,7 +9,32 @@ from . import messages
 
 UrlOpenFn = Callable[..., object]
 
-_YES_RESPONSES = {"y", "yes"}
+_YES_RESPONSES = {"Y", "YES"}
+_NO_RESPONSES = {"N", "NO"}
+
+
+def prompt_yes(
+    *,
+    reporter,
+    input_stream: TextIO,
+    question: str,
+    instruction: str,
+) -> bool:
+    while True:
+        if hasattr(reporter, "emit_prompt"):
+            reporter.emit_prompt(question=question, instruction=instruction)
+        else:
+            reporter.prepare_for_prompt()
+            reporter.line(question)
+            reporter.line(instruction)
+        raw_response = input_stream.readline()
+        if raw_response == "":
+            return False
+        response = raw_response.strip().upper()
+        if response in _YES_RESPONSES:
+            return True
+        if response in _NO_RESPONSES:
+            return False
 
 
 def confirm_yes(
@@ -22,14 +47,12 @@ def confirm_yes(
 ) -> bool:
     if input_stream is None:
         return True
-    if hasattr(reporter, "emit_prompt"):
-        reporter.emit_prompt(question=question, instruction=instruction)
-    else:
-        reporter.prepare_for_prompt()
-        reporter.line(question)
-        reporter.line(instruction)
-    response = input_stream.readline().strip().lower()
-    if response in _YES_RESPONSES:
+    if prompt_yes(
+        reporter=reporter,
+        input_stream=input_stream,
+        question=question,
+        instruction=instruction,
+    ):
         return True
     reporter.line(cancel_message)
     return False
