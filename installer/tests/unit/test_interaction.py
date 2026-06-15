@@ -4,7 +4,7 @@ import io
 import unittest
 
 from installer.runtime import messages
-from installer.runtime.interaction import maybe_restart_klipper, moonraker_restart_url
+from installer.runtime.interaction import confirm_yes, maybe_restart_klipper, moonraker_restart_url
 
 
 class _DummyReporter:
@@ -31,6 +31,57 @@ class _DummyResponse:
 
 
 class InteractionTests(unittest.TestCase):
+    def test_confirm_yes_accepts_yes_responses_case_insensitively_after_trimming(self):
+        for response in ("Y\n", "y\n", "Yes\n", "yes\n", "YES\n", " yes \n", "\tYeS\t\n"):
+            with self.subTest(response=response.strip()):
+                reporter = _DummyReporter()
+
+                confirmed = confirm_yes(
+                    reporter=reporter,
+                    input_stream=io.StringIO(response),
+                    question="Proceed?",
+                    instruction="Type Y/YES to continue or N/NO to cancel.",
+                    cancel_message="Cancelled.",
+                )
+
+                self.assertTrue(confirmed)
+                self.assertEqual(reporter.prompt_prepared, 1)
+                self.assertNotIn("Cancelled.", reporter.lines)
+
+    def test_confirm_yes_declines_no_responses_case_insensitively_after_trimming(self):
+        for response in ("N\n", "n\n", "No\n", "no\n", "NO\n", " no \n", "\tNo\t\n"):
+            with self.subTest(response=response.strip()):
+                reporter = _DummyReporter()
+
+                confirmed = confirm_yes(
+                    reporter=reporter,
+                    input_stream=io.StringIO(response),
+                    question="Proceed?",
+                    instruction="Type Y/YES to continue or N/NO to cancel.",
+                    cancel_message="Cancelled.",
+                )
+
+                self.assertFalse(confirmed)
+                self.assertEqual(reporter.prompt_prepared, 1)
+                self.assertIn("Cancelled.", reporter.lines)
+
+    def test_confirm_yes_reprompts_after_unrecognized_input(self):
+        for response in ("\\\nY\n", "maybe\nY\n", "\nY\n", " y e s\nY\n"):
+            with self.subTest(response=response.splitlines()[0]):
+                reporter = _DummyReporter()
+
+                confirmed = confirm_yes(
+                    reporter=reporter,
+                    input_stream=io.StringIO(response),
+                    question="Proceed?",
+                    instruction="Type Y/YES to continue or N/NO to cancel.",
+                    cancel_message="Cancelled.",
+                )
+
+                self.assertTrue(confirmed)
+                self.assertEqual(reporter.prompt_prepared, 2)
+                self.assertNotIn("Cancelled.", reporter.lines)
+
     def test_moonraker_restart_url_replaces_query_endpoint(self):
         self.assertEqual(
             moonraker_restart_url("http://127.0.0.1:7125/printer/objects/query?print_stats"),
@@ -42,7 +93,7 @@ class InteractionTests(unittest.TestCase):
         )
 
     def test_maybe_restart_klipper_accepts_yes_responses_and_posts_restart_request(self):
-        for response in ("y\n", "yes\n"):
+        for response in ("Y\n", "y\n", "Yes\n", "yes\n", "YES\n", " yes \n"):
             with self.subTest(response=response.strip()):
                 reporter = _DummyReporter()
                 seen = {}
@@ -69,13 +120,15 @@ class InteractionTests(unittest.TestCase):
                 self.assertIn(messages.KLIPPER_RESTARTED, reporter.lines)
 
     def test_maybe_restart_klipper_decline_prints_manual_restart_message(self):
-        reporter = _DummyReporter()
-        restarted = maybe_restart_klipper(
-            reporter=reporter,
-            input_stream=io.StringIO("no\n"),
-            moonraker_query_url="http://127.0.0.1:7125/printer/objects/query?print_stats",
-        )
+        for response in ("N\n", "n\n", "No\n", "no\n", "NO\n", " no \n"):
+            with self.subTest(response=response.strip()):
+                reporter = _DummyReporter()
+                restarted = maybe_restart_klipper(
+                    reporter=reporter,
+                    input_stream=io.StringIO(response),
+                    moonraker_query_url="http://127.0.0.1:7125/printer/objects/query?print_stats",
+                )
 
-        self.assertFalse(restarted)
-        self.assertEqual(reporter.prompt_prepared, 1)
-        self.assertIn(messages.RESTART_KLIPPER_TO_APPLY, reporter.lines)
+                self.assertFalse(restarted)
+                self.assertEqual(reporter.prompt_prepared, 1)
+                self.assertIn(messages.RESTART_KLIPPER_TO_APPLY, reporter.lines)
