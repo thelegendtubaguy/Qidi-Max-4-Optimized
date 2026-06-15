@@ -9,7 +9,9 @@ from typing import Callable
 from . import messages
 from .errors import InstallerError
 
-PUBLIC_DEFAULT_SUDO_PASSWORD = "qiditech"
+# Security fix: removed PUBLIC_DEFAULT_SUDO_PASSWORD hardcoded credential to prevent
+# silent privilege escalation using default credentials. The script now only checks
+# the environment variable and falls back to a user prompt.
 SUDO_PASSWORD_ENV = "TLTG_OPTIMIZED_SUDO_PASSWORD"
 RunFn = Callable[..., subprocess.CompletedProcess]
 
@@ -19,9 +21,11 @@ class SudoError(InstallerError):
 
 
 def authenticate_sudo(*, run: RunFn, environ: dict[str, str], reporter, input_stream) -> str:
-    password = environ.get(SUDO_PASSWORD_ENV, PUBLIC_DEFAULT_SUDO_PASSWORD)
-    if run_sudo(["-v"], run=run, password=password).returncode == 0:
-        return password
+    # Only check environment variable, no hardcoded fallback
+    env_password = environ.get(SUDO_PASSWORD_ENV)
+    if env_password and run_sudo(["-v"], run=run, password=env_password).returncode == 0:
+        return env_password
+
     fallback = _prompt_sudo_password(reporter=reporter, input_stream=input_stream)
     if fallback is None:
         raise SudoError(messages.AUTO_UPDATE_SUDO_FAILED)
