@@ -72,9 +72,9 @@ def copy_base_runtime() -> Path:
 def build_env(printer_data_root: Path, *, moonraker_url: str) -> dict[str, str]:
     return {
         "TLTG_OPTIMIZED_PRINTER_DATA_ROOT": str(printer_data_root),
+        "TLTG_OPTIMIZED_KLIPPER_ROOT": str(printer_data_root / "klipper"),
         "TLTG_OPTIMIZED_FIRMWARE_MANIFEST": str(printer_data_root / "firmware_manifest.json"),
         "TLTG_OPTIMIZED_MOONRAKER_URL": moonraker_url,
-        "TLTG_OPTIMIZED_KLIPPER_ROOT": str(printer_data_root / "klipper"),
     }
 
 

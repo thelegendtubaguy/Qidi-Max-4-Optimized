@@ -29,6 +29,7 @@ Read as applicable:
 - Printer behavior: `openspec/specs/optimized-printer-behavior/spec.md`
 - Start path: `openspec/contracts/gcode-paths/start-print.path.json` and `openspec/contracts/gcode-paths/generated/start-print.md`
 - QIDI platform: `openspec/observations/qidi-platform.md`
+- QIDI load cell: `openspec/changes/qualify-raw-adc-pa-capture/qidi-load-cell.md`
 - QIDI Box: `openspec/observations/qidi-box/{topology-and-control,state-and-commands,hardware-and-protocols,material-metadata,evidence-and-open-questions}.md`
 
 - Update `openspec/specs/` for desired behavior, `openspec/contracts/` for machine-checked path contracts, and `openspec/observations/` for external/vendor evidence.

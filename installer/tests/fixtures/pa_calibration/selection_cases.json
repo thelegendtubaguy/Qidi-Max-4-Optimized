@@ -1,0 +1,41 @@
+[
+  {
+    "name": "two-acceleration-optimum",
+    "expected_value": 0.02
+  },
+  {
+    "name": "acceleration-dependent-result",
+    "profile_optimums": {"10.0": 0.02, "20.0": 0.024},
+    "expected_reason": "ACCELERATION_CANDIDATE_DISAGREEMENT"
+  },
+  {
+    "name": "range-boundary",
+    "profile_optimums": {"10.0": 0.012, "20.0": 0.012},
+    "expected_reason": "K_RANGE_NOT_BRACKETED"
+  },
+  {
+    "name": "recovery-not-bracketed",
+    "recovery_bias": 0.2,
+    "expected_reason": "RECOVERY_EVIDENCE_INCONCLUSIVE"
+  },
+  {
+    "name": "ambiguous-objective",
+    "ambiguous": true,
+    "expected_reason": "COMPOSITE_OBJECTIVE_AMBIGUOUS"
+  },
+  {
+    "name": "inconsistent-cycles",
+    "inconsistent": true,
+    "expected_reason": "INCONSISTENT_CYCLES"
+  },
+  {
+    "name": "noisy-signal",
+    "noise": 0.25,
+    "expected_reason": "WEAK_OR_NOISY_SIGNAL"
+  },
+  {
+    "name": "saturated-signal",
+    "saturated": true,
+    "expected_reason": "SATURATED"
+  }
+]

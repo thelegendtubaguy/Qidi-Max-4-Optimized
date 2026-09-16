@@ -1,4 +1,23 @@
 schema_version: 2
+external_files:
+- id: tltg_pa_calibration_extra
+  destination: klippy/extras/tltg_pa_calibration.py
+  sha256: c46135aeddacc1dc6653dce6edfdc61de8a61a4784d680925e46816234773ee1
+- id: tltg_pa_calibration_extra
+  destination: klippy/extras/tltg_pa_calibration.py
+  sha256: b6af2f05a1f635a5cc71398e6e9456197b0c1cbd63dad1d0c0b27b278d93e191
+- id: tltg_pa_calibration_extra
+  destination: klippy/extras/tltg_pa_calibration.py
+  sha256: 6cc0a0e71331c7818d6ab624757f60794a3815188f18cc5e1d58c61d295e27d4
+- id: tltg_pa_calibration_extra
+  destination: klippy/extras/tltg_pa_calibration.py
+  sha256: 942f4b5f2f12fd53e7be7694d2dd123e62e3d9aaae220550fbef2bf98de73c35
+- id: tltg_pa_calibration_extra
+  destination: klippy/extras/tltg_pa_calibration.py
+  sha256: 79b4c849b169a059148b9c2171c21692ef6dbd3b9f90b52a14c351335ebb4994
+- id: tltg_pa_calibration_extra
+  destination: klippy/extras/tltg_pa_calibration.py
+  sha256: cbbaa9a114b88e5c3e169a088060b1deeccfd20198e899f43026ef791720af2f
 allowed_patch_targets:
 - file: config/printer.cfg
   section: stepper_x

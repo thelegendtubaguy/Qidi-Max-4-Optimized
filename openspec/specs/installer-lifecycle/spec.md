@@ -84,12 +84,35 @@ The installer SHALL deploy firmware-scoped Klipper source only from validated pr
 - **AND** content already at the preimage is unchanged
 - **AND** any other live content is preserved and reported as drift
 
+#### Scenario: Project-owned external Python is provenance-bound
+- **WHEN** installation manages a project-owned Klipper extra that has no stock baseline
+- **THEN** its ID and destination are unique across source patches and external files
+- **AND** its bundle source is a non-symlink regular file under `installer/klipper/` whose SHA-256 matches the manifest
+- **AND** its destination is a relative non-traversing path under `klippy/extras/`
+- **AND** the ledger's package identity and version must be admitted, and prior installed hashes are accepted only when enumerated for the same ID and destination in the cumulative compatibility envelope
+- **AND** unknown, escaped, symlinked, tampered, or unowned live content fails before mutation
+
+#### Scenario: External-file deployment is transactional
+- **WHEN** a new or previously managed external Python file changes
+- **THEN** pending activation is recorded before atomic replacement
+- **AND** installed state records the installed hash and any validated preimage bytes, hash, and mode
+- **AND** failure restores the preimage or removes the newly created target before state commits
+
+#### Scenario: External-file uninstall and restore preserve ownership
+- **WHEN** uninstall or archive restore processes a managed external Python file
+- **THEN** install and uninstall backups capture each state-owned external Python payload with its destination, hash, and mode
+- **AND** uninstall removes only content matching the installed hash or restores its validated preimage
+- **AND** archive restore reconstructs declared presence only from archived bytes matching the provenance-validated installed hash
+- **AND** archived state that omits the external file requires the managed payload to be absent
+- **AND** unknown live drift is preserved and blocks mutation
+
 #### Scenario: Activation requires a replacement process
 - **WHEN** managed source changes or pending source activation exists
 - **THEN** activation remains pending until Klipper becomes ready under a different valid process identity
 - **AND** source-changing install and uninstall operations automatically restart Klipper after a fresh idle-state check without requesting separate confirmation
 - **AND** restart verification allows at least 60 seconds for Klipper to become ready under the replacement process identity
 - **AND** active, unknown, failed, or drifted activation remains pending and blocks unsafe continuation
+- **AND** the pending marker binds each source patch and external Python destination to its intended live hash or expected absence
 - **AND** every installer entrypoint resolves pending activation before further release work
 - **AND** a post-activation saved-variable mismatch retains its exact authorized expectations and blocks later install or automatic-update work until an exact live Moonraker verification succeeds; dry-run verification preserves the marker, and terminal uninstall removes it only after successful postflight while rollback preserves it
 
@@ -197,6 +220,7 @@ Automatic updates SHALL require durable operator enrollment, use the same admiss
 - **WHEN** an enrolled updater observes a new release checksum or missing or drifted optimized installation state
 - **THEN** update proceeds only while the printer is idle and after archive integrity and path safety are verified
 - **AND** missing or drifted state runs the current release installer even when its checksum is unchanged
+- **AND** durable enrollment may re-adopt an untracked external Python target only when its bytes exactly match the current manifest payload
 - **AND** the bundled noninteractive installer performs the change
 - **AND** release state advances only after install and required Klipper activation succeed
 - **AND** any host reboot is considered only after that state is durable and printer idleness is revalidated

@@ -8,7 +8,7 @@ from typing import Callable, TextIO
 
 import yaml
 
-from . import safety
+from . import external_files, safety
 from .backup import (
     format_backup_display_timestamp,
     list_installer_backups,
@@ -22,13 +22,21 @@ from .backup import (
     requires_external_backup_manifest,
     UNKNOWN_FIRMWARE_TOKEN,
 )
+from .compatibility import (
+    CompatibilityValidationError,
+    load_supported_upgrade_sources,
+    validate_installed_state_identity,
+)
+from .errors import ExternalFileError
 from .firmware import detect_firmware_version
+from .fs_atomic import atomic_delete, atomic_write_bytes
 from .manifest import source_patch_variants_for_firmware
-from .models import Manifest, RuntimePaths
+from .models import InstalledState, Manifest, RuntimePaths
 from .path_safety import ensure_external_path_has_no_symlink_components
 from .process_restart import read_printer_info, write_restart_marker
 from .interaction import maybe_restart_pending_service
 from .rollback import RollbackJournal
+from .state_file import StateValidationError, parse_installed_state
 
 
 CONFIRMATION_TOKEN = "RESTORE"
@@ -96,19 +104,52 @@ def run_restore_helper(
         source_directory=manifest.backup.source_directory,
     )
     state_declares_sources, state_firmware = _snapshot_source_firmware(backup_snapshot)
+    archived_state = _snapshot_installed_state(backup_snapshot)
     require_external = requires_external_backup_manifest(
         package_version=parsed.package_version if parsed is not None else None,
         known_package_versions=manifest.package.known_versions,
         state_declares_source_patches=state_declares_sources,
     )
-    allowed = {patch.id: patch.destination for patch in manifest.install.source_patches}
-    external_firmware, external = load_external_backup_entries(
+    source_entries = {
+        patch.id: patch.destination
+        for patch in manifest.install.source_patches
+    }
+    managed_entries = {
+        spec.id: spec.destination
+        for spec in manifest.install.external_files
+    }
+    declared_managed_entries = {
+        record.id: record.destination
+        for record in archived_state.external_files
+    } if archived_state is not None else {}
+    if any(
+        managed_entries.get(file_id) != destination
+        for file_id, destination in declared_managed_entries.items()
+    ):
+        raise RestoreHelperError(
+            "Archived external-file state is not supported by this bundle."
+        )
+    archive_allowed = {**source_entries, **declared_managed_entries}
+    restart_allowed = {**source_entries, **managed_entries}
+    external_firmware, archived_external = load_external_backup_entries(
         backup_zip_path=selection.path,
-        allowed_entries=allowed,
+        allowed_entries=archive_allowed,
         require_manifest=require_external,
     )
+    source_external = tuple(
+        entry for entry in archived_external if entry[0] in source_entries
+    )
+    managed_payloads = tuple(
+        entry for entry in archived_external if entry[0] in declared_managed_entries
+    )
+    managed_external = _plan_managed_external_restore(
+        paths=paths,
+        manifest=manifest,
+        archived_state=archived_state,
+        archived_payloads=managed_payloads,
+    )
     restore_firmware = None
-    if external:
+    if source_external:
         restore_firmware = _validate_external_restore_firmware(
             paths=paths,
             manifest=manifest,
@@ -118,12 +159,16 @@ def run_restore_helper(
         )
     restart_targets = tuple(
         (patch_id, destination, hashlib.sha256(value).hexdigest())
-        for patch_id, destination, value, _ in external
+        for patch_id, destination, value, _ in source_external
+    ) + tuple(
+        (spec.id, spec.destination, desired_sha256)
+        for spec, _, _, desired_sha256, changed in managed_external
+        if changed
     )
     _validate_external_restore_targets(
         paths=paths,
         manifest=manifest,
-        external=external,
+        external=source_external,
         firmware=restore_firmware,
     )
     safety.ensure_printer_idle(
@@ -144,8 +189,13 @@ def run_restore_helper(
     )
     journal.track_tree(paths.printer_data_root / manifest.backup.source_directory)
     journal.track_file(paths.restart_marker_path)
-    for _, destination, _, _ in external:
+    for _, destination, _, _ in source_external:
         journal.track_file(paths.managed_klipper_root / destination)
+    for spec, _, _, _, changed in managed_external:
+        if changed:
+            journal.track_file(
+                paths.managed_klipper_root / spec.destination
+            )
     try:
         journal.note_write()
         restored_snapshot = restore_backup_snapshot(
@@ -173,8 +223,23 @@ def run_restore_helper(
             )
             journal.note_write()
             restore_external_backup_entries(
-                entries=external, destination_root=paths.managed_klipper_root
+                entries=source_external, destination_root=paths.managed_klipper_root
             )
+            for spec, desired_bytes, desired_mode, _, changed in managed_external:
+                if not changed:
+                    continue
+                journal.note_write()
+                target = paths.managed_klipper_root / spec.destination
+                if desired_bytes is None:
+                    atomic_delete(target)
+                else:
+                    assert desired_mode is not None
+                    atomic_write_bytes(
+                        target,
+                        desired_bytes,
+                        mode=desired_mode,
+                        force_mode=True,
+                    )
     except BaseException as exc:
         journal.rollback_or_raise(
             exc, backup_label=selection.label, backup_zip_path=selection.path
@@ -186,10 +251,10 @@ def run_restore_helper(
         backup_path=selection.path,
         restored_files=len(backup_snapshot),
     )
-    if external:
+    if restart_targets:
         activated = maybe_restart_pending_service(
             paths=paths,
-            allowed_entries=allowed,
+            allowed_entries=restart_allowed,
             reporter=reporter,
             input_stream=input_stream,
             **({"urlopen": urlopen} if urlopen is not None else {}),
@@ -200,6 +265,102 @@ def run_restore_helper(
         verified_path=str(paths.printer_data_root / manifest.backup.source_directory)
     )
     return 0
+
+
+def _plan_managed_external_restore(
+    *,
+    paths: RuntimePaths,
+    manifest: Manifest,
+    archived_state: InstalledState | None,
+    archived_payloads: tuple[tuple[str, str, bytes, int], ...],
+):
+    records = {
+        record.id: record
+        for record in archived_state.external_files
+    } if archived_state is not None else {}
+    if archived_state is not None:
+        try:
+            compatibility = load_supported_upgrade_sources(
+                paths.installer_root / "supported_upgrade_sources.yaml"
+            )
+            validate_installed_state_identity(archived_state, manifest)
+            external_files.validate_state_provenance(
+                state=archived_state,
+                specs=manifest.install.external_files,
+                upgrade_sources=compatibility,
+            )
+        except (CompatibilityValidationError, ExternalFileError) as exc:
+            raise RestoreHelperError(
+                "Archived external-file state has unsupported provenance."
+            ) from exc
+
+    payloads = {
+        file_id: (destination, value, mode)
+        for file_id, destination, value, mode in archived_payloads
+    }
+    if set(payloads) != set(records):
+        raise RestoreHelperError(
+            "Archived external-file payloads do not match installed state."
+        )
+
+    result = []
+    for spec in manifest.install.external_files:
+        source = external_files.source_path(paths, spec)
+        if (
+            source.is_symlink()
+            or not source.is_file()
+            or hashlib.sha256(source.read_bytes()).hexdigest() != spec.sha256
+        ):
+            raise RestoreHelperError(
+                f"Managed external-file source is invalid: {spec.source}"
+            )
+
+        record = records.get(spec.id)
+        desired_bytes = None
+        desired_mode = None
+        desired_sha256 = None
+        if record is not None:
+            destination, desired_bytes, desired_mode = payloads[spec.id]
+            desired_sha256 = hashlib.sha256(desired_bytes).hexdigest()
+            if (
+                destination != record.destination
+                or desired_sha256 != record.installed_sha256
+            ):
+                raise RestoreHelperError(
+                    "Archived external-file payload does not match installed state: "
+                    f"{record.destination}"
+                )
+
+        target = paths.managed_klipper_root / spec.destination
+        ensure_external_path_has_no_symlink_components(
+            root=paths.managed_klipper_root, target=target
+        )
+        if target.is_symlink() or (target.exists() and not target.is_file()):
+            raise RestoreHelperError(
+                f"Managed external restore target is unsafe: {spec.destination}"
+            )
+        if target.exists():
+            live_sha256 = hashlib.sha256(target.read_bytes()).hexdigest()
+            accepted_live_hashes = {spec.sha256}
+            if desired_sha256 is not None:
+                accepted_live_hashes.add(desired_sha256)
+            if live_sha256 not in accepted_live_hashes:
+                raise RestoreHelperError(
+                    f"Managed external restore target has drifted: {spec.destination}"
+                )
+            changed = live_sha256 != desired_sha256
+        else:
+            changed = desired_sha256 is not None
+        result.append(
+            (
+                spec,
+                desired_bytes,
+                desired_mode,
+                desired_sha256,
+                changed,
+            )
+        )
+    return tuple(result)
 
 
 def _validate_external_restore_firmware(
@@ -274,6 +435,19 @@ def _validate_external_restore_targets(
             raise RestoreHelperError(
                 f"External restore target has drifted: {destination}"
             )
+
+
+def _snapshot_installed_state(
+    snapshot: dict[str, bytes],
+) -> InstalledState | None:
+    state = snapshot.get("config/tltg_optimized_state.yaml")
+    if state is None:
+        return None
+    try:
+        raw = yaml.safe_load(state)
+        return parse_installed_state(raw)
+    except (yaml.YAMLError, StateValidationError) as exc:
+        raise RestoreHelperError("Archived installed state is malformed.") from exc
 
 
 def _snapshot_source_firmware(snapshot: dict[str, bytes]) -> tuple[bool, str | None]:

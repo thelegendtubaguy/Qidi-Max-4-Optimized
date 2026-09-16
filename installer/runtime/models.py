@@ -68,6 +68,14 @@ class EnsureLineSpec:
 
 
 @dataclass(frozen=True)
+class ManagedExternalFileSpec:
+    id: str
+    source: str
+    destination: str
+    sha256: str
+
+
+@dataclass(frozen=True)
 class PatchVariantSpec:
     firmwares: tuple[str, ...]
     expected: str
@@ -163,6 +171,7 @@ class InstallSpec:
     managed_tree: ManagedTreeSpec
     ensure_lines: tuple[EnsureLineSpec, ...]
     source_patches: tuple[SourcePatchSpec, ...] = ()
+    external_files: tuple[ManagedExternalFileSpec, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -295,10 +304,18 @@ class UpgradeSourcePatch:
 
 
 @dataclass(frozen=True)
+class UpgradeSourceExternalFile:
+    id: str
+    destination: str
+    sha256: str
+
+
+@dataclass(frozen=True)
 class UpgradeSources:
     schema_version: int
     allowed_patch_targets: tuple[AllowedPatchTarget, ...]
     source_patches: tuple[UpgradeSourcePatch, ...] = ()
+    external_files: tuple[UpgradeSourceExternalFile, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -311,6 +328,16 @@ class ManagedTreeFileRecord:
 class ManagedTreeState:
     root: str
     files: tuple[ManagedTreeFileRecord, ...]
+
+
+@dataclass(frozen=True)
+class ExternalFileState:
+    id: str
+    destination: str
+    installed_sha256: str
+    preimage_b64: Optional[str] = None
+    preimage_sha256: Optional[str] = None
+    preimage_mode: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -351,6 +378,7 @@ class InstalledState:
     managed_tree: ManagedTreeState
     patch_ledger: tuple[PatchLedgerEntry, ...]
     source_patches: tuple[SourcePatchState, ...] = ()
+    external_files: tuple[ExternalFileState, ...] = ()
     system_ledger: Optional[dict[str, Any]] = None
 
 
@@ -431,6 +459,14 @@ class IncludeLineIntent:
 
 
 @dataclass(frozen=True)
+class ExternalFileIntent:
+    id: str
+    source: Optional[str]
+    destination: str
+    action: str
+
+
+@dataclass(frozen=True)
 class StateFileIntent:
     path: str
     action: str
@@ -442,6 +478,7 @@ class InstallPlan:
     file_changes: tuple[FileChange, ...]
     managed_tree_intent: ManagedTreeIntent
     include_line_intents: tuple[IncludeLineIntent, ...]
+    external_file_intents: tuple[ExternalFileIntent, ...]
     patch_results: tuple[PatchResult, ...]
     managed_tree_drift: tuple[DriftRecord, ...]
     managed_tree_files: tuple[ManagedTreeFileRecord, ...]
@@ -454,6 +491,7 @@ class UninstallPlan:
     file_changes: tuple[FileChange, ...]
     managed_tree_intent: ManagedTreeIntent
     include_line_intents: tuple[IncludeLineIntent, ...]
+    external_file_intents: tuple[ExternalFileIntent, ...]
     patch_results: tuple[PatchResult, ...]
     managed_tree_drift: tuple[DriftRecord, ...]
     state_file_intent: StateFileIntent

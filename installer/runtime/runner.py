@@ -4,9 +4,10 @@ import shutil
 import subprocess
 import urllib.request
 
-from . import klipper_cfg, messages, patches
+from . import external_files, klipper_cfg, messages, patches
 from .auto_update import (
     LOCK_HELD_ENV,
+    auto_update_enrolled,
     maybe_prompt_enable_auto_updates,
     maybe_repair_configured_auto_updates,
 )
@@ -50,6 +51,7 @@ from .mirror import (
     mirror_tree,
 )
 from .models import (
+    ExternalFileIntent,
     IncludeLineIntent,
     InstallPlan,
     InstalledState,
@@ -158,6 +160,12 @@ def run_install(
     else:
         reporter.debug(event="install.prior_state.missing", state_path=state_path)
 
+    if prior_state is not None:
+        external_files.validate_state_provenance(
+            state=prior_state,
+            specs=manifest.install.external_files,
+            upgrade_sources=compatibility,
+        )
     verify_pending_saved_variable_expectations(paths, clear=not dry_run, urlopen=urlopen)
 
     reporter.status(messages.PERFORMING_PREFLIGHT_CHECKS)
@@ -167,6 +175,10 @@ def run_install(
         reporter=reporter,
         urlopen=urlopen,
         disk_usage=disk_usage,
+        prior_state=prior_state,
+        allow_matching_untracked_external=(
+            env.get(LOCK_HELD_ENV) == "1" and auto_update_enrolled(paths)
+        ),
     )
     maybe_reset_legacy_manual_install(
         paths=paths,
@@ -241,6 +253,15 @@ def run_install(
             external_files=tuple(
                 (patch.id, patch.destination, paths.managed_klipper_root / patch.destination)
                 for patch in manifest.install.source_patches
+            ) + tuple(
+                (
+                    record.id,
+                    record.destination,
+                    paths.managed_klipper_root / record.destination,
+                )
+                for record in (
+                    prior_state.external_files if prior_state is not None else ()
+                )
             ),
             external_firmware=detected_firmware,
         )
@@ -337,6 +358,15 @@ def build_install_plan(
         ManagedTreeFileRecord(path=path, sha256=sha)
         for path, sha in sorted(source_hashes.items())
     )
+    external_file_intents = tuple(
+        ExternalFileIntent(
+            id=spec.id,
+            source=spec.source,
+            destination=spec.destination,
+            action="install",
+        )
+        for spec in manifest.install.external_files
+    )
     return InstallPlan(
         backup_label=backup_label,
         file_changes=_build_install_file_changes(
@@ -344,6 +374,7 @@ def build_install_plan(
         ),
         managed_tree_intent=managed_tree_intent,
         include_line_intents=include_line_intents,
+        external_file_intents=external_file_intents,
         patch_results=patch_results,
         managed_tree_drift=managed_tree_drift,
         managed_tree_files=managed_tree_files,
@@ -379,6 +410,19 @@ def _execute_install(
     migrated_paths: list[Path] = []
     migration_committed = False
     patch_results = list(plan.patch_results)
+    external_file_state = external_files.planned_state(
+        specs=manifest.install.external_files,
+        prior_state=prior_state,
+    )
+    source_changes = tuple(
+        result
+        for result in source_results
+        if result.classification != "noop_desired"
+    )
+    external_changes = external_files.changed_specs(
+        specs=manifest.install.external_files,
+        prior_state=prior_state,
+    )
     active_patches = _active_install_patches(manifest, detected_firmware)
     active_section_patches = _active_install_section_patches(manifest, detected_firmware)
     install_counters = _install_counters_template(manifest, detected_firmware)
@@ -399,6 +443,10 @@ def _execute_install(
         touched_files.update(paths.printer_data_root / spec.file for spec in manifest.install.ensure_lines)
         touched_files.update(paths.printer_data_root / patch.file for patch in active_patches)
         touched_files.update(paths.printer_data_root / patch.file for patch in active_section_patches)
+        touched_files.update(
+            paths.managed_klipper_root / spec.destination
+            for spec in manifest.install.external_files
+        )
         for touched in touched_files:
             journal.track_file(touched)
         journal.track_tree(paths.printer_data_root / manifest.managed_tree.destination)
@@ -449,25 +497,48 @@ def _execute_install(
             install_counters["ensure_directories"][0] += 1
         reporter.emit_install_counters(**_freeze_counters(install_counters))
 
-        source_changes = tuple(result for result in source_results if result.classification != "noop_desired")
-        if source_changes:
-            process_id, _ = read_printer_info(paths.moonraker_url, urlopen=urlopen)
+        restart_targets = tuple(
+            (
+                entry.id,
+                entry.destination,
+                entry.desired_sha256,
+            )
+            for result in source_changes
+            if (entry := result.original) is not None
+        ) + tuple(
+            (spec.id, spec.destination, spec.sha256)
+            for spec in external_changes
+        )
+        if restart_targets:
+            process_id, _ = read_printer_info(
+                paths.moonraker_url, urlopen=urlopen
+            )
             journal.track_file(paths.restart_marker_path)
             journal.note_write()
             write_restart_marker(
                 paths,
-                tuple(
-                    (entry.id, entry.destination, entry.desired_sha256)
-                    for result in source_changes
-                    if (entry := result.original) is not None
-                ),
+                restart_targets,
                 operation="install",
                 process_id=process_id,
             )
-        for patch, result in zip(manifest.install.source_patches, source_results):
+        for patch, result in zip(
+            manifest.install.source_patches, source_results
+        ):
             if result.classification != "noop_desired":
                 journal.note_write()
-                deploy_source_patch(paths=paths, patch=patch, firmware=detected_firmware, result=result)
+                deploy_source_patch(
+                    paths=paths,
+                    patch=patch,
+                    firmware=detected_firmware,
+                    result=result,
+                )
+        changed_external_ids = {spec.id for spec in external_changes}
+        for spec in manifest.install.external_files:
+            if spec.id in changed_external_ids:
+                journal.note_write()
+                external_files.deploy(paths=paths, spec=spec)
+            install_counters["external_files"][0] += 1
+        reporter.emit_install_counters(**_freeze_counters(install_counters))
 
         mirror_tree(
             source_root=paths.installer_root / manifest.managed_tree.source,
@@ -489,6 +560,7 @@ def _execute_install(
             patch_results=tuple(patch_results),
             detected_firmware=detected_firmware,
         )
+        external_files.verify_install(paths=paths, state=external_file_state)
         install_counters["postflight"][0] = 1
         reporter.emit_install_counters(**_freeze_counters(install_counters))
 
@@ -520,6 +592,7 @@ def _execute_install(
                 for result in source_results
                 if result.original is not None
             ),
+            external_files=external_file_state,
             system_ledger=(
                 prior_state.system_ledger
                 if prior_state is not None and prior_state.system_ledger and prior_state.system_ledger.get("restore_preimages")
@@ -591,9 +664,7 @@ def _execute_install(
             write_saved_variable_verify_marker(paths, saved_variables_written)
         restarted = maybe_restart_pending_service_if_idle(
             paths=paths,
-            allowed_entries={
-                patch.id: patch.destination for patch in manifest.install.source_patches
-            },
+            allowed_entries=_managed_klipper_entries(manifest),
             reporter=reporter,
             input_stream=input_stream,
             urlopen=urlopen,
@@ -759,6 +830,19 @@ def _collect_install_include_line_intents(
 
 
 
+def _managed_klipper_entries(manifest: Manifest) -> dict[str, str]:
+    return {
+        **{
+            patch.id: patch.destination
+            for patch in manifest.install.source_patches
+        },
+        **{
+            spec.id: spec.destination
+            for spec in manifest.install.external_files
+        },
+    }
+
+
 def _source_hashes(paths: RuntimePaths, manifest: Manifest) -> dict[str, str]:
     return collect_source_hashes(
         paths.installer_root / manifest.managed_tree.source,
@@ -779,6 +863,7 @@ def _install_counters_template(
     return {
         "ensure_directories": [0, len(manifest.install.ensure_directories)],
         "managed_trees": [0, 1],
+        "external_files": [0, len(manifest.install.external_files)],
         "ensure_lines": [0, len(manifest.install.ensure_lines)],
         "patches": [0, patch_count],
         "postflight": [0, 1],

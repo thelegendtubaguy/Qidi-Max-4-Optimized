@@ -253,8 +253,14 @@ def main(
                     printer_data_root=paths.printer_data_root,
                     external_root=paths.managed_klipper_root,
                     allowed_external_entries={
-                        patch.id: patch.destination
-                        for patch in manifest.install.source_patches
+                        **{
+                            patch.id: patch.destination
+                            for patch in manifest.install.source_patches
+                        },
+                        **{
+                            spec.id: spec.destination
+                            for spec in manifest.install.external_files
+                        },
                     },
                     install_label_prefix=manifest.backup.label_prefix,
                     known_package_versions=manifest.package.known_versions,

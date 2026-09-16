@@ -50,6 +50,9 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("bundle smoke test is missing restore.sh")
     if not (bundle_root / "installer/system/qidiclient-static-gifs.tar.gz").exists():
         raise SystemExit("bundle smoke test is missing qidiclient static GIF archive")
+    pa_extra_payload = bundle_root / "installer/klipper/extras/tltg_pa_calibration.py"
+    if not pa_extra_payload.exists():
+        raise SystemExit("bundle smoke test is missing PA calibration Klipper extra")
     snapshot_base = bundle_root / "installer/stock/qidi-max4-defaults/firmwares"
     for firmware in ("01.01.06.03", "01.01.06.04", "01.01.06.05"):
         snapshot_root = snapshot_base / firmware / "config"
@@ -79,6 +82,24 @@ def main(argv: list[str] | None = None) -> int:
         if expected not in firmware_05_qd_macro:
             raise SystemExit(f"bundle .05 stock qd_macro.cfg is missing {expected}")
     package_manifest = load_manifest(bundle_root / "installer/package.yaml")
+    for spec in package_manifest.install.external_files:
+        payload = bundle_root / "installer" / spec.source
+        if not payload.is_file() or payload.is_symlink():
+            raise SystemExit(
+                f"bundle smoke test is missing external payload: {spec.source}"
+            )
+        payload_bytes = payload.read_bytes()
+        try:
+            compile(payload_bytes, str(payload), "exec")
+        except SyntaxError as exc:
+            raise SystemExit(
+                f"bundle external payload does not compile: {spec.source}: {exc}"
+            ) from exc
+        if hashlib.sha256(payload_bytes).hexdigest() != spec.sha256:
+            raise SystemExit(
+                "bundle external payload hash does not match package manifest: "
+                f"{spec.source}"
+            )
     for patch in package_manifest.install.source_patches:
         for variant in patch.variants:
             payload = bundle_root / "installer" / variant.source
@@ -163,6 +184,9 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(install.stdout + install.stderr)
         if not (plain_printer_root / "config/tltg_optimized_state.yaml").exists():
             raise SystemExit("install smoke test did not create state file")
+        pa_extra = plain_printer_root / "klipper/klippy/extras/tltg_pa_calibration.py"
+        if not pa_extra.exists():
+            raise SystemExit("install smoke test did not deploy PA calibration Klipper extra")
 
         uninstall_dry_run = run_command(
             [str(bundle_root / "install.sh"), "--uninstall", "--dry-run", "--plain"],
@@ -188,6 +212,8 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(uninstall.stdout + uninstall.stderr)
         if (plain_printer_root / "config/tltg_optimized_state.yaml").exists():
             raise SystemExit("uninstall smoke test did not remove state file")
+        if pa_extra.exists():
+            raise SystemExit("uninstall smoke test did not remove PA calibration Klipper extra")
 
         rich_printer_root = prepare_printer_root(workspace / "rich-printer")
         rich_env = build_env(rich_printer_root, moonraker_url=url)

@@ -6,7 +6,7 @@ package:
   id: qidi-max4-optimized
   display_name: QIDI Max 4 Optimized
   printer_model: qidi-max4
-  version: "26.09.15.1"
+  version: "26.09.15.2"
   known_versions:
     - "26.04.21.1"
     - "26.04.27.1"
@@ -31,15 +31,29 @@ package:
     - "26.07.13.2"
     - "26.07.26.1"
     - "26.07.26.2"
+    - "26.07.26.3"
+    - "26.07.26.4"
+    - "26.07.26.5"
+    - "26.07.26.6"
+    - "26.07.26.7"
+    - "26.07.26.8"
+    - "26.07.26.9"
+    - "26.07.26.10"
+    - "26.07.26.11"
+    - "26.07.26.12"
+    - "26.07.26.13"
+    - "26.07.26.14"
     - "26.07.28.1"
     - "26.08.05.1"
     - "26.08.06.1"
     - "26.08.06.2"
+    - "26.08.06.3"
     - "26.08.09.1"
     - "26.08.09.2"
     - "26.08.29.1"
     - "26.09.09.1"
     - "26.09.15.1"
+    - "26.09.15.2"
 
 firmware:
   supported:
@@ -96,8 +110,15 @@ install:
       - "kinematics.cfg"
       - "motion.cfg"
       - "offset.cfg"
+      - "pa_calibration.cfg"
       - "start_end.cfg"
       - "temperatures.cfg"
+
+  external_files:
+    - id: tltg_pa_calibration_extra
+      source: "klipper/extras/tltg_pa_calibration.py"
+      destination: "klippy/extras/tltg_pa_calibration.py"
+      sha256: "cbbaa9a114b88e5c3e169a088060b1deeccfd20198e899f43026ef791720af2f"
 
   ensure_lines:
     - id: include_optimized_macros

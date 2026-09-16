@@ -235,6 +235,25 @@ Optimized configuration SHALL preserve firmware-scoped peripheral ownership, sto
 - **AND** the active vendor Box stack and vendor command names are not redefined
 - **AND** `config/fluidd.cfg` and unproven externally consumed stock globals remain unmodified
 
+### Requirement: Load-cell pressure-advance calibration remains fail-closed until validated
+The optimized configuration SHALL reserve an operator-invokable load-cell pressure-advance calibration interface without enabling physical calibration or candidate reporting before Max 4 hardware validation is complete.
+
+#### Scenario: Explicit calibration inputs are required
+- **WHEN** `TLTG_PA_CALIBRATE` is invoked
+- **THEN** `TEMP=<celsius>` and `NOZZLE=<0.2|0.4|0.6|0.8>` are required
+- **AND** no temperature or nozzle default is selected implicitly
+
+#### Scenario: Unvalidated calibration has no physical effects
+- **WHEN** the required inputs are valid but hardware validation is incomplete
+- **THEN** the command reports `PA_CALIBRATION_UNVALIDATED`
+- **AND** it returns before homing, heating, movement, sensor acquisition, extrusion, pressure-advance changes, or filament-source changes
+
+#### Scenario: Candidate output is non-persistent
+- **WHEN** future hardware validation enables candidate reporting
+- **THEN** the result is reported without changing active or persistent pressure advance
+- **AND** no slicer, saved-variable, or printer configuration is modified
+- **AND** implementation remains in `installer/klipper/tltg-optimized-macros/pa_calibration.cfg` and `installer/klipper/extras/tltg_pa_calibration.py`
+
 ### Requirement: Optional staggered print-start heating
 Optimized configuration SHALL provide a default-disabled print-start mode that orders requested heater warm-up as bed, chamber, then nozzle, applies a configurable non-negative dwell between active stages, and preserves the existing start entrypoint for previously installed slicer G-code.
 

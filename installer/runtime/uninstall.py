@@ -4,7 +4,7 @@ import shutil
 import subprocess
 import urllib.request
 
-from . import klipper_cfg, messages, patches
+from . import external_files, klipper_cfg, messages, patches
 from .auto_update import (
     AutoUpdateError,
     auto_update_enrolled,
@@ -40,6 +40,7 @@ from .source_patches import restore_source_patch, validate_source_state
 from .process_restart import read_printer_info, write_restart_marker
 from .models import (
     DriftRecord,
+    ExternalFileIntent,
     EnsureLineSpec,
     IncludeLineIntent,
     InstalledState,
@@ -113,12 +114,17 @@ def run_uninstall(
         "managed_tree": managed_tree_root.exists(),
         "include_line": include_line_path.exists()
         and has_active_line(klipper_cfg.read_text(include_line_path), include_line.line),
+        "external_files": any(
+            (paths.managed_klipper_root / spec.destination).exists()
+            for spec in manifest.install.external_files
+        ),
     }
     reporter.debug(
         event="uninstall.markers.checked",
         state_file=non_patch_markers["state_file"],
         managed_tree=non_patch_markers["managed_tree"],
         include_line=non_patch_markers["include_line"],
+        external_files=non_patch_markers["external_files"],
         pending_saved_variables=pending_saved_variables_marker.exists(),
     )
 
@@ -167,6 +173,11 @@ def run_uninstall(
         raise InstalledPackageValidationError()
 
     assert state is not None
+    external_files.validate_state_provenance(
+        state=state,
+        specs=manifest.install.external_files,
+        upgrade_sources=compatibility,
+    )
     try:
         if system_ledger_needs_migration(state.system_ledger):
             validate_legacy_system_ledger(state.system_ledger, manifest=manifest, paths=paths, environ=env)
@@ -273,6 +284,13 @@ def run_uninstall(
                     paths.managed_klipper_root / entry.destination,
                 )
                 for entry in state.source_patches
+            ) + tuple(
+                (
+                    record.id,
+                    record.destination,
+                    paths.managed_klipper_root / record.destination,
+                )
+                for record in state.external_files
             ),
             external_firmware=state.runtime_firmware,
         )
@@ -346,6 +364,15 @@ def build_uninstall_plan(
         destination=state.managed_tree.root,
         action="remove",
     )
+    external_file_intents = tuple(
+        ExternalFileIntent(
+            id=record.id,
+            source=None,
+            destination=record.destination,
+            action="restore" if record.preimage_b64 is not None else "remove",
+        )
+        for record in state.external_files
+    )
     return UninstallPlan(
         backup_label=backup_label,
         file_changes=_build_uninstall_file_changes(
@@ -355,6 +382,7 @@ def build_uninstall_plan(
         ),
         managed_tree_intent=managed_tree_intent,
         include_line_intents=include_line_intents,
+        external_file_intents=external_file_intents,
         patch_results=patch_results,
         managed_tree_drift=managed_tree_drift,
         state_file_intent=StateFileIntent(path=manifest.state_file, action="delete"),
@@ -391,6 +419,10 @@ def _execute_uninstall(
     try:
         touched_files = {state_path, include_line_path, saved_variable_verify_marker_path(paths)}
         touched_files.update(paths.printer_data_root / entry.file for entry in state.patch_ledger)
+        touched_files.update(
+            paths.managed_klipper_root / record.destination
+            for record in state.external_files
+        )
         for path in touched_files:
             journal.track_file(path)
         for entry in state.source_patches:
@@ -402,23 +434,43 @@ def _execute_uninstall(
             tracked_trees=1,
         )
 
-        source_restores = tuple(entry for entry in state.source_patches if (paths.managed_klipper_root / entry.destination).is_file() and (paths.managed_klipper_root / entry.destination).read_bytes() != entry.original_bytes)
-        if source_restores:
-            pid, _ = read_printer_info(paths.moonraker_url, urlopen=urlopen)
+        source_restores = tuple(
+            entry
+            for entry in state.source_patches
+            if (
+                paths.managed_klipper_root / entry.destination
+            ).is_file()
+            and (
+                paths.managed_klipper_root / entry.destination
+            ).read_bytes()
+            != entry.original_bytes
+        )
+        restart_targets = tuple(
+            (entry.id, entry.destination, entry.original_sha256)
+            for entry in source_restores
+        ) + tuple(
+            (
+                record.id,
+                record.destination,
+                record.preimage_sha256,
+            )
+            for record in state.external_files
+        )
+        if restart_targets:
+            pid, _ = read_printer_info(
+                paths.moonraker_url, urlopen=urlopen
+            )
             journal.track_file(paths.restart_marker_path)
             journal.note_write()
             write_restart_marker(
                 paths,
-                tuple(
-                    (entry.id, entry.destination, entry.original_sha256)
-                    for entry in source_restores
-                ),
+                restart_targets,
                 operation="uninstall",
                 process_id=pid,
             )
-            for entry in source_restores:
-                journal.note_write()
-                restore_source_patch(paths=paths, entry=entry)
+        for entry in source_restores:
+            journal.note_write()
+            restore_source_patch(paths=paths, entry=entry)
 
         patch_results.extend(plan.patch_results)
         apply_file_change_plan(plan.file_changes, journal=journal)
@@ -431,6 +483,12 @@ def _execute_uninstall(
         uninstall_counters["include_removal"][0] = int(include_changed)
         reporter.emit_uninstall_counters(**_freeze_counters(uninstall_counters))
 
+        for record in state.external_files:
+            journal.note_write()
+            external_files.remove_or_restore(paths=paths, record=record)
+            uninstall_counters["external_files"][0] += 1
+        reporter.emit_uninstall_counters(**_freeze_counters(uninstall_counters))
+
         remove_tree(managed_tree_root, journal)
         uninstall_counters["managed_tree_removal"][0] = 1
         reporter.emit_uninstall_counters(**_freeze_counters(uninstall_counters))
@@ -441,6 +499,7 @@ def _execute_uninstall(
             patch_results=tuple(patch_results),
             include_line=include_line,
         )
+        external_files.verify_uninstall(paths=paths, state=state)
         uninstall_counters["postflight"][0] = 1
         reporter.emit_uninstall_counters(**_freeze_counters(uninstall_counters))
 
@@ -495,9 +554,7 @@ def _execute_uninstall(
     if paths.restart_marker_path.exists():
         maybe_restart_pending_service_if_idle(
             paths=paths,
-            allowed_entries={
-                patch.id: patch.destination for patch in manifest.install.source_patches
-            },
+            allowed_entries=_managed_klipper_entries(manifest),
             reporter=reporter,
             input_stream=input_stream,
             urlopen=urlopen,
@@ -638,10 +695,24 @@ def _collect_uninstall_include_line_intents(
 
 
 
+def _managed_klipper_entries(manifest: Manifest) -> dict[str, str]:
+    return {
+        **{
+            patch.id: patch.destination
+            for patch in manifest.install.source_patches
+        },
+        **{
+            spec.id: spec.destination
+            for spec in manifest.install.external_files
+        },
+    }
+
+
 def _uninstall_counters_template(state: InstalledState) -> dict[str, list[int]]:
     return {
         "patches": [0, len(state.patch_ledger)],
         "include_removal": [0, 1],
+        "external_files": [0, len(state.external_files)],
         "managed_tree_drift": [0, 1],
         "managed_tree_removal": [0, 1],
         "postflight": [0, 1],
@@ -653,7 +724,14 @@ def _uninstall_counters_template(state: InstalledState) -> dict[str, list[int]]:
 def _emit_uninstall_dry_run_counters(reporter, state: InstalledState) -> None:
     counters = _uninstall_counters_template(state)
     counters["managed_tree_drift"][0] = counters["managed_tree_drift"][1]
-    for name in ("patches", "include_removal", "managed_tree_removal", "postflight", "state_remove"):
+    for name in (
+        "patches",
+        "include_removal",
+        "external_files",
+        "managed_tree_removal",
+        "postflight",
+        "state_remove",
+    ):
         counters[name][0] = counters[name][1]
         reporter.emit_uninstall_counters(**_freeze_counters(counters))
 

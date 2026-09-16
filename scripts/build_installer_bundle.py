@@ -30,6 +30,7 @@ ALLOWED_FILES = [
 ALLOWED_DIRECTORIES = [
     "LICENSES",
     "installer/runtime",
+    "installer/klipper/extras",
     "installer/klipper/tltg-optimized-macros",
     "installer/klipper/qidi",
     "installer/stock",
@@ -113,6 +114,18 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def validate_source_payloads(manifest) -> None:
+    for spec in manifest.install.external_files:
+        payload = REPO_ROOT / "installer" / spec.source
+        if payload.is_symlink() or not payload.is_file():
+            raise ValueError(
+                f"External-file payload is not a regular file: {payload}"
+            )
+        value = payload.read_bytes()
+        compile(value, str(payload), "exec")
+        if hashlib.sha256(value).hexdigest() != spec.sha256:
+            raise ValueError(
+                f"External-file payload hash does not match {spec.id}"
+            )
     for patch in manifest.install.source_patches:
         for variant in patch.variants:
             payload = REPO_ROOT / "installer" / variant.source

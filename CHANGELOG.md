@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.09.15.2
+- Integrated the guarded load-cell PA calibration extra with the current installer and firmware support. `TLTG_PA_CALIBRATE` requires explicit temperature and nozzle inputs but remains disabled before any physical action; no PA candidate is applied or saved.
+- Preserved hash-pinned extra deployment, process-restart verification, backup, restore, and uninstall ownership checks while migrating historical extra hashes into the cumulative compatibility envelope. Unknown package identities, versions, payload hashes, and live drift remain rejected.
+- Retained the staged origin-cache capture and stationary-extrusion analysis for development only. Sensor freshness and repeatability remain unvalidated; autopa is not installed or bundled.
+
 ## 26.09.15.1
 - Fixed installer QIDI Box tool-slot string quoting so missing mappings and approved mapping corrections save without Klipper literal-parsing errors, including when Box enablement is declined.
 - Fixed manual 3MF metadata rescans to use the archive extractor without deleting QIDI thumbnail files. Rescans join pending extraction instead of duplicating it; failures preserve prior metadata and return an error. The 3MF rescan path rejects escaped, reserved, or missing archives; ordinary G-code rescanning remains unchanged.
@@ -35,6 +40,9 @@
 ## 26.08.09.1
 - Added the persistent `tltg_start_bed_mesh_profile` setting so print start can load a named Klipper bed-mesh profile instead of calibrating a new mesh.
 - Kept fresh adaptive KAMP calibration as the default when the setting is missing or empty. A configured profile must exist or Klipper stops print preparation.
+
+## 26.08.06.3
+- Updated the load-cell PA development branch with firmware `01.01.06.05` support, installer recovery, and the rear-scrape and fan-polling changes documented below. Physical PA calibration remained disabled.
 
 ## 26.08.06.2
 - Reinstall enrolled optimized configuration automatically after QIDI firmware cleanup removes config-local installer state, while keeping unenrolled and disabled update checks non-mutating.
