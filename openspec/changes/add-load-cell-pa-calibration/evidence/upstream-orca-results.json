@@ -1,0 +1,58 @@
+{
+ "kind": "orca_pa",
+ "time": 1789685184.14198,
+ "payload": {
+  "model": "0.0329,4.00,2000\n0.0324,10.00,2000\n0.0303,18.00,2000\n0.0329,4.00,10000\n0.0324,10.00,10000\n0.0303,18.00,10000",
+  "rows": [
+   "0.0329,4.00,2000",
+   "0.0324,10.00,2000",
+   "0.0303,18.00,2000",
+   "0.0329,4.00,10000",
+   "0.0324,10.00,10000",
+   "0.0303,18.00,10000"
+  ],
+  "fallback_pressure_advance": 0.03241129042656628,
+  "accel_lo": 2000.0,
+  "accel_hi": 10000.0,
+  "min_confidence": 45,
+  "runs_averaged": 2,
+  "span_ratio": 1.083877662725605,
+  "geometry": {},
+  "points": [
+   {
+    "flow_mm3_s": 4,
+    "k_s": 0.032864925885459265,
+    "sd": 0.004910986150463231,
+    "se": 0.003472591609305769,
+    "runs": 2,
+    "n": 113,
+    "confidence": 75.5,
+    "used": true,
+    "v_xy_mm_s": null
+   },
+   {
+    "flow_mm3_s": 10,
+    "k_s": 0.03241129042656628,
+    "sd": 0.0013348821941825413,
+    "se": 0.0009439042515916525,
+    "runs": 2,
+    "n": 118,
+    "confidence": 74.0,
+    "used": true,
+    "v_xy_mm_s": null
+   },
+   {
+    "flow_mm3_s": 18,
+    "k_s": 0.030321619326312624,
+    "sd": 0.0014361575083272978,
+    "se": 0.0010155167129902078,
+    "runs": 2,
+    "n": 111,
+    "confidence": 74.0,
+    "used": true,
+    "v_xy_mm_s": null
+   }
+  ],
+  "note": "accel columns carry the same K at both values because Stage 3 found no dependence of K on acceleration"
+ }
+}

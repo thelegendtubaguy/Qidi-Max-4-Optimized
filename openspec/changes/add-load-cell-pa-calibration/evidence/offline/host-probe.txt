@@ -1,0 +1,32 @@
+MODULE ['BATCH_UPDATES', 'BYTES_PER_SAMPLE', 'CS1237', 'CS1237Command', 'CS1237_QUERY_RATES', 'MAX_BULK_MSG_SIZE', 'MAX_CHIPS', 'MAX_SAMPLES_PER_BLOCK', 'UPDATE_INTERVAL', 'USE_SPEED', 'bulk_sensor', 'bus', 'logging']
+CLASS ['_build_config', '_handle_ready', 'check_cs1237_zero', 'clear_home', 'get_mcu', 'read_origin_data', 'setup_home', 'zero_home']
+METHOD _build_config
+CONFIG ('config_cs1237 oid=5 dout_pin=PB4 sclk_pin=PB3',) {}
+LOOKUP ('query_cs1237 oid=%c rest_ticks=%u',) {'cq': 1}
+LOOKUP ('cs1237_setup_home oid=%c clock=%u threshold=%u trsync_oid=%c trigger_reason=%c error_reason=%c filter=%u',) {'cq': 1}
+LOOKUP ('query_cs1237_home_state oid=%c', 'cs1237_home_state oid=%c homing=%c trigger_clock=%u') {'oid': 5, 'cq': 1}
+LOOKUP ('query_cs1237_read oid=%c reg=%u read_len=%u', 'query_cs1237_data oid=%c data=%*s', 5) {}
+LOOKUP ('query_cs1237_begin oid=%c config=%u', 'query_cs1237_begin_read oid=%c config=%u', 5) {}
+LOOKUP ('query_cs1237_zero oid=%c', 'query_cs1237_zero_read oid=%c data=%*s', 5) {}
+LOOKUP ('query_cs1237_config_r oid=%c', 'query_cs1237_zero_config_read oid=%c config=%u', 5) {}
+LOOKUP ('query_cs1237_zero_read_only oid=%c', 'query_cs1237_zero_read_o oid=%c data=%*s', 5) {}
+RESULT None
+METHOD _handle_ready
+SEND query_cs1237_begin oid=%c config=%u ([5, 60],) {}
+RESULT None
+METHOD read_origin_data
+SEND query_cs1237_zero oid=%c ([5],) {}
+RESULT 4660
+METHOD zero_home
+SEND query_cs1237_zero oid=%c ([5],) {}
+RESULT None
+METHOD setup_home
+SEND query_cs1237 oid=%c rest_ticks=%u ([5, 72000],) {}
+SEND cs1237_setup_home oid=%c clock=%u threshold=%u trsync_oid=%c trigger_reason=%c error_reason=%c filter=%u ([5, 720000000, 100, 1, 1, 2, 9000],) {}
+RESULT None
+METHOD clear_home
+SEND cs1237_setup_home oid=%c clock=%u threshold=%u trsync_oid=%c trigger_reason=%c error_reason=%c filter=%u ([5, 0, 0, 0, 0, 0, 0],) {}
+SEND query_cs1237_home_state oid=%c ([5],) {}
+SEND query_cs1237 oid=%c rest_ticks=%u ([5, 0],) {}
+RESULT 0.0
+ATTRS {'mcu': <__main__.MCU object at 0xffffba851be0>, 'oid': 5, 'dout_pin': 'PB4', 'sclk_pin': 'PB3', 'printer': <__main__.Printer object at 0xffffba851cd0>, 'cmd_queue': 1, 'dout_params': {'pin': 'PB4'}, 'sck_params': {'pin': 'PB3'}, 'cs_fil_f': 90, 'trigger_force': 100, 'trigger_threshold': 100, 'adc_voltage_diff': 100, 'query_cs1237_cmd': <__main__.Command object at 0xffffba851c10>, 'cs1237_setup_home_cmd': <__main__.Command object at 0xffffba851dc0>, 'query_cs1237_home_state_cmd': <__main__.Command object at 0xffffba7b1b80>, 'query_cs1237_end_cmd': <__main__.Command object at 0xffffba7b19d0>, 'query_cs1237_begin_cmd': <__main__.Command object at 0xffffba8de940>, 'query_cs1237_update_cmd': <__main__.Command object at 0xffffba8de9a0>, 'query_cs1237_config_read_cmd': <__main__.Command object at 0xffffba8de4f0>, 'query_cs1237_zero_read_cmd': <__main__.Command object at 0xffffba8de580>}

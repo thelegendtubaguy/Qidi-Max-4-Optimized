@@ -1,0 +1,234 @@
+{
+  "firmware": {
+    "positive": {
+      "transactions": [
+        {
+          "input": "0x123456",
+          "decoded": "0x123456",
+          "clock_pulses": 27
+        }
+      ],
+      "responses": [
+        {
+          "id": -8,
+          "data": "56341200"
+        }
+      ],
+      "shutdown": [],
+      "returned": true,
+      "budget_exhausted": false,
+      "reference": "0x654321",
+      "homing_reference_bits": "0x3f800000"
+    },
+    "negative": {
+      "transactions": [
+        {
+          "input": "0xfabcde",
+          "decoded": "0xfabcde",
+          "clock_pulses": 27
+        }
+      ],
+      "responses": [
+        {
+          "id": -8,
+          "data": "debcfa00"
+        }
+      ],
+      "shutdown": [],
+      "returned": true,
+      "budget_exhausted": false,
+      "reference": "0x654321",
+      "homing_reference_bits": "0x3f800000"
+    },
+    "not_ready_existing_buffer": {
+      "transactions": [],
+      "responses": [
+        {
+          "id": -8,
+          "data": "11223300"
+        }
+      ],
+      "shutdown": [],
+      "returned": true,
+      "budget_exhausted": false,
+      "reference": "0x654321",
+      "homing_reference_bits": "0x3f800000"
+    },
+    "not_ready_empty_buffer": {
+      "transactions": [],
+      "responses": [
+        {
+          "id": -8,
+          "data": ""
+        }
+      ],
+      "shutdown": [],
+      "returned": true,
+      "budget_exhausted": false,
+      "reference": "0x654321",
+      "homing_reference_bits": "0x3f800000"
+    },
+    "zero_then_valid": {
+      "transactions": [
+        {
+          "input": "0x0",
+          "decoded": "0x0",
+          "clock_pulses": 27
+        },
+        {
+          "input": "0x123456",
+          "decoded": "0x123456",
+          "clock_pulses": 27
+        }
+      ],
+      "responses": [
+        {
+          "id": -8,
+          "data": "56341200"
+        }
+      ],
+      "shutdown": [],
+      "returned": true,
+      "budget_exhausted": false,
+      "reference": "0x654321",
+      "homing_reference_bits": "0x3f800000"
+    },
+    "all_ones_then_valid": {
+      "transactions": [
+        {
+          "input": "0xffffff",
+          "decoded": "0xffffff",
+          "clock_pulses": 27
+        },
+        {
+          "input": "0x123456",
+          "decoded": "0x123456",
+          "clock_pulses": 27
+        }
+      ],
+      "responses": [
+        {
+          "id": -8,
+          "data": "56341200"
+        }
+      ],
+      "shutdown": [],
+      "returned": true,
+      "budget_exhausted": false,
+      "reference": "0x654321",
+      "homing_reference_bits": "0x3f800000"
+    },
+    "four_all_ones": {
+      "transactions": [
+        {
+          "input": "0xffffff",
+          "decoded": "0xffffff",
+          "clock_pulses": 27
+        },
+        {
+          "input": "0xffffff",
+          "decoded": "0xffffff",
+          "clock_pulses": 27
+        },
+        {
+          "input": "0xffffff",
+          "decoded": "0xffffff",
+          "clock_pulses": 27
+        },
+        {
+          "input": "0xffffff",
+          "decoded": "0xffffff",
+          "clock_pulses": 27
+        }
+      ],
+      "responses": [
+        {
+          "id": -8,
+          "data": "ffffff00"
+        }
+      ],
+      "shutdown": [],
+      "returned": true,
+      "budget_exhausted": false,
+      "reference": "0x654321",
+      "homing_reference_bits": "0x3f800000"
+    },
+    "saturation": {
+      "transactions": [
+        {
+          "input": "0x800000",
+          "decoded": "0x800000",
+          "clock_pulses": 27
+        }
+      ],
+      "responses": [],
+      "shutdown": [
+        {
+          "shutdown_function": "0x80082d4",
+          "reason": 39
+        }
+      ],
+      "returned": false,
+      "budget_exhausted": false,
+      "reference": "0x654321",
+      "homing_reference_bits": "0x3f800000"
+    },
+    "saturation_already_shutdown": {
+      "transactions": [
+        {
+          "input": "0x800000",
+          "decoded": "0x800000",
+          "clock_pulses": 27
+        }
+      ],
+      "responses": [
+        {
+          "id": -8,
+          "data": "00008000"
+        }
+      ],
+      "shutdown": [],
+      "returned": true,
+      "budget_exhausted": false,
+      "reference": "0x654321",
+      "homing_reference_bits": "0x3f800000"
+    },
+    "zero_command_never_ready": {
+      "transactions": [],
+      "responses": [],
+      "shutdown": [],
+      "returned": false,
+      "budget_exhausted": true,
+      "reference": "0x654321",
+      "homing_reference_bits": "0x3f800000"
+    }
+  },
+  "host_retry": {
+    "before_ack": {
+      "sends": 1,
+      "pause_seconds": [],
+      "error": null,
+      "handler_removed": true
+    },
+    "during_wait": {
+      "sends": 2,
+      "pause_seconds": [
+        0.01
+      ],
+      "error": null,
+      "handler_removed": true
+    },
+    "never": {
+      "sends": 6,
+      "pause_seconds": [
+        0.01,
+        0.019999999999999997,
+        0.04000000000000001,
+        0.08000000000000002,
+        0.16000000000000003
+      ],
+      "error": "Unable to obtain 'query_cs1237_data' response",
+      "handler_removed": true
+    }
+  }
+}

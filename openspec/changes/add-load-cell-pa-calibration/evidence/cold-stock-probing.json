@@ -1,0 +1,233 @@
+{
+  "scope": "Installed QIDI-compatible probing after earlier capture deployment was removed and Klipper restarted; not immediate capture-to-probe validation.",
+  "commands": [
+    "G28",
+    "G90",
+    "G1 Z10 F480",
+    "G1 X195 Y195 F6000",
+    "PROBE_ACCURACY SAMPLES=5",
+    "Z_TILT_ADJUST",
+    "G28 Z",
+    "G90",
+    "G1 Z200 F480",
+    "OPTIMIZED_MOVE_TO_TRASH"
+  ],
+  "responses": [
+    "// probe at 195.001,195.002 is z=0.024688",
+    "// probe at 195.001,195.002 is z=0.003984",
+    "// probe at 195.001,195.002 is z=-0.005859",
+    "// probe at 195.001,195.002 is z=-0.008750",
+    "// probe at 195.001,195.002 is z=-0.009922",
+    "// probe accuracy results: maximum 0.024688, minimum -0.009922, range 0.034609, average 0.000828, median -0.005859, standard deviation 0.012894",
+    "// probe at 15.001,202.500 is z=0.016406",
+    "// probe at 15.001,202.500 is z=0.006328",
+    "// probe at 375.001,202.500 is z=0.011953",
+    "// probe at 375.001,202.500 is z=0.001172",
+    "// Making the following Z adjustments:\n// stepper_z = 0.061785\n// stepper_z1 = 0.056151",
+    "// Retries: 0/4 Probed points range: 0.004805 tolerance: 0.050000"
+  ],
+  "before": {
+    "toolhead": {
+      "homed_axes": "",
+      "axis_minimum": [
+        -2.0,
+        -5.0,
+        -5.0,
+        0.0
+      ],
+      "axis_maximum": [
+        392.0,
+        410.0,
+        342.0,
+        0.0
+      ],
+      "print_time": 1453.7741952689685,
+      "stalls": 0,
+      "estimated_print_time": 1757.5324367849776,
+      "extruder": "extruder",
+      "position": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "max_velocity": 800.0,
+      "max_accel": 10000.0,
+      "minimum_cruise_ratio": 0.5,
+      "square_corner_velocity": 8.0
+    },
+    "extruder": {
+      "temperature": 28.5,
+      "target": 0.0,
+      "power": 0.0,
+      "can_extrude": false,
+      "pressure_advance": 0.052,
+      "smooth_time": 0.03,
+      "motion_queue": null
+    },
+    "heater_bed": {
+      "temperature": 25.32,
+      "target": 0.0,
+      "power": 0.0
+    },
+    "gcode_move": {
+      "speed_factor": 1.0,
+      "speed": 1500.0,
+      "extrude_factor": 1.0,
+      "absolute_coordinates": true,
+      "absolute_extrude": true,
+      "homing_origin": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "position": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "gcode_position": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "base_position": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "homing_position": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_2": 25.0,
+      "speed_factor_2": 0.016666666666666666
+    },
+    "idle_timeout": {
+      "state": "Ready",
+      "printing_time": 0.0
+    }
+  },
+  "after": {
+    "print_stats": {
+      "filename": "",
+      "plateindex": "1",
+      "uid": "native",
+      "total_duration": 0.0,
+      "print_duration": 0.0,
+      "filament_used": 0.0,
+      "state": "standby",
+      "decompression_progress": 0.0,
+      "message": "",
+      "info": {
+        "total_layer": null,
+        "current_layer": null
+      }
+    },
+    "toolhead": {
+      "homed_axes": "xyz",
+      "axis_minimum": [
+        -2.0,
+        -5.0,
+        -5.0,
+        0.0
+      ],
+      "axis_maximum": [
+        392.0,
+        410.0,
+        342.0,
+        0.0
+      ],
+      "print_time": 1948.4781065443062,
+      "stalls": 0,
+      "estimated_print_time": 1974.600933947774,
+      "extruder": "extruder",
+      "position": [
+        135.0,
+        403.0,
+        200.0,
+        0.0
+      ],
+      "max_velocity": 800.0,
+      "max_accel": 10000.0,
+      "minimum_cruise_ratio": 0.5,
+      "square_corner_velocity": 8.0
+    },
+    "extruder": {
+      "temperature": 28.75,
+      "target": 0.0,
+      "power": 0.0,
+      "can_extrude": false,
+      "pressure_advance": 0.052,
+      "smooth_time": 0.03,
+      "motion_queue": null
+    },
+    "heater_bed": {
+      "temperature": 25.31,
+      "target": 0.0,
+      "power": 0.0
+    },
+    "gcode_move": {
+      "speed_factor": 1.0,
+      "speed": 1500.0,
+      "extrude_factor": 1.0,
+      "absolute_coordinates": true,
+      "absolute_extrude": true,
+      "homing_origin": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "position": [
+        135.0,
+        403.0,
+        200.0,
+        0.0
+      ],
+      "gcode_position": [
+        135.0,
+        403.0,
+        200.0,
+        0.0
+      ],
+      "base_position": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "homing_position": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_2": 25.0,
+      "speed_factor_2": 0.016666666666666666
+    },
+    "z_tilt": {
+      "applied": true
+    },
+    "probe_air": {
+      "name": "probe_air",
+      "last_query": false,
+      "last_z_result": 0.0
+    }
+  },
+  "restored": {
+    "pa_and_smoothing": true,
+    "motion_limits": true,
+    "gcode_modes_and_factors": true
+  },
+  "heated": false,
+  "extruded": false,
+  "mesh_tested": false,
+  "immediate_post_capture_probing_tested": false
+}

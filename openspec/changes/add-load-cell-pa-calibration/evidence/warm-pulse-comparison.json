@@ -1,0 +1,95 @@
+{
+  "description": "Median-three is an offline sensitivity comparison, not a validated filter. Host times are not conversion times.",
+  "runs": [
+    {
+      "trace": "warm-petg-success",
+      "samples": 100,
+      "metrics": {
+        "raw": {
+          "baseline_counts": -882901.0,
+          "peak_excursion_counts": 67362.0,
+          "tail_minus_baseline_counts": -89.0,
+          "half_amplitude_span_host_seconds": 0.8195602920022793
+        },
+        "median3": {
+          "baseline_counts": -882901.0,
+          "peak_excursion_counts": 66467.0,
+          "tail_minus_baseline_counts": -89.0,
+          "half_amplitude_span_host_seconds": 0.8195602920022793
+        }
+      }
+    },
+    {
+      "trace": "warm-petg-repeat1",
+      "samples": 100,
+      "metrics": {
+        "raw": {
+          "baseline_counts": -876827.5,
+          "peak_excursion_counts": 32872.5,
+          "tail_minus_baseline_counts": -1465.0,
+          "half_amplitude_span_host_seconds": 1.4558299590134993
+        },
+        "median3": {
+          "baseline_counts": -876827.5,
+          "peak_excursion_counts": 32587.5,
+          "tail_minus_baseline_counts": -1465.0,
+          "half_amplitude_span_host_seconds": 1.4558299590134993
+        }
+      }
+    },
+    {
+      "trace": "warm-petg-repeat2",
+      "samples": 100,
+      "metrics": {
+        "raw": {
+          "baseline_counts": -879169.5,
+          "peak_excursion_counts": 27752.5,
+          "tail_minus_baseline_counts": -1526.5,
+          "half_amplitude_span_host_seconds": 1.1655195420025848
+        },
+        "median3": {
+          "baseline_counts": -879169.5,
+          "peak_excursion_counts": 26773.5,
+          "tail_minus_baseline_counts": -1535.5,
+          "half_amplitude_span_host_seconds": 1.2060410840203986
+        }
+      }
+    },
+    {
+      "trace": "warm-petg-conditioned1",
+      "samples": 100,
+      "metrics": {
+        "raw": {
+          "baseline_counts": -875783.0,
+          "peak_excursion_counts": 71216.0,
+          "tail_minus_baseline_counts": -1351.0,
+          "half_amplitude_span_host_seconds": 0.7107721250504255
+        },
+        "median3": {
+          "baseline_counts": -875834.0,
+          "peak_excursion_counts": 69508.0,
+          "tail_minus_baseline_counts": -1300.0,
+          "half_amplitude_span_host_seconds": 0.7941596250166185
+        }
+      }
+    },
+    {
+      "trace": "warm-petg-conditioned2",
+      "samples": 100,
+      "metrics": {
+        "raw": {
+          "baseline_counts": -880990.0,
+          "peak_excursion_counts": 70908.0,
+          "tail_minus_baseline_counts": -862.0,
+          "half_amplitude_span_host_seconds": 0.7892205420066603
+        },
+        "median3": {
+          "baseline_counts": -880992.0,
+          "peak_excursion_counts": 70261.0,
+          "tail_minus_baseline_counts": -860.0,
+          "half_amplitude_span_host_seconds": 0.7892205420066603
+        }
+      }
+    }
+  ]
+}

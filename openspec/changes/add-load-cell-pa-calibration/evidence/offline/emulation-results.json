@@ -1,0 +1,217 @@
+{
+  "raw_ready": {
+    "handler": "0x800dbcc",
+    "ready": true,
+    "adc_reads": 1,
+    "responses": [
+      {
+        "response_id": -8,
+        "oid": 5,
+        "r2": 4,
+        "r3": "0x2000103a",
+        "data": "56341200"
+      }
+    ],
+    "timer_events": [],
+    "poll_interval_ticks": 0,
+    "before": {
+      "reference": 6636321,
+      "threshold_reference_bits": 1065353216
+    },
+    "after": {
+      "reference": 6636321,
+      "threshold_reference_bits": 1065353216
+    }
+  },
+  "raw_not_ready": {
+    "handler": "0x800dbcc",
+    "ready": false,
+    "adc_reads": 0,
+    "responses": [
+      {
+        "response_id": -8,
+        "oid": 5,
+        "r2": 4,
+        "r3": "0x2000103a",
+        "data": "11223300"
+      }
+    ],
+    "timer_events": [],
+    "poll_interval_ticks": 0,
+    "before": {
+      "reference": 6636321,
+      "threshold_reference_bits": 1065353216
+    },
+    "after": {
+      "reference": 6636321,
+      "threshold_reference_bits": 1065353216
+    }
+  },
+  "raw_zero_rejected": {
+    "handler": "0x800dbcc",
+    "ready": true,
+    "adc_reads": 4,
+    "responses": [
+      {
+        "response_id": -8,
+        "oid": 5,
+        "r2": 4,
+        "r3": "0x2000103a",
+        "data": "11223300"
+      }
+    ],
+    "timer_events": [],
+    "poll_interval_ticks": 0,
+    "before": {
+      "reference": 6636321,
+      "threshold_reference_bits": 1065353216
+    },
+    "after": {
+      "reference": 6636321,
+      "threshold_reference_bits": 1065353216
+    }
+  },
+  "raw_all_ones_fourth_attempt": {
+    "handler": "0x800dbcc",
+    "ready": true,
+    "adc_reads": 4,
+    "responses": [
+      {
+        "response_id": -8,
+        "oid": 5,
+        "r2": 4,
+        "r3": "0x2000103a",
+        "data": "ffffff00"
+      }
+    ],
+    "timer_events": [],
+    "poll_interval_ticks": 0,
+    "before": {
+      "reference": 6636321,
+      "threshold_reference_bits": 1065353216
+    },
+    "after": {
+      "reference": 6636321,
+      "threshold_reference_bits": 1065353216
+    }
+  },
+  "zero_read_only": {
+    "handler": "0x800bd74",
+    "ready": true,
+    "adc_reads": 0,
+    "responses": [
+      {
+        "response_id": -13,
+        "oid": 5,
+        "r2": 4,
+        "r3": "0x200077c4",
+        "data": "21436500"
+      }
+    ],
+    "timer_events": [],
+    "poll_interval_ticks": 0,
+    "before": {
+      "reference": 6636321,
+      "threshold_reference_bits": 1065353216
+    },
+    "after": {
+      "reference": 6636321,
+      "threshold_reference_bits": 1065353216
+    }
+  },
+  "zero": {
+    "handler": "0x800dc20",
+    "ready": true,
+    "adc_reads": 10,
+    "responses": [
+      {
+        "response_id": -12,
+        "oid": 5,
+        "r2": 4,
+        "r3": "0x200077b4",
+        "data": "56341200"
+      }
+    ],
+    "timer_events": [],
+    "poll_interval_ticks": 0,
+    "before": {
+      "reference": 6636321,
+      "threshold_reference_bits": 1065353216
+    },
+    "after": {
+      "reference": 1193046,
+      "threshold_reference_bits": 1076887336
+    }
+  },
+  "periodic_start_72000": {
+    "handler": "0x800c00c",
+    "ready": true,
+    "adc_reads": 0,
+    "responses": [],
+    "timer_events": [
+      {
+        "timer_call": "0x8008270",
+        "object": "0x20001000"
+      },
+      {
+        "timer_call": "0x80081f8",
+        "object": "0x20001000"
+      }
+    ],
+    "poll_interval_ticks": 36000,
+    "before": {
+      "reference": 6636321,
+      "threshold_reference_bits": 1065353216
+    },
+    "after": {
+      "reference": 6636321,
+      "threshold_reference_bits": 1065353216
+    }
+  },
+  "periodic_start_144000": {
+    "handler": "0x800c00c",
+    "ready": true,
+    "adc_reads": 0,
+    "responses": [],
+    "timer_events": [
+      {
+        "timer_call": "0x8008270",
+        "object": "0x20001000"
+      },
+      {
+        "timer_call": "0x80081f8",
+        "object": "0x20001000"
+      }
+    ],
+    "poll_interval_ticks": 36000,
+    "before": {
+      "reference": 6636321,
+      "threshold_reference_bits": 1065353216
+    },
+    "after": {
+      "reference": 6636321,
+      "threshold_reference_bits": 1065353216
+    }
+  },
+  "periodic_stop": {
+    "handler": "0x800c00c",
+    "ready": true,
+    "adc_reads": 0,
+    "responses": [],
+    "timer_events": [
+      {
+        "timer_call": "0x8008270",
+        "object": "0x20001000"
+      }
+    ],
+    "poll_interval_ticks": 0,
+    "before": {
+      "reference": 6636321,
+      "threshold_reference_bits": 1065353216
+    },
+    "after": {
+      "reference": 6636321,
+      "threshold_reference_bits": 1065353216
+    }
+  }
+}

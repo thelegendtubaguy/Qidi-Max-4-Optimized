@@ -1,0 +1,183 @@
+{
+  "readings": [
+    {
+      "video_seconds": 0,
+      "grams": -8
+    },
+    {
+      "video_seconds": 4,
+      "grams": 167
+    },
+    {
+      "video_seconds": 8,
+      "grams": 136
+    },
+    {
+      "video_seconds": 12,
+      "grams": -14
+    },
+    {
+      "video_seconds": 16,
+      "grams": 1573
+    },
+    {
+      "video_seconds": 18,
+      "grams": 1488
+    },
+    {
+      "video_seconds": 20,
+      "grams": 1539
+    },
+    {
+      "video_seconds": 22,
+      "grams": 1558
+    },
+    {
+      "video_seconds": 24,
+      "grams": 1897
+    },
+    {
+      "video_seconds": 26,
+      "grams": 2197
+    },
+    {
+      "video_seconds": 28,
+      "grams": 2087
+    },
+    {
+      "video_seconds": 30,
+      "grams": 2026
+    },
+    {
+      "video_seconds": 32,
+      "grams": 2088
+    },
+    {
+      "video_seconds": 34,
+      "grams": 1966
+    },
+    {
+      "video_seconds": 36,
+      "grams": 2015
+    },
+    {
+      "video_seconds": 38,
+      "grams": 1886
+    },
+    {
+      "video_seconds": 40,
+      "grams": 2025
+    },
+    {
+      "video_seconds": 44,
+      "grams": 274
+    },
+    {
+      "video_seconds": 48,
+      "grams": 191
+    },
+    {
+      "video_seconds": 52,
+      "grams": 383
+    },
+    {
+      "video_seconds": 54,
+      "grams": 868
+    },
+    {
+      "video_seconds": 56,
+      "grams": 968
+    },
+    {
+      "video_seconds": 58,
+      "grams": 1098
+    },
+    {
+      "video_seconds": 60,
+      "grams": 1971
+    },
+    {
+      "video_seconds": 62,
+      "grams": 1899
+    },
+    {
+      "video_seconds": 64,
+      "grams": 1927
+    },
+    {
+      "video_seconds": 66,
+      "grams": 2048
+    },
+    {
+      "video_seconds": 68,
+      "grams": 2087
+    },
+    {
+      "video_seconds": 72,
+      "grams": 3884
+    },
+    {
+      "video_seconds": 74,
+      "grams": 3839
+    },
+    {
+      "video_seconds": 76,
+      "grams": 4000
+    },
+    {
+      "video_seconds": 78,
+      "grams": 4069
+    },
+    {
+      "video_seconds": 80,
+      "grams": 3931
+    },
+    {
+      "video_seconds": 82,
+      "grams": 3952
+    },
+    {
+      "video_seconds": 84,
+      "grams": 3284
+    },
+    {
+      "video_seconds": 88,
+      "grams": 2729
+    }
+  ],
+  "fits": {
+    "all_loaded": {
+      "offset_seconds": -1.1399999999999992,
+      "intercept": -931126.9920361154,
+      "counts_per_gf": 159.96782814851696,
+      "r_squared_all_selected": 0.9929934171516401,
+      "n": 34
+    },
+    "below_2200": {
+      "offset_seconds": -1.1299999999999992,
+      "intercept": -928377.1267280988,
+      "counts_per_gf": 157.97708606216923,
+      "r_squared_all_selected": 0.9968520089560915,
+      "n": 26
+    },
+    "below_2000": {
+      "offset_seconds": -1.0999999999999992,
+      "intercept": -929105.606400585,
+      "counts_per_gf": 158.45218125893643,
+      "r_squared_all_selected": 0.9958664142880604,
+      "n": 18
+    },
+    "held_loads": {
+      "offset_seconds": -1.1299999999999992,
+      "intercept": -937900.5642633567,
+      "counts_per_gf": 162.0018188676295,
+      "r_squared_all_selected": 0.9995510173777357,
+      "n": 19
+    }
+  },
+  "video_filename": "PXL_20260917_221210750.mp4",
+  "video_sha256": "ab638d29801f6fa9846f4984e77f6b4c102bb89551120fe8105f697083e5f155",
+  "method": "Manually transcribed exact-time video frames; centered median-three raw counts; robust linear regression with a fitted clock/display offset; loaded points only.",
+  "provisional_counts_per_gf": 158.5,
+  "safety_note": "Video includes loads above the externally reported 2000 gf rating. Do not repeat these loads. Regression agreement is not proof of undamaged hardware."
+}

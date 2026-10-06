@@ -1,0 +1,121 @@
+{
+  "sha256": "1d34b4b0142f2a2047f08c2fae59d827bcee0adbd1563b4bd1de311dff8b2d62",
+  "flash_base": "0x8008000",
+  "command_table": "0x80101c4",
+  "commands_checked": 89,
+  "cs1237_commands": {
+    "config_cs1237 oid=%c dout_pin=%u sclk_pin=%c": {
+      "id": 88,
+      "record": "0x8010744",
+      "handler": "0x800d478",
+      "args": 3,
+      "param_count": 3
+    },
+    "cs1237_setup_home oid=%c clock=%u threshold=%u trsync_oid=%c trigger_reason=%c error_reason=%c filter=%u": {
+      "id": 84,
+      "record": "0x8010704",
+      "handler": "0x800b91c",
+      "args": 7,
+      "param_count": 7
+    },
+    "query_cs1237 oid=%c rest_ticks=%u": {
+      "id": 85,
+      "record": "0x8010714",
+      "handler": "0x800c00c",
+      "args": 2,
+      "param_count": 2
+    },
+    "query_cs1237_begin oid=%c config=%u": {
+      "id": 81,
+      "record": "0x80106d4",
+      "handler": "0x800d780",
+      "args": 2,
+      "param_count": 2
+    },
+    "query_cs1237_config_r oid=%c": {
+      "id": 80,
+      "record": "0x80106c4",
+      "handler": "0x800d738",
+      "args": 1,
+      "param_count": 1
+    },
+    "query_cs1237_home_state oid=%c": {
+      "id": 86,
+      "record": "0x8010724",
+      "handler": "0x800bd28",
+      "args": 1,
+      "param_count": 1
+    },
+    "query_cs1237_read oid=%c reg=%u read_len=%u": {
+      "id": 87,
+      "record": "0x8010734",
+      "handler": "0x800dbcc",
+      "args": 3,
+      "param_count": 3
+    },
+    "query_cs1237_zero oid=%c": {
+      "id": 83,
+      "record": "0x80106f4",
+      "handler": "0x800dc20",
+      "args": 1,
+      "param_count": 1
+    },
+    "query_cs1237_zero_read_only oid=%c": {
+      "id": 82,
+      "record": "0x80106e4",
+      "handler": "0x800bd74",
+      "args": 1,
+      "param_count": 1
+    }
+  },
+  "sensor_responses": {
+    "query_cs1237_zero_read_o oid=%c data=%*s": {
+      "id": -13,
+      "descriptor": "0x800f494",
+      "max_size": 64,
+      "parameter_count": 2
+    },
+    "query_cs1237_zero_read oid=%c data=%*s": {
+      "id": -12,
+      "descriptor": "0x800f49c",
+      "max_size": 64,
+      "parameter_count": 2
+    },
+    "cs1237_home_state oid=%c homing=%c trigger_clock=%u": {
+      "id": -11,
+      "descriptor": "0x800f4a4",
+      "max_size": 15,
+      "parameter_count": 3
+    },
+    "query_cs1237_zero_config_read oid=%c config=%u": {
+      "id": -10,
+      "descriptor": "0x800f4ac",
+      "max_size": 13,
+      "parameter_count": 2
+    },
+    "query_cs1237_begin_read oid=%c config=%u": {
+      "id": -9,
+      "descriptor": "0x800f4b4",
+      "max_size": 13,
+      "parameter_count": 2
+    },
+    "query_cs1237_data oid=%c data=%*s": {
+      "id": -8,
+      "descriptor": "0x800f4bc",
+      "max_size": 64,
+      "parameter_count": 2
+    },
+    "sensor_bulk_status oid=%c clock=%u query_ticks=%u next_sequence=%hu buffered=%u possible_overflows=%hu": {
+      "id": -7,
+      "descriptor": "0x800f4c4",
+      "max_size": 29,
+      "parameter_count": 6
+    },
+    "sensor_bulk_data oid=%c sequence=%hu data=%*s": {
+      "id": -6,
+      "descriptor": "0x800f4cc",
+      "max_size": 64,
+      "parameter_count": 3
+    }
+  }
+}

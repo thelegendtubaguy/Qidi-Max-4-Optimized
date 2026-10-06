@@ -1,0 +1,394 @@
+{
+  "status": "inconclusive_multi_flow_repeatability",
+  "orca_table": null,
+  "conversion_timestamps": false,
+  "numpy_version": "2.5.3",
+  "scipy_version": "1.18.1",
+  "note": "Negative/boundary-sensitive or inconsistent fits are retained, not converted to PA recommendations.",
+  "runs": [
+    {
+      "trace": "petg-table-4-fast.json",
+      "mean_flow_mm3_s": 4,
+      "samples": 800,
+      "median_spacing_seconds": 0.005043208017013967,
+      "whole_waveform_raw": {
+        "tau_seconds": 0.00411007888473807,
+        "delay_seconds": 0.004358976149335469,
+        "amplitude_counts": -1781.5687450145108,
+        "r_squared_all_samples": -0.009028069138751427,
+        "sample_count": 363
+      },
+      "whole_waveform_median3": {
+        "tau_seconds": 0.00416693395080098,
+        "delay_seconds": 0.004496811894265529,
+        "amplitude_counts": -1732.1119912650197,
+        "r_squared_all_samples": 0.5451098594299346,
+        "sample_count": 363
+      },
+      "integral_rising_steps_median3": [
+        {
+          "edge_seconds": 4.0,
+          "window_seconds": 0.12,
+          "tau_seconds": 0.014845926774406206,
+          "r_squared_all_samples": 0.9461448484869784,
+          "sample_count": 20
+        },
+        {
+          "edge_seconds": 4.0,
+          "window_seconds": 0.18,
+          "tau_seconds": 0.011549609112543208,
+          "r_squared_all_samples": 0.8282786418572272,
+          "sample_count": 30
+        },
+        {
+          "edge_seconds": 4.0,
+          "window_seconds": 0.24,
+          "tau_seconds": 0.01716592267426249,
+          "r_squared_all_samples": 0.9221178271559162,
+          "sample_count": 40
+        },
+        {
+          "edge_seconds": 5.0,
+          "window_seconds": 0.12,
+          "tau_seconds": 0.015160899915604428,
+          "r_squared_all_samples": 0.9630013529680904,
+          "sample_count": 19
+        },
+        {
+          "edge_seconds": 5.0,
+          "window_seconds": 0.18,
+          "tau_seconds": 0.013016622987030647,
+          "r_squared_all_samples": 0.7334252597201657,
+          "sample_count": 29
+        },
+        {
+          "edge_seconds": 5.0,
+          "window_seconds": 0.24,
+          "tau_seconds": 0.013308334100460837,
+          "r_squared_all_samples": 0.7098099424971356,
+          "sample_count": 39
+        }
+      ]
+    },
+    {
+      "trace": "petg-table-4-fast-b.json",
+      "mean_flow_mm3_s": 4,
+      "samples": 800,
+      "median_spacing_seconds": 0.005225791013799608,
+      "whole_waveform_raw": {
+        "tau_seconds": 0.005910403108590677,
+        "delay_seconds": 0.0026427591760158314,
+        "amplitude_counts": -2643.1142850026104,
+        "r_squared_all_samples": -0.019975754063345397,
+        "sample_count": 365
+      },
+      "whole_waveform_median3": {
+        "tau_seconds": 0.00648006430235786,
+        "delay_seconds": 0.0023640302759315203,
+        "amplitude_counts": -2601.5435107562334,
+        "r_squared_all_samples": 0.7319651415642432,
+        "sample_count": 365
+      },
+      "integral_rising_steps_median3": [
+        {
+          "edge_seconds": 4.0,
+          "window_seconds": 0.12,
+          "tau_seconds": 0.014577229499265086,
+          "r_squared_all_samples": 0.9676620274271046,
+          "sample_count": 21
+        },
+        {
+          "edge_seconds": 4.0,
+          "window_seconds": 0.18,
+          "tau_seconds": 0.04994253126426552,
+          "r_squared_all_samples": 0.9080462639672868,
+          "sample_count": 33
+        },
+        {
+          "edge_seconds": 4.0,
+          "window_seconds": 0.24,
+          "tau_seconds": 0.03511035814322155,
+          "r_squared_all_samples": 0.9502897501899541,
+          "sample_count": 42
+        },
+        {
+          "edge_seconds": 5.0,
+          "window_seconds": 0.12,
+          "tau_seconds": 0.017411928301508957,
+          "r_squared_all_samples": 0.9614910105885464,
+          "sample_count": 20
+        },
+        {
+          "edge_seconds": 5.0,
+          "window_seconds": 0.18,
+          "tau_seconds": 0.022528645726607833,
+          "r_squared_all_samples": 0.9108028314184383,
+          "sample_count": 30
+        },
+        {
+          "edge_seconds": 5.0,
+          "window_seconds": 0.24,
+          "tau_seconds": 0.03052836305830745,
+          "r_squared_all_samples": 0.9042982176406786,
+          "sample_count": 38
+        }
+      ]
+    },
+    {
+      "trace": "petg-table-10-fast.json",
+      "mean_flow_mm3_s": 10,
+      "samples": 800,
+      "median_spacing_seconds": 0.005131290992721915,
+      "whole_waveform_raw": {
+        "tau_seconds": 0.03864708460979478,
+        "delay_seconds": -0.0012654269641513547,
+        "amplitude_counts": -10398.90922560875,
+        "r_squared_all_samples": -0.0003040425690759019,
+        "sample_count": 361
+      },
+      "whole_waveform_median3": {
+        "tau_seconds": 0.03949698350631769,
+        "delay_seconds": -0.0014444607276266445,
+        "amplitude_counts": -10369.353494845582,
+        "r_squared_all_samples": 0.918752666912648,
+        "sample_count": 361
+      },
+      "integral_rising_steps_median3": [
+        {
+          "edge_seconds": 4.0,
+          "window_seconds": 0.12,
+          "tau_seconds": -0.07530342035531343,
+          "r_squared_all_samples": 0.8258842309503055,
+          "sample_count": 19
+        },
+        {
+          "edge_seconds": 4.0,
+          "window_seconds": 0.18,
+          "tau_seconds": -0.03233021623013552,
+          "r_squared_all_samples": 0.9071160828716159,
+          "sample_count": 30
+        },
+        {
+          "edge_seconds": 4.0,
+          "window_seconds": 0.24,
+          "tau_seconds": -0.3622715364015598,
+          "r_squared_all_samples": 0.9110987980659404,
+          "sample_count": 40
+        },
+        {
+          "edge_seconds": 5.0,
+          "window_seconds": 0.12,
+          "tau_seconds": 0.009807050671742305,
+          "r_squared_all_samples": 0.9683824637939744,
+          "sample_count": 20
+        },
+        {
+          "edge_seconds": 5.0,
+          "window_seconds": 0.18,
+          "tau_seconds": 0.021284908478888056,
+          "r_squared_all_samples": 0.9363732737446766,
+          "sample_count": 28
+        },
+        {
+          "edge_seconds": 5.0,
+          "window_seconds": 0.24,
+          "tau_seconds": 0.03927642565075118,
+          "r_squared_all_samples": 0.9175542785915988,
+          "sample_count": 39
+        }
+      ]
+    },
+    {
+      "trace": "petg-table-10-fast-b.json",
+      "mean_flow_mm3_s": 10,
+      "samples": 800,
+      "median_spacing_seconds": 0.0050525409751571715,
+      "whole_waveform_raw": {
+        "tau_seconds": 0.07288628971044488,
+        "delay_seconds": -0.005981942512490765,
+        "amplitude_counts": -16204.184432081358,
+        "r_squared_all_samples": 0.00507631685683152,
+        "sample_count": 364
+      },
+      "whole_waveform_median3": {
+        "tau_seconds": 0.07402933806174355,
+        "delay_seconds": -0.006392992881225341,
+        "amplitude_counts": -16331.703746514842,
+        "r_squared_all_samples": 0.9198900854343487,
+        "sample_count": 364
+      },
+      "integral_rising_steps_median3": [
+        {
+          "edge_seconds": 4.0,
+          "window_seconds": 0.12,
+          "tau_seconds": 0.05372014061524132,
+          "r_squared_all_samples": 0.9642094859772091,
+          "sample_count": 22
+        },
+        {
+          "edge_seconds": 4.0,
+          "window_seconds": 0.18,
+          "tau_seconds": -0.8469670090751933,
+          "r_squared_all_samples": 0.9435107008404252,
+          "sample_count": 35
+        },
+        {
+          "edge_seconds": 4.0,
+          "window_seconds": 0.24,
+          "tau_seconds": 0.1205548116640615,
+          "r_squared_all_samples": 0.9313096137734999,
+          "sample_count": 44
+        },
+        {
+          "edge_seconds": 5.0,
+          "window_seconds": 0.12,
+          "tau_seconds": 0.012431364630329213,
+          "r_squared_all_samples": 0.9770330544756965,
+          "sample_count": 20
+        },
+        {
+          "edge_seconds": 5.0,
+          "window_seconds": 0.18,
+          "tau_seconds": 0.011053936141675283,
+          "r_squared_all_samples": 0.9780131916613586,
+          "sample_count": 29
+        },
+        {
+          "edge_seconds": 5.0,
+          "window_seconds": 0.24,
+          "tau_seconds": 0.012037396554507812,
+          "r_squared_all_samples": 0.9779917919803031,
+          "sample_count": 40
+        }
+      ]
+    },
+    {
+      "trace": "petg-table-18-fast.json",
+      "mean_flow_mm3_s": 18,
+      "samples": 800,
+      "median_spacing_seconds": 0.005064500030130148,
+      "whole_waveform_raw": {
+        "tau_seconds": 0.028375298687776992,
+        "delay_seconds": 0.0015784445916597208,
+        "amplitude_counts": -38551.26778638403,
+        "r_squared_all_samples": 0.18592558116362556,
+        "sample_count": 370
+      },
+      "whole_waveform_median3": {
+        "tau_seconds": 0.02839235846170307,
+        "delay_seconds": 0.0015615222228689426,
+        "amplitude_counts": -38551.237185352096,
+        "r_squared_all_samples": 0.9903185999119017,
+        "sample_count": 370
+      },
+      "integral_rising_steps_median3": [
+        {
+          "edge_seconds": 4.0,
+          "window_seconds": 0.12,
+          "tau_seconds": 0.023489880024913465,
+          "r_squared_all_samples": 0.9888462898116724,
+          "sample_count": 20
+        },
+        {
+          "edge_seconds": 4.0,
+          "window_seconds": 0.18,
+          "tau_seconds": 0.021881509100720023,
+          "r_squared_all_samples": 0.9876744422368453,
+          "sample_count": 32
+        },
+        {
+          "edge_seconds": 4.0,
+          "window_seconds": 0.24,
+          "tau_seconds": 0.019261238682824304,
+          "r_squared_all_samples": 0.984394280671417,
+          "sample_count": 43
+        },
+        {
+          "edge_seconds": 5.0,
+          "window_seconds": 0.12,
+          "tau_seconds": 0.041997583298394904,
+          "r_squared_all_samples": 0.9954399950338536,
+          "sample_count": 18
+        },
+        {
+          "edge_seconds": 5.0,
+          "window_seconds": 0.18,
+          "tau_seconds": 0.025884904039743365,
+          "r_squared_all_samples": 0.989825818048482,
+          "sample_count": 28
+        },
+        {
+          "edge_seconds": 5.0,
+          "window_seconds": 0.24,
+          "tau_seconds": 0.02219008824112334,
+          "r_squared_all_samples": 0.980350138574716,
+          "sample_count": 38
+        }
+      ]
+    },
+    {
+      "trace": "petg-table-18-fast-b.json",
+      "mean_flow_mm3_s": 18,
+      "samples": 800,
+      "median_spacing_seconds": 0.00531766697531566,
+      "whole_waveform_raw": {
+        "tau_seconds": 0.026520028190140342,
+        "delay_seconds": 0.006389055499559964,
+        "amplitude_counts": -47796.95447391354,
+        "r_squared_all_samples": 0.0014965701690534683,
+        "sample_count": 365
+      },
+      "whole_waveform_median3": {
+        "tau_seconds": 0.026417837719018383,
+        "delay_seconds": 0.006582804464054902,
+        "amplitude_counts": -47786.23654368207,
+        "r_squared_all_samples": 0.9246570868459139,
+        "sample_count": 365
+      },
+      "integral_rising_steps_median3": [
+        {
+          "edge_seconds": 4.0,
+          "window_seconds": 0.12,
+          "tau_seconds": 0.04341861643977714,
+          "r_squared_all_samples": 0.9800577217839495,
+          "sample_count": 20
+        },
+        {
+          "edge_seconds": 4.0,
+          "window_seconds": 0.18,
+          "tau_seconds": 0.022010545232225766,
+          "r_squared_all_samples": 0.9634565079749939,
+          "sample_count": 32
+        },
+        {
+          "edge_seconds": 4.0,
+          "window_seconds": 0.24,
+          "tau_seconds": 0.02178570032185559,
+          "r_squared_all_samples": 0.964335394786862,
+          "sample_count": 40
+        },
+        {
+          "edge_seconds": 5.0,
+          "window_seconds": 0.12,
+          "tau_seconds": 0.023314087620714657,
+          "r_squared_all_samples": 0.9903336380080373,
+          "sample_count": 19
+        },
+        {
+          "edge_seconds": 5.0,
+          "window_seconds": 0.18,
+          "tau_seconds": 0.02306056793999085,
+          "r_squared_all_samples": 0.9892741153112193,
+          "sample_count": 29
+        },
+        {
+          "edge_seconds": 5.0,
+          "window_seconds": 0.24,
+          "tau_seconds": 0.021165953492394824,
+          "r_squared_all_samples": 0.9878900439514706,
+          "sample_count": 39
+        }
+      ]
+    }
+  ]
+}
