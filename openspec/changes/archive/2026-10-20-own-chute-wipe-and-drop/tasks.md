@@ -11,4 +11,5 @@
 
 - [x] 2.1 Install on the printer and confirm a fresh Box start, a retained-filament start, and an end-print cleanup each wipe, leave the chute, and re-enter it with waste released.
   - Operator confirmed 2026-10-19: a multi-color Box print on `.07.01` with the chute-drop macros completed; filament changes and wiping looked good. A retained-filament start was not separately exercised.
-- [ ] 2.2 On `01.01.07.01`, confirm a slicer filament change goes from the print straight to the cutter, cuts, and then visits the chute once.
+- [x] 2.2 On `01.01.07.01`, confirm a slicer filament change goes from the print straight to the cutter, cuts, and then visits the chute once.
+  - Operator confirmed 2026-10-20.
