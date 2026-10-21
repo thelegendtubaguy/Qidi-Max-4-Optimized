@@ -194,6 +194,26 @@ Normal install and update SHALL apply recognized Moonraker metadata optimization
 - **AND** repeated reconciliation retains the first restore preimage without accumulating backups
 - **AND** accepted uninstall restoration reverts only the unchanged installed file; concurrent changes and operator drift are preserved
 
+### Requirement: Recoverable Fluidd QIDI Box filament display
+Normal install and update SHALL patch the recognized QIDI Fluidd bundle so QIDI Box slots display filament IDs and colors saved by QIDI firmware `01.01.07.01`, independently of optional OS optimization policy, retaining the original bundle and preserving unrecognized or operator-modified bundles.
+
+#### Scenario: Firmware filament IDs and RGB colors display in Fluidd
+- **WHEN** a present QIDI Box slot stores a filament ID such as `QFA90` and a color such as `["228332"]`
+- **THEN** Fluidd shows the filament name and type from the firmware filament database and the saved RGB color instead of `?` and a transparent spool
+- **AND** an unknown filament ID displays as its ID
+- **AND** legacy numeric filament and color IDs still resolve through `officiall_filas_list.cfg`
+- **AND** Fluidd's filament and color pickers and the values they save are unchanged
+
+#### Scenario: Unrecognized Fluidd bundles are preserved
+- **WHEN** the configured bundle is missing or does not match the reviewed slot-parsing and filament-list source
+- **THEN** the bundle is left unchanged and the outcome is recorded without failing other host patches
+
+#### Scenario: Fluidd deployment remains reversible
+- **WHEN** the recognized bundle requires the patch
+- **THEN** the installer backs up the original bytes and replaces the file atomically without restarting services
+- **AND** repeated reconciliation retains the first restore preimage
+- **AND** accepted uninstall restoration reverts only the unchanged installed bundle; concurrent changes and operator drift are preserved
+
 ### Requirement: Safe unattended updates
 Automatic updates SHALL require durable operator enrollment, use the same admission, ownership, recovery, activation, and persisted host-policy rules as direct installation, and advance release state only after successful activation.
 

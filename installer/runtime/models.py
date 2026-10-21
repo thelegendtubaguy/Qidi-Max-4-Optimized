@@ -219,6 +219,11 @@ class SystemMoonrakerMetadata3mfSpec:
 
 
 @dataclass(frozen=True)
+class SystemFluiddBundleSpec:
+    file: str
+
+
+@dataclass(frozen=True)
 class SystemRockchipRootSyncSpec:
     id: str
     unit: str
@@ -243,6 +248,7 @@ class SystemOptimizationsSpec:
     qidiclient_static_gifs: SystemQidiClientStaticGifsSpec
     moonraker_metadata_3mf: SystemMoonrakerMetadata3mfSpec
     moonraker_file_manager: SystemMoonrakerMetadata3mfSpec
+    fluidd_box_filament_ids: SystemFluiddBundleSpec
     rockchip_root_sync: SystemRockchipRootSyncSpec
 
 

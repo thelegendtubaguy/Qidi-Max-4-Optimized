@@ -59,6 +59,14 @@ Manual 3MF metadata rescans use the archive extractor and keep existing QIDI thu
 
 Unrecognized source is preserved and reported. Uninstall can restore the original source through its system-restoration prompt; files modified after installation are preserved.
 
+### QIDI Box filament names and colors in Fluidd
+
+QIDI firmware `01.01.07.01` saves Box filaments with new IDs such as `QFA90` and stores colors as RGB values, but its bundled Fluidd still expects the older numeric IDs. Without a fix, loaded slots show `?` and an empty spool.
+
+Install and update patch QIDI's Fluidd so Box slots show the filament name and color, including when optional OS optimizations are skipped. Slots set before the firmware update keep displaying as before. Fluidd's filament and color pickers are unchanged. Reload Fluidd in the browser after installing; a hard refresh may be needed if the browser cached the old page.
+
+A Fluidd build the installer does not recognize is left unchanged. Uninstall can restore the original Fluidd through its system-restoration prompt; files modified after installation are preserved.
+
 ### QIDI Box temperature from Fluidd
 
 The installer adds `TLTG_SET_BOX_TEMP`, a macro for setting the QIDI Box heater target because Qidi's Fluidd config is incapable of setting `heater_box1` correctly.

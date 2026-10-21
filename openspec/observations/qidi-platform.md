@@ -33,6 +33,8 @@
 - **Config-confirmed:** QIDI's `gcode.py` comments out the `Unknown command` response, so unregistered commands are silently ignored. `_CG28`, called by stock `CUT_FILAMENT_1`, has not been defined in any captured firmware.
 - **Runtime-confirmed:** after updating a printer with an optimized install to `.07.01`, live `printer.cfg` was byte-identical to the stock package and `config/tltg-optimized-macros/` was absent.
 - **Runtime-confirmed:** with no RS-485 adapter attached, `box485` logs that its serial device cannot be opened and then repeatedly logs `Can not find 485 device`; Klipper otherwise reaches ready.
+- **Config-confirmed:** the SOC payload ships Fluidd `v1.30.5` with active bundle `/home/qidi/fluidd/assets/index-DlFvHGAh.js`, SHA-256 `178b2e076d3a75716819ee13f9ea1f0c92e536546c8b2adafde8632f6723710c`, byte-identical to the `01.01.06.05` SOC payload. Its QIDI Box card still parses saved slot values with `parseInt` and resolves them through `officiall_filas_list.cfg`; see [material metadata](qidi-box/material-metadata.md).
+- **Runtime-confirmed:** Fluidd is served by nginx over plain HTTP with `ETag` and `Last-Modified` but no explicit expiry for `/assets/`; `index.html` is `no-store`. Browsers do not register its Workbox service worker over a plain-HTTP LAN address.
 
 ## Rockchip first-boot service and root mount
 

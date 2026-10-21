@@ -10,6 +10,7 @@ from subprocess import CompletedProcess
 from unittest import mock
 
 from installer.runtime import system_optimizations
+from installer.runtime.fluidd_box_filaments import OPERATION as FLUIDD_BOX_OPERATION, PATCH_MARKER
 from installer.runtime.cli import resolve_runtime_paths
 from installer.runtime.compatibility import load_supported_upgrade_sources
 from installer.runtime.errors import InstalledPackageValidationError
@@ -44,12 +45,14 @@ from installer.tests.helpers import (
 class SystemOptimizationFlowTests(unittest.TestCase):
     def test_system_optimization_dry_run_install_and_uninstall_lifecycle(self):
         printer_root = copy_base_runtime()
-        system_root = fake_system_root(include_moonraker_cache=True)
+        system_root = fake_system_root(include_moonraker_cache=True, include_fluidd_bundle=True)
         host_run = fake_host_run(system_root)
         moonraker = system_root / "home/qidi/moonraker/moonraker/components/file_manager/file_manager.py"
         moonraker.write_bytes(moonraker.read_bytes().replace(b"\n", b"\r\n"))
         moonraker_before = moonraker.read_bytes()
         moonraker.chmod(0o640)
+        fluidd = system_root / "home/qidi/fluidd/assets/index-DlFvHGAh.js"
+        fluidd_before = fluidd.read_bytes()
         before = snapshot_tree(system_root)
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
         env[SYSTEM_ROOT_ENV] = str(system_root)
@@ -122,6 +125,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertNotEqual(moonraker.read_bytes(), moonraker_before)
         self.assertIn(b"\r\n", moonraker.read_bytes())
         self.assertEqual(moonraker.stat().st_mode & 0o777, 0o640)
+        self.assertIn(FLUIDD_BOX_OPERATION, state.system_ledger["restore_preimages"])
+        self.assertIn(PATCH_MARKER.encode(), fluidd.read_bytes())
         prior_preimage = state.system_ledger["restore_preimages"][cache_id]
         cache_policy = {**state.system_ledger, "policy": {"system_optimizations": "disabled", "ai_detection": "unset"}}
         reconciled = apply_system_optimizations(
@@ -155,6 +160,30 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertFalse(dropin.exists())
         self.assertEqual(moonraker.read_bytes(), moonraker_before)
         self.assertEqual(moonraker.stat().st_mode & 0o777, 0o640)
+        self.assertEqual(fluidd.read_bytes(), fluidd_before)
+
+    def test_unreviewed_fluidd_bundle_is_preserved_without_blocking_other_patches(self):
+        printer_root = copy_base_runtime()
+        root = fake_system_root(include_moonraker_cache=True, include_fluidd_bundle=True)
+        env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
+        env[SYSTEM_ROOT_ENV] = str(root)
+        paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
+        manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
+        fluidd = root / manifest.system_optimizations.fluidd_box_filament_ids.file.lstrip("/")
+        fluidd.write_text(fluidd.read_text().replace('"officiallFilasList",e)', '"officiallFilasList",e||{})'))
+        original = fluidd.read_bytes()
+
+        ledger = apply_system_optimizations(
+            paths=paths, spec=manifest.system_optimizations,
+            ledger={"policy": {"system_optimizations": "disabled", "ai_detection": "unset"}},
+            reporter=PlainReporter(io.StringIO()), input_stream=None,
+            environ=env, source="yes_install", run=fake_host_run(root),
+        )
+
+        self.assertEqual(fluidd.read_bytes(), original)
+        self.assertEqual(ledger["outcomes"][FLUIDD_BOX_OPERATION]["status"], "unsupported")
+        self.assertNotIn(FLUIDD_BOX_OPERATION, ledger["restore_preimages"])
+        self.assertIn(system_optimizations.MOONRAKER_CACHE_OPERATION, ledger["restore_preimages"])
 
     def test_moonraker_cache_admission_and_restart_failure_preserve_source(self):
         for fault in ("unknown", "unknown_metascan", "symlink", "restart", "concurrent"):

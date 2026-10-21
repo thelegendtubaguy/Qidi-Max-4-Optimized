@@ -25,6 +25,14 @@ The installer payloads are modified QIDI/Klipper homing sources. `homing.py` was
 - License: GPL-3.0-only
 - Path: `config/fluidd.cfg`
 
+### QIDI Fluidd box filament source
+
+- Upstream: <https://github.com/fluidd-core/fluidd>
+- License: GPL-3.0-only
+- Path: `installer/tests/fixtures/fluidd_box_variables.js`
+
+The fixture contains the unmodified minified `getVariables` getter and printer-store mutations extracted from the QIDI Max 4 firmware `01.01.07.01` Fluidd `v1.30.5` bundle `/home/qidi/fluidd/assets/index-DlFvHGAh.js`. Fluidd is distributed under GNU GPLv3.
+
 ### QIDI Moonraker metadata storage
 
 - Upstream: <https://github.com/Arksine/moonraker>

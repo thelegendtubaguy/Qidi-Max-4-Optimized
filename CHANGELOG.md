@@ -1,5 +1,9 @@
 # Changelog
 
+## 26.10.20.1
+- Fixed QIDI Box slots in Fluidd showing `?` and an empty spool on firmware `01.01.07.01`. That firmware saves filaments with new IDs such as `QFA90` and colors as RGB values, which QIDI's bundled Fluidd could not read. Install and update now patch the recognized Fluidd build so Box slots show the filament name and color, including when optional OS optimizations are skipped. Slots set before the firmware update display as before, and Fluidd's filament and color pickers are unchanged. Reload Fluidd in the browser after installing.
+- Unrecognized Fluidd builds are left unchanged without blocking other install steps. Uninstall can restore the original Fluidd file; files modified after installation are preserved.
+
 ## 26.10.19.2
 - Optimized chute wipes now release waste with their own motion instead of QIDI's `CLEAR_FLUSH`, which QIDI's `01.01.07.01` tool-change flow no longer uses. After each wipe the toolhead still leaves the chute and re-enters it so the waste drops, now with the optimized trash approach speed and with motion settings restored afterward. Wipe patterns, cleanup stages, and temperature gates are unchanged, and QIDI's own Box tool-change cleanup is untouched.
 - Fixed a double filament cut on `01.01.07.01`: `26.10.19.1` let QIDI's tool-change flow cut only when the slicer passed a parameter that the published OrcaSlicer and QIDI Studio packs do not send, so both cuts ran. The macros now detect a print-time filament change on their own, so the published slicer packs cut once with no slicer update.

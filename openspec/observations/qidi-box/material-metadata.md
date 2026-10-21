@@ -1,6 +1,6 @@
 # QIDI Box material metadata observations
 
-Runtime mappings apply to QIDI Max 4 firmware `01.01.06.04`; the `.05` missing-key behavior is config-confirmed from `klipper/klippy/extras/save_variables.py`.
+Numeric runtime mappings apply to QIDI Max 4 firmware `01.01.06.04`; the `.05` missing-key behavior is config-confirmed from `klipper/klippy/extras/save_variables.py`.
 
 Saved variables store IDs:
 
@@ -21,6 +21,14 @@ vendor_slot2 = 0 -> Generic
 ```
 
 Firmware `01.01.06.05` changes only the fallback for absent `filament_slot0..16` and `color_slot0..16` keys from ID `0` to ID `1`. Existing persisted keys are unchanged, `vendor_slot0..16` fallback behavior is unchanged, and `config/officiall_filas_list.cfg` retains ID `1` as `PLA Rapido` and color `#FAFAFA`.
+
+## Firmware `01.01.07.01` filament IDs
+
+- **Config-confirmed:** the SOC payload adds `/home/qidi/QIDI_Client/resource/filament_config/filament-{0.2,0.4,0.6,0.8}.json`, keyed by display name with string `filament_id` values such as `QFA00` (`QIDI PLA Basic`) and `QFA90` (`Generic PLA`). The 0.4 mm file has 56 entries and is a superset of the other nozzle files. `officiall_filas_list.cfg` is unchanged.
+- **Static-recovered:** `box2base` rejects IDs not shaped like `QFA00` and colors that are not 6-digit RGB values; `multi_color_controller` references both the 0.4 mm JSON and `officiall_filas_list.cfg`, and `box_rfid`, `box2base`, and `multi_color_controller` carry `LEGACY_RFID_FILAMENT_ID_MAP` and `LEGACY_RFID_COLOR_MAP`. None of these strings occur in the `01.01.06.05` modules.
+- **Runtime-confirmed:** slots set after updating store `filament_slotN = 'QFA90'` and `color_slotN = ['228332']` (a list of uppercase RGB strings without `#`, including values absent from `[colordict]`), while untouched slots keep numeric IDs such as `filament_slot6 = 18` and `color_slot6 = 23`; `vendor_slotN` stays numeric.
+- **Runtime-confirmed:** stock Fluidd shows those `QF` slots as `?` with a transparent spool, because `parseInt` turns the string ID into `NaN` and the RGB value into a missing `[colordict]` key.
+- **Unresolved:** whether the firmware rewrites numeric IDs saved by Fluidd's filament picker into `QF` IDs, and the full legacy-to-`QF` mapping.
 
 ## Filaments
 

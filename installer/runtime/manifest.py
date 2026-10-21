@@ -27,6 +27,7 @@ from .models import (
     StateSpec,
     SystemAptSourcesSpec,
     SystemDnsSpec,
+    SystemFluiddBundleSpec,
     SystemOptionalServiceSpec,
     SystemOptimizationsSpec,
     SystemQidiClientStaticGifsSpec,
@@ -337,6 +338,7 @@ def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec 
     gifs_raw = _require_mapping(system_raw, "qidiclient_static_gifs")
     moonraker_metadata_raw = _require_mapping(system_raw, "moonraker_metadata_3mf")
     moonraker_file_manager_raw = _require_mapping(system_raw, "moonraker_file_manager")
+    fluidd_box_raw = _require_mapping(system_raw, "fluidd_box_filament_ids")
     rockchip_raw = _require_mapping(system_raw, "rockchip_root_sync")
     optional_raw = services_raw.get("optional_disable", [])
     if not isinstance(optional_raw, list):
@@ -384,6 +386,9 @@ def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec 
         moonraker_file_manager=SystemMoonrakerMetadata3mfSpec(
             file=_validate_absolute_path(_require_str(moonraker_file_manager_raw, "file")),
             restart_service=_require_str(moonraker_file_manager_raw, "restart_service"),
+        ),
+        fluidd_box_filament_ids=SystemFluiddBundleSpec(
+            file=_validate_absolute_path(_require_str(fluidd_box_raw, "file")),
         ),
         rockchip_root_sync=_parse_rockchip_root_sync(rockchip_raw),
     )

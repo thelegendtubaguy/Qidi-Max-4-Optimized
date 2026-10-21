@@ -6,7 +6,7 @@ package:
   id: qidi-max4-optimized
   display_name: QIDI Max 4 Optimized
   printer_model: qidi-max4
-  version: "26.10.19.2"
+  version: "26.10.20.1"
   known_versions:
     - "26.04.21.1"
     - "26.04.27.1"
@@ -42,6 +42,7 @@ package:
     - "26.09.15.1"
     - "26.10.19.1"
     - "26.10.19.2"
+    - "26.10.20.1"
 
 firmware:
   supported:
@@ -492,6 +493,8 @@ system_optimizations:
   moonraker_metadata_3mf:
     file: /home/qidi/moonraker/moonraker/components/file_manager/metadata.py
     restart_service: moonraker.service
+  fluidd_box_filament_ids:
+    file: /home/qidi/fluidd/assets/index-DlFvHGAh.js
   rockchip_root_sync:
     id: rockchip_root_sync
     unit: rockchip.service
