@@ -224,6 +224,12 @@ class SystemFluiddBundleSpec:
 
 
 @dataclass(frozen=True)
+class SystemFluiddFilamentConfigSpec:
+    link: str
+    target: str
+
+
+@dataclass(frozen=True)
 class SystemRockchipRootSyncSpec:
     id: str
     unit: str
@@ -249,6 +255,7 @@ class SystemOptimizationsSpec:
     moonraker_metadata_3mf: SystemMoonrakerMetadata3mfSpec
     moonraker_file_manager: SystemMoonrakerMetadata3mfSpec
     fluidd_box_filament_ids: SystemFluiddBundleSpec
+    fluidd_filament_config: SystemFluiddFilamentConfigSpec
     rockchip_root_sync: SystemRockchipRootSyncSpec
 
 

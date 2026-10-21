@@ -5,6 +5,7 @@ from typing import Any, Iterable
 
 import yaml
 
+from .backup import CONFIG_BACKUP_IGNORED_SYMLINKS
 from .models import (
     BackupSpec,
     EnsureLineSpec,
@@ -28,6 +29,7 @@ from .models import (
     SystemAptSourcesSpec,
     SystemDnsSpec,
     SystemFluiddBundleSpec,
+    SystemFluiddFilamentConfigSpec,
     SystemOptionalServiceSpec,
     SystemOptimizationsSpec,
     SystemQidiClientStaticGifsSpec,
@@ -339,6 +341,7 @@ def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec 
     moonraker_metadata_raw = _require_mapping(system_raw, "moonraker_metadata_3mf")
     moonraker_file_manager_raw = _require_mapping(system_raw, "moonraker_file_manager")
     fluidd_box_raw = _require_mapping(system_raw, "fluidd_box_filament_ids")
+    filament_config_raw = _require_mapping(system_raw, "fluidd_filament_config")
     rockchip_raw = _require_mapping(system_raw, "rockchip_root_sync")
     optional_raw = services_raw.get("optional_disable", [])
     if not isinstance(optional_raw, list):
@@ -389,6 +392,10 @@ def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec 
         ),
         fluidd_box_filament_ids=SystemFluiddBundleSpec(
             file=_validate_absolute_path(_require_str(fluidd_box_raw, "file")),
+        ),
+        fluidd_filament_config=SystemFluiddFilamentConfigSpec(
+            link=_validate_filament_config_link(_require_str(filament_config_raw, "link")),
+            target=_validate_absolute_path(_require_str(filament_config_raw, "target")),
         ),
         rockchip_root_sync=_parse_rockchip_root_sync(rockchip_raw),
     )
@@ -490,6 +497,14 @@ def _validate_relative_path(path: str, *, allowed_roots: tuple[str, ...]) -> str
         allowed = ", ".join(allowed_roots)
         raise ManifestValidationError(f"Path must start with one of {allowed}: {path}")
     return pure.as_posix()
+
+
+def _validate_filament_config_link(path: str) -> str:
+    link = _validate_relative_path(path, allowed_roots=("config",))
+    # Config backups refuse unlisted symlinks, so the link must be one they preserve.
+    if PurePosixPath(link).relative_to("config").as_posix() not in CONFIG_BACKUP_IGNORED_SYMLINKS:
+        raise ManifestValidationError(f"Filament config link is not preserved by config backups: {path}")
+    return link
 
 
 def _validate_managed_tree_mode(mode: str) -> str:

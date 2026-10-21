@@ -23,7 +23,8 @@ from .naming import UNINSTALL_BACKUP_LABEL_PREFIX
 
 UNKNOWN_FIRMWARE_TOKEN = "unknown-firmware"
 INSTALLER_BACKUP_RETENTION = 3
-CONFIG_BACKUP_IGNORED_SYMLINKS = ("KAMP", "fluidd.cfg")
+# Vendor links plus the installer-owned QIDI filament database link.
+CONFIG_BACKUP_IGNORED_SYMLINKS = ("KAMP", "fluidd.cfg", "qidi_filament_config")
 CONFIG_BACKUP_IGNORED_SYMLINK_PARTS = tuple(
     Path(path).parts for path in CONFIG_BACKUP_IGNORED_SYMLINKS
 )

@@ -73,6 +73,17 @@ Older supported firmware keeps Fluidd's original pickers. Reload Fluidd in the b
 
 A Fluidd build the installer does not recognize is left unchanged. Uninstall can restore the original Fluidd through its system-restoration prompt; files modified after installation are preserved.
 
+### Editing the QIDI filament list
+
+On `01.01.07.01`, the touchscreen's Vendor and Filament lists come from QIDI's filament files. Install and update add a `qidi_filament_config` folder to Fluidd's configuration files that opens them, so you can add or adjust filaments from Fluidd:
+
+- `filament-0.4.json` is the list for the 0.4 mm nozzle; the other files cover the other nozzle sizes. Right-click a file and choose Edit.
+- To add a filament, copy an entry of the same material and give it a new name, a new unused `filament_id`, and the vendor to list it under. A new vendor name adds that vendor to the pickers.
+- The file must stay valid JSON; a missing comma or bracket can break the touchscreen's filament list.
+- Restart the printer after saving so the touchscreen and Box pick up the change, then reload Fluidd.
+
+Firmware updates replace these files, so keep a copy of any entries you add. Files in this folder are QIDI's own files, not copies: they are not part of the installer's configuration backups, and deleting one in Fluidd deletes it from the printer. If `qidi_filament_config` already exists, the installer leaves it alone. Uninstall's system-restoration prompt removes the link but never your edits.
+
 ### QIDI Box temperature from Fluidd
 
 The installer adds `TLTG_SET_BOX_TEMP`, a macro for setting the QIDI Box heater target because Qidi's Fluidd config is incapable of setting `heater_box1` correctly.

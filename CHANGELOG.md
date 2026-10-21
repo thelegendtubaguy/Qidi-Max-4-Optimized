@@ -1,5 +1,9 @@
 # Changelog
 
+## 26.10.21.1
+- On firmware `01.01.07.01`, install and update add a `qidi_filament_config` folder to Fluidd's configuration files, including when optional OS optimizations are skipped. It opens the touchscreen's filament list (`filament-0.4.json` and the other nozzle sizes) so entries can be added or edited from Fluidd; restart the printer after saving so the touchscreen and Box pick up the change. Firmware updates replace these files and discard custom entries.
+- The folder is a link to QIDI's own files and is not included in installer configuration backups. An existing `qidi_filament_config` entry is left unchanged, and uninstall's system-restoration prompt removes only the installer's link.
+
 ## 26.10.20.2
 - On firmware `01.01.07.01`, Fluidd's QIDI Box card now shows the filament, vendor, and color the printer is actually using for each slot. That firmware treats filaments chosen with the older numeric IDs, including those set in Fluidd before this release, as QIDI PLA Basic with its temperatures; such slots now show QIDI PLA Basic so they can be corrected.
 - Fluidd's Box Vendor and Filament pickers now match the touchscreen on `01.01.07.01`: they list QIDI, Generic, Bambu, HATCHBOX, Overture, and Polymaker filaments from the firmware's filament list and save them the way the touchscreen does. Changing the vendor selects that vendor's filament of the same type when one exists, and colors are saved in the touchscreen's format. Older firmware keeps Fluidd's original pickers.

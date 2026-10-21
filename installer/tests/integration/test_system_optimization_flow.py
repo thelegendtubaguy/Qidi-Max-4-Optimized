@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import io
 import json
+import os
 import shutil
 import unittest
 from pathlib import Path
@@ -12,6 +13,7 @@ from unittest import mock
 from installer.runtime import system_optimizations
 from installer.runtime import fluidd_box_filaments as fluidd_patch
 from installer.runtime.fluidd_box_filaments import OPERATION as FLUIDD_BOX_OPERATION, PATCH_MARKER
+from installer.runtime.fluidd_filament_config import OPERATION as FILAMENT_CONFIG_OPERATION
 from installer.runtime.cli import resolve_runtime_paths
 from installer.runtime.compatibility import load_supported_upgrade_sources
 from installer.runtime.errors import InstalledPackageValidationError
@@ -46,7 +48,7 @@ from installer.tests.helpers import (
 class SystemOptimizationFlowTests(unittest.TestCase):
     def test_system_optimization_dry_run_install_and_uninstall_lifecycle(self):
         printer_root = copy_base_runtime()
-        system_root = fake_system_root(include_moonraker_cache=True, include_fluidd_bundle=True)
+        system_root = fake_system_root(include_moonraker_cache=True, include_fluidd_bundle=True, include_filament_config=True)
         host_run = fake_host_run(system_root)
         moonraker = system_root / "home/qidi/moonraker/moonraker/components/file_manager/file_manager.py"
         moonraker.write_bytes(moonraker.read_bytes().replace(b"\n", b"\r\n"))
@@ -128,6 +130,10 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(moonraker.stat().st_mode & 0o777, 0o640)
         self.assertIn(FLUIDD_BOX_OPERATION, state.system_ledger["restore_preimages"])
         self.assertIn(PATCH_MARKER.encode(), fluidd.read_bytes())
+        filament_config = manifest.system_optimizations.fluidd_filament_config
+        filament_link = printer_root / filament_config.link
+        self.assertEqual(os.readlink(filament_link), filament_config.target)
+        self.assertIn(FILAMENT_CONFIG_OPERATION, state.system_ledger["restore_preimages"])
         fluidd_current = fluidd.read_bytes()
         # Package 26.10.20.1 left an earlier owned Fluidd patch that updates must replace in place.
         fluidd_previous = fluidd_before.decode().replace(fluidd_patch.SLOT_PARSE_STOCK, fluidd_patch.SLOT_PARSE_PATCHED).replace(
@@ -146,6 +152,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(reconciled["restore_preimages"][cache_id], prior_preimage)
         self.assertEqual(fluidd.read_bytes(), fluidd_current)
         self.assertEqual(reconciled["restore_preimages"][FLUIDD_BOX_OPERATION], fluidd_preimage)
+        self.assertEqual(os.readlink(filament_link), filament_config.target)
         write_installed_state(printer_root / manifest.state_file, _replace_system_ledger(state, reconciled))
 
         run_uninstall(
@@ -172,6 +179,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(moonraker.read_bytes(), moonraker_before)
         self.assertEqual(moonraker.stat().st_mode & 0o777, 0o640)
         self.assertEqual(fluidd.read_bytes(), fluidd_before)
+        self.assertFalse(filament_link.is_symlink())
 
     def test_unreviewed_fluidd_bundle_is_preserved_without_blocking_other_patches(self):
         printer_root = copy_base_runtime()
@@ -339,7 +347,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
 
     def test_uninstall_preserves_user_modified_host_state(self):
         printer_root = copy_base_runtime()
-        system_root = fake_system_root(include_moonraker_cache=True)
+        system_root = fake_system_root(include_moonraker_cache=True, include_filament_config=True)
         host_run = fake_host_run(system_root)
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
         env[SYSTEM_ROOT_ENV] = str(system_root)
@@ -358,6 +366,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         moonraker = system_root / manifest.system_optimizations.moonraker_file_manager.file.lstrip("/")
         drifted = moonraker.read_bytes() + b"\n# operator modification outside the patched class\n"
         moonraker.write_bytes(drifted)
+        filament_link = printer_root / manifest.system_optimizations.fluidd_filament_config.link
+        filament_link.unlink()
+        filament_link.symlink_to("/home/qidi/operator_filaments")
         state = load_installed_state(printer_root / manifest.state_file)
         cache_policy = {**state.system_ledger, "policy": {"system_optimizations": "disabled", "ai_detection": "unset"}}
         reconciled = apply_system_optimizations(
@@ -366,6 +377,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             source="auto_update_reconcile", run=host_run,
         )
         self.assertEqual(moonraker.read_bytes(), drifted)
+        self.assertEqual(os.readlink(filament_link), "/home/qidi/operator_filaments")
         write_installed_state(printer_root / manifest.state_file, _replace_system_ledger(state, reconciled))
         (system_root / "etc/apt/sources.list").write_text("operator apt\n", encoding="utf-8")
         report = io.StringIO()
@@ -376,6 +388,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         )
         self.assertEqual((system_root / "etc/apt/sources.list").read_text(encoding="utf-8"), "operator apt\n")
         self.assertEqual(moonraker.read_bytes(), drifted)
+        self.assertEqual(os.readlink(filament_link), "/home/qidi/operator_filaments")
 
     def test_legacy_host_preimages_migrate_and_restore(self):
         printer_root = copy_base_runtime()

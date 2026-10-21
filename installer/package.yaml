@@ -6,7 +6,7 @@ package:
   id: qidi-max4-optimized
   display_name: QIDI Max 4 Optimized
   printer_model: qidi-max4
-  version: "26.10.20.2"
+  version: "26.10.21.1"
   known_versions:
     - "26.04.21.1"
     - "26.04.27.1"
@@ -44,6 +44,7 @@ package:
     - "26.10.19.2"
     - "26.10.20.1"
     - "26.10.20.2"
+    - "26.10.21.1"
 
 firmware:
   supported:
@@ -496,6 +497,9 @@ system_optimizations:
     restart_service: moonraker.service
   fluidd_box_filament_ids:
     file: /home/qidi/fluidd/assets/index-DlFvHGAh.js
+  fluidd_filament_config:
+    link: config/qidi_filament_config
+    target: /home/qidi/QIDI_Client/resource/filament_config
   rockchip_root_sync:
     id: rockchip_root_sync
     unit: rockchip.service

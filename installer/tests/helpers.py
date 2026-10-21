@@ -79,7 +79,9 @@ def build_env(printer_data_root: Path, *, moonraker_url: str) -> dict[str, str]:
 
 
 
-def fake_system_root(*, include_moonraker_cache: bool = False, include_fluidd_bundle: bool = False) -> Path:
+def fake_system_root(
+    *, include_moonraker_cache: bool = False, include_fluidd_bundle: bool = False, include_filament_config: bool = False
+) -> Path:
     root = temp_path("system-optimization-flow-")
     (root / "etc/resolvconf/resolv.conf.d").mkdir(parents=True)
     (root / "etc/resolv.conf").write_text("nameserver 114.114.114.114\n", encoding="utf-8")
@@ -105,6 +107,10 @@ def fake_system_root(*, include_moonraker_cache: bool = False, include_fluidd_bu
         fluidd = root / "home/qidi/fluidd/assets/index-DlFvHGAh.js"
         fluidd.parent.mkdir(parents=True)
         shutil.copyfile(REPO_ROOT / "installer/tests/fixtures/fluidd_box_variables.js", fluidd)
+    if include_filament_config:
+        filaments = root / "home/qidi/QIDI_Client/resource/filament_config/filament-0.4.json"
+        filaments.parent.mkdir(parents=True)
+        filaments.write_text("{}\n", encoding="utf-8")
     gif = root / "home/qidi/QIDI_Client/access/account/process.gif"
     gif.parent.mkdir(parents=True)
     gif.write_bytes(b"old")

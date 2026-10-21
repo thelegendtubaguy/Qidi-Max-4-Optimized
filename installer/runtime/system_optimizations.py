@@ -15,7 +15,9 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
 from . import messages
+from . import fluidd_filament_config as filament_config
 from .fluidd_box_filaments import OPERATION as FLUIDD_BOX_OPERATION, patch_fluidd_bundle
+from .fluidd_filament_config import OPERATION as FILAMENT_CONFIG_OPERATION
 from .moonraker_file_manager import OPERATION as MOONRAKER_CACHE_OPERATION, patch_file_manager
 from .auto_update import current_auto_update_checksum
 from .errors import InstallerError
@@ -30,6 +32,7 @@ from .models import (
     SystemOptimizationsSpec,
     SystemRockchipRootSyncSpec,
 )
+from .path_safety import ensure_runtime_path_has_no_symlink_components
 from .state_file import StateValidationError, load_installed_state, write_installed_state
 from .sudo import authenticate_sudo, run_sudo, run_sudo_ignore_failure, run_sudo_or_raise
 
@@ -310,6 +313,16 @@ def maybe_emit_system_dry_run(
             except InstallerError as exc:
                 reporter.line(f"  - would preserve {guarded.label}: {exc}")
             continue
+        if operation_id == FILAMENT_CONFIG_OPERATION and _system_root_allowed(paths=paths, environ=environ):
+            state = _filament_config_state(paths, manifest.system_optimizations, _system_root(environ))
+            link = manifest.system_optimizations.fluidd_filament_config.link
+            reporter.line({
+                filament_config.ABSENT: f"  - would link {link} to the QIDI filament database",
+                filament_config.CURRENT: f"  - {operation_id}: already current",
+                filament_config.CONFLICT: f"  - would preserve existing {link}",
+                filament_config.TARGET_MISSING: f"  - {operation_id}: QIDI filament database missing",
+            }[state])
+            continue
         if operation_id == ROCKCHIP_ROOT_SYNC_OPERATION:
             if not _system_root_allowed(paths=paths, environ=environ):
                 reporter.line(f"  - would evaluate {operation_id}")
@@ -360,6 +373,26 @@ def maybe_prompt_restore_system_optimizations(
         instruction=messages.SYSTEM_RESTORE_PROMPT_INSTRUCTION,
         cancel_message=messages.SYSTEM_RESTORE_SKIPPED,
     )
+
+
+def _filament_config_link(paths: RuntimePaths, spec: SystemOptimizationsSpec) -> Path:
+    link = paths.printer_data_root / spec.fluidd_filament_config.link
+    ensure_runtime_path_has_no_symlink_components(printer_data_root=paths.printer_data_root, target=link.parent)
+    return link
+
+
+def _filament_config_state(paths: RuntimePaths, spec: SystemOptimizationsSpec, root: Path) -> str:
+    config = spec.fluidd_filament_config
+    return filament_config.link_state(
+        _filament_config_link(paths, spec),
+        target=config.target,
+        target_present=_map_path(root, config.target).is_dir(),
+    )
+
+
+def _restore_filament_config_link(paths: RuntimePaths, spec: SystemOptimizationsSpec) -> None:
+    if not filament_config.remove_link(_filament_config_link(paths, spec), target=spec.fluidd_filament_config.target):
+        raise SystemOptimizationRecoveryError("QIDI filament config link changed during the transaction; preserving it for recovery.")
 
 
 def _outcome_file_sha256(outcome: dict[str, Any]) -> str | None:
@@ -430,7 +463,11 @@ def restore_system_optimizations(
             if _path_has_symlink_component(target, root=root) or not target.is_file() or hashlib.sha256(target.read_bytes()).hexdigest() != expected:
                 reporter.line(f"{guarded.label} was modified after install and was preserved.")
                 continue
-        if operation_id != ROCKCHIP_ROOT_SYNC_OPERATION and guarded is None and _operation_needs_apply(
+        if operation_id == FILAMENT_CONFIG_OPERATION:
+            if _filament_config_state(paths, manifest.system_optimizations, root) != filament_config.CURRENT:
+                reporter.line(f"{manifest.system_optimizations.fluidd_filament_config.link} was modified after install and was preserved.")
+                continue
+        elif operation_id != ROCKCHIP_ROOT_SYNC_OPERATION and guarded is None and _operation_needs_apply(
             operation_id, spec=manifest.system_optimizations, root=root, run=run
         ):
             reporter.line(f"System optimization {operation_id} was modified after install and was preserved.")
@@ -469,6 +506,8 @@ def restore_system_optimizations(
         elif operation_id == MOONRAKER_METADATA_OPERATION:
             _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
             _restart_service("moonraker.service", root=root, sudo_password=sudo_password, run=run)
+        elif operation_id == FILAMENT_CONFIG_OPERATION:
+            _restore_filament_config_link(paths, manifest.system_optimizations)
         elif guarded is not None:
             _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
             if guarded.restart_service:
@@ -592,6 +631,56 @@ def apply_system_optimizations(
                         )
                     )
                     continue
+            if operation_id == FILAMENT_CONFIG_OPERATION:
+                config = spec.fluidd_filament_config
+                state = _filament_config_state(paths, spec, root)
+                if state == filament_config.CURRENT and operation_id in restore_preimages:
+                    continue
+                if state != filament_config.ABSENT:
+                    if state == filament_config.CONFLICT:
+                        reporter.line(f"{config.link} already exists and was preserved.")
+                    actions.append(
+                        _action_record(
+                            operation_id=operation_id,
+                            status={filament_config.CURRENT: "already_current", filament_config.CONFLICT: "preserved"}.get(state, "missing"),
+                            started_at=started_at,
+                            preimage=None,
+                            desired=_desired(operation_id, spec),
+                            postflight={"path": config.link, "state": state},
+                            source=source,
+                            reconciled=False,
+                        )
+                    )
+                    continue
+                preimage = {"path": config.link, "exists": False}
+                current_preimages[operation_id] = preimage
+                _write_host_journal(
+                    paths,
+                    operation_id=operation_id,
+                    transaction_id=uuid.uuid4().hex,
+                    phase="apply",
+                    preimage=preimage,
+                    preimages=current_preimages,
+                )
+                filament_config.create_link(_filament_config_link(paths, spec), target=config.target)
+                if _filament_config_state(paths, spec, root) != filament_config.CURRENT:
+                    raise SystemOptimizationError(f"{config.link} failed postflight.")
+                actions.append(
+                    _action_record(
+                        operation_id=operation_id,
+                        status="applied",
+                        started_at=started_at,
+                        preimage=preimage,
+                        desired=_desired(operation_id, spec),
+                        postflight={"path": config.link, "state": filament_config.CURRENT},
+                        source=source,
+                        reconciled=source in {"auto_update_child", "auto_update_reconcile"},
+                    )
+                )
+                restore_preimages.setdefault(operation_id, preimage)
+                atomic_delete(_journal_path(paths))
+                applied_any = True
+                continue
             if operation_id == ROCKCHIP_ROOT_SYNC_OPERATION:
                 classification = _classify_rockchip_operation(
                     paths=paths,
@@ -856,6 +945,7 @@ def apply_system_optimizations(
             _restore_preimage_map(
                 current_preimages,
                 paths=paths,
+                spec=spec,
                 root=root,
                 sudo_password=sudo_password,
                 run=run,
@@ -1229,7 +1319,7 @@ def _apply_fake_gif_metadata(*, destination: Path, replaced: list[str], metadata
             (destination / relative).chmod(int(str(mode), 8))
 
 
-def _restore_preimage_map(preimages: dict[str, Any], *, paths: RuntimePaths, root: Path, sudo_password: str | None, run) -> None:
+def _restore_preimage_map(preimages: dict[str, Any], *, paths: RuntimePaths, spec: SystemOptimizationsSpec, root: Path, sudo_password: str | None, run) -> None:
     for operation_id in reversed(list(preimages.keys())):
         preimage = preimages[operation_id]
         if operation_id == "dns":
@@ -1243,6 +1333,8 @@ def _restore_preimage_map(preimages: dict[str, Any], *, paths: RuntimePaths, roo
             _restore_gifs(preimage, root=root, sudo_password=sudo_password, run=run)
         elif operation_id in GUARDED_FILE_PATCHES:
             _restore_guarded_file_preimage(operation_id, preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
+        elif operation_id == FILAMENT_CONFIG_OPERATION:
+            _restore_filament_config_link(paths, spec)
         elif operation_id == MOONRAKER_METADATA_OPERATION:
             _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
             _restart_service("moonraker.service", root=root, sudo_password=sudo_password, run=run)
@@ -1298,6 +1390,9 @@ def _operation_matches_preimage(
 ) -> bool:
     if operation_id == "dns":
         return all(_file_matches_preimage(item, root=root) for item in preimage.get("files", []))
+    if operation_id == FILAMENT_CONFIG_OPERATION:
+        link = paths.printer_data_root / str(preimage.get("path", ""))
+        return not link.exists() and not link.is_symlink()
     if operation_id in {"apt_sources", MOONRAKER_METADATA_OPERATION, *GUARDED_FILE_PATCHES}:
         item = preimage.get("file", preimage)
         return isinstance(item, dict) and _file_matches_preimage(item, root=root)
@@ -1955,7 +2050,7 @@ def _path_has_symlink_component(path: Path, *, root: Path) -> bool:
 
 
 def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any]) -> tuple[str, ...]:
-    ids = [MOONRAKER_METADATA_OPERATION, MOONRAKER_CACHE_OPERATION, FLUIDD_BOX_OPERATION]
+    ids = [MOONRAKER_METADATA_OPERATION, MOONRAKER_CACHE_OPERATION, FLUIDD_BOX_OPERATION, FILAMENT_CONFIG_OPERATION]
     if policy.get("system_optimizations") != "enabled":
         return tuple(ids)
     ids.extend(["dns", "apt_sources", "qidiclient_static_gifs"])
@@ -2001,6 +2096,8 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
         return {"path": spec.moonraker_file_manager.file, "restart_service": spec.moonraker_file_manager.restart_service}
     if operation_id == FLUIDD_BOX_OPERATION:
         return {"path": spec.fluidd_box_filament_ids.file}
+    if operation_id == FILAMENT_CONFIG_OPERATION:
+        return {"path": spec.fluidd_filament_config.link, "target": spec.fluidd_filament_config.target}
     if operation_id == MOONRAKER_METADATA_OPERATION:
         return {"path": spec.moonraker_metadata_3mf.file, "restart_service": spec.moonraker_metadata_3mf.restart_service}
     if operation_id == ROCKCHIP_ROOT_SYNC_OPERATION:
@@ -2450,6 +2547,7 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             MOONRAKER_METADATA_OPERATION,
             MOONRAKER_CACHE_OPERATION,
             FLUIDD_BOX_OPERATION,
+            FILAMENT_CONFIG_OPERATION,
             ROCKCHIP_ROOT_SYNC_OPERATION,
             *(f"service_{service}" for service in spec.services.disable),
             *(f"service_{item.service}" for item in spec.services.optional_disable),
@@ -2479,6 +2577,11 @@ def _validate_host_preimage(
         return
     if operation_id in GUARDED_FILE_PATCHES:
         _validate_host_file_preimage(preimage, expected_path=GUARDED_FILE_PATCHES[operation_id].file(spec), paths=paths)
+        return
+    if operation_id == FILAMENT_CONFIG_OPERATION:
+        # The link is only ever created where nothing existed, so restoration is removal.
+        if preimage != {"path": spec.fluidd_filament_config.link, "exists": False}:
+            raise StateValidationError("QIDI filament config link restoration preimage is invalid.")
         return
     if operation_id == MOONRAKER_METADATA_OPERATION:
         _validate_host_file_preimage(preimage, expected_path=spec.moonraker_metadata_3mf.file, paths=paths)
@@ -2868,6 +2971,9 @@ def _restore_preimage_for_operation(
         return
     if operation_id in GUARDED_FILE_PATCHES:
         _restore_guarded_file_preimage(operation_id, preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
+        return
+    if operation_id == FILAMENT_CONFIG_OPERATION:
+        _restore_filament_config_link(paths, spec)
         return
     if operation_id == MOONRAKER_METADATA_OPERATION:
         _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)

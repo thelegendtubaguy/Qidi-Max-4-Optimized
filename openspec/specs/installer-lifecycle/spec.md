@@ -222,6 +222,26 @@ Normal install and update SHALL patch the recognized QIDI Fluidd bundle so its Q
 - **AND** a bundle carrying an earlier package patch is updated in place while the first restore preimage is retained
 - **AND** accepted uninstall restoration reverts only the unchanged installed bundle; concurrent changes and operator drift are preserved
 
+### Requirement: QIDI filament database in Fluidd
+Normal install and update SHALL expose QIDI's touchscreen filament database directory as `config/qidi_filament_config` in Fluidd's configuration files, independently of optional OS optimization policy, without copying, backing up, or modifying the database files.
+
+#### Scenario: Link is created where the database exists
+- **WHEN** the QIDI filament database directory exists and `config/qidi_filament_config` is absent
+- **THEN** the installer creates a symlink to the directory and records ownership for restoration
+- **AND** reconciliation recreates an owned link that is absent and leaves a current link unchanged
+
+#### Scenario: Missing databases and existing entries are preserved
+- **WHEN** the database directory is missing or `config/qidi_filament_config` already exists as anything other than the installer's link
+- **THEN** no link is created, the existing entry is left unchanged, and the outcome is recorded without failing other host operations
+
+#### Scenario: Config backups tolerate the link
+- **WHEN** an install, update, uninstall, or restore backs up or restores `config/`
+- **THEN** the link is neither followed nor archived, and a restore keeps an existing link
+
+#### Scenario: Restoration removes only the installer's link
+- **WHEN** accepted uninstall restoration or transaction recovery runs
+- **THEN** the link is removed only while it still points at the database directory; an operator-replaced entry is preserved
+
 ### Requirement: Safe unattended updates
 Automatic updates SHALL require durable operator enrollment, use the same admission, ownership, recovery, activation, and persisted host-policy rules as direct installation, and advance release state only after successful activation.
 
