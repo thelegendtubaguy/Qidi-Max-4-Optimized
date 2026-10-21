@@ -169,7 +169,7 @@ Optimized macros SHALL keep external-spool runout policy independent from vendor
 - **AND** manual mapping reset is permitted only while the printer is idle
 
 ### Requirement: Safe print transitions and helpers
-Optimized cut, purge, cooldown, cleaning, calibration, and cancellation helpers SHALL preserve caller state, guard optional hardware, and avoid delayed or error-path actions that can affect a subsequent print. Print-start cleaning SHALL preserve staged cooldown wiping with mixed-speed pre-scrape motion and use fast finishing after the cooled rear-bed scrape, with detailed motion and branch ordering controlled by `openspec/contracts/gcode-paths/start-print.path.json`.
+Optimized cut, purge, cooldown, cleaning, calibration, and cancel helpers SHALL preserve caller state, guard optional hardware, and avoid delayed or error-path actions that can affect a later print. Print-start cleaning SHALL keep staged cooldown wiping with mixed-speed pre-scrape motion and fast finishing after the cooled rear-bed scrape, as ordered by `openspec/contracts/gcode-paths/start-print.path.json`. Chute wipes SHALL release waste with package-owned motion, not vendor cleanup commands.
 
 #### Scenario: Cut and cleanup preserve caller state
 - **WHEN** optimized cut, purge, chute, chamber, or Box-heater helpers run
@@ -180,7 +180,9 @@ Optimized cut, purge, cooldown, cleaning, calibration, and cancellation helpers 
 #### Scenario: Slicer filament change avoids a double cut on every firmware
 - **WHEN** an optimized slicer filament change runs
 - **THEN** exactly one cut occurs: the optimized cut when the vendor tool-change flow is absent, or the vendor flow's cut when it is present
-- **AND** the same slicer G-code remains correct with older installed optimized macros and with older supported firmware
+- **AND** when the vendor flow is present, the toolhead goes from the print to the cutter without first visiting the chute; the vendor flow moves to the chute after cutting
+- **AND** the optimized macros recognize a slicer filament change from print state, so slicer G-code passes no tool-change parameter
+- **AND** the same slicer G-code remains correct with older supported firmware
 
 #### Scenario: Optimized cut keeps the vendor reliability sequence
 - **WHEN** the optimized filament cut or the stock-named cutter macro used by vendor flows runs
@@ -212,6 +214,12 @@ Optimized cut, purge, cooldown, cleaning, calibration, and cancellation helpers 
 - **AND** the wipe itself performs no extrusion, Y/Z repositioning, heater changes, fixed dwell, or bed scraping
 - **AND** retained-filament startup, non-start purge cleanup, manual loading, unload cleanup, staged end cleanup, vendor cleanup commands, and slicer filament-change sequences retain their existing behavior
 - **AND** retained-filament startup does not gain a rear-bed scrape or post-scrape sequence
+
+#### Scenario: Chute waste release does not depend on vendor cleanup commands
+- **WHEN** an optimized chute wipe finishes
+- **THEN** the toolhead leaves the chute and re-enters it at the trash position so the waste drops
+- **AND** vendor `CLEAR_FLUSH` and `CLEAR_OOZE` are not called, so the release still happens on firmware that removes them
+- **AND** caller motion modes and acceleration are restored
 
 #### Scenario: End-print performs staged cooldown safely
 - **WHEN** normal slicer end G-code runs
