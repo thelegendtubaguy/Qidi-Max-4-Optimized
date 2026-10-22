@@ -6,16 +6,24 @@ import argparse
 import hashlib
 import json
 import logging
+import os
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 MANIFEST = Path(__file__).resolve().parents[1] / "firmware/max4-thr-lis2dw-fifo-v1.json"
+if __package__:
+    from . import thr_bootloaders
+else:
+    import thr_bootloaders
+
+identify_bootloader = thr_bootloaders.identify_bootloader
+
 DEVICE = "/dev/ttyS4"
-BOOT_SHA256 = "46358f306156edbdee1822dcca17206f78241b01a7e96587215860c4b0d34fc6"
-BOOT_REPLY = bytes.fromhex("01020102")
+UNSUPPORTED_BOOTLOADER = 3
 SERVICES = ("klipper.service", "qidi-client.service", "tltg-optimized-auto-update.timer")
 
 
@@ -34,15 +42,16 @@ def admitted_image(data: bytes, manifest: dict) -> str:
 def load_backup(directory: Path, manifest: dict) -> tuple[bytes, bytes]:
     boot = (directory / "bootloader.bin").read_bytes()
     app = (directory / "application.bin").read_bytes()
-    if len(boot) != 0x8000 or digest(boot) != BOOT_SHA256:
-        raise ValueError("Unrecognized bootloader backup")
+    identify_bootloader(boot)
     admitted_image(app, manifest)
     return boot, app
 
 
-def verify_readback(image: bytes, directory: Path, manifest: dict) -> dict:
+def verify_readback(image: bytes, directory: Path, manifest: dict, *, expected_bootloader: bytes | None = None) -> dict:
     expected = admitted_image(image, manifest)
     boot, app = load_backup(directory, manifest)
+    if expected_bootloader is not None and boot != expected_bootloader:
+        raise ValueError("Bootloader readback differs from the original backup")
     if app != image:
         raise ValueError("Application readback does not match the selected image")
     return {"verified": True, "application_sha256": expected, "bootloader_sha256": digest(boot)}
@@ -88,8 +97,9 @@ class RetryPacket(Exception):
 
 
 class Bootloader:
-    def __init__(self, port, clock=time.monotonic):
+    def __init__(self, port, profile, clock=time.monotonic):
         self.port = port
+        self.profile = profile
         self.clock = clock
         self.buffer = bytearray()
 
@@ -139,7 +149,7 @@ class Bootloader:
         def accept(kind, reply):
             if kind != 0:
                 return False
-            if reply != BOOT_REPLY:
+            if reply != self.profile.identity_reply:
                 raise ValueError("Unrecognized THR bootloader identity; no erase command sent")
             return True
         return self.exchange(0, b"\x01\x00", accept)
@@ -149,7 +159,7 @@ class Bootloader:
         self.probe()
         # A start acknowledgement can be lost after erase; do not repeat that boundary.
         self.exchange(1, b"\x01\x00" + len(image).to_bytes(4, "big"),
-                      lambda kind, reply: kind == 1 and reply == b"\x01\x01", attempts=1)
+                      lambda kind, reply: kind == 1 and reply == self.profile.start_reply, attempts=1)
         for index, offset in enumerate(range(0, len(image), 1024)):
             data = image[offset:offset + 1024]
             header = index.to_bytes(4, "big") + len(data).to_bytes(2, "big")
@@ -162,15 +172,16 @@ class Bootloader:
                     raise ValueError("Unexpected THR data acknowledgement status")
                 return True
 
-            # Packet zero is not idempotent in this bootloader. Only a valid NACK
-            # proves it was rejected; silence or a damaged ACK must stop the write.
-            self.exchange(2, header + data, accepted, retry_timeout=index != 0)
-        self.exchange(1, b"\x02\x01", lambda kind, reply: kind == 1 and reply == b"\x02\x01",
+            # Only a valid NACK proves an unsafe-to-repeat packet was rejected.
+            self.exchange(2, header + data, accepted,
+                          retry_timeout=index != 0 or self.profile.packet_zero_retry_safe)
+        self.exchange(1, b"\x02\x01", lambda kind, reply: kind == 1 and reply == self.profile.end_reply,
                       attempts=1)
         return {"transfer_acknowledged": True, "verified": False, "application_sha256": image_hash}
 
 
-def application_session(manifest: dict, *, reset: bool = False) -> tuple[bytes, bytes]:
+def application_session(manifest: dict, *, reset: bool = False,
+                        expected_boot: bytes | None = None, capture_root: Path | None = None):
     # Reuse the installed vendor transport without its unrelated AVR reset preamble.
     sys.path.insert(0, "/home/qidi/klipper/klippy")
     import reactor
@@ -189,18 +200,37 @@ def application_session(manifest: dict, *, reset: bool = False) -> tuple[bytes, 
             constants = reader.get_msgparser().get_constants()
             if constants.get("MCU") != "stm32f103xe" or int(constants["SERIAL_BAUD"]) != 500000:
                 raise ValueError("Unexpected application identity")
-            data = bytearray()
-            for offset in range(0, 0x8000 + manifest["thr"]["size"], 4):
+            def read(address, order=2):
                 response = reader.send_with_response(
-                    "debug_read order=2 addr=%d" % (0x08000000 + offset), "debug_result"
+                    "debug_read order=%d addr=%d" % (order, address), "debug_result"
                 )
-                data.extend(int(response["val"]).to_bytes(4, "little"))
-            boot, app = bytes(data[:0x8000]), bytes(data[0x8000:])
-            if digest(boot) != BOOT_SHA256:
-                raise ValueError("Unrecognized installed bootloader; no reset sent")
-            admitted_image(app, manifest)
-            result["snapshot"] = boot, app
+                return int(response["val"])
+
+            version, build_versions = reader.get_msgparser().get_version_info()
+            metadata = {"version": version, "build_versions": build_versions,
+                        "constants": {key: constants[key] for key in ("MCU", "CLOCK_FREQ", "SERIAL_BAUD") if key in constants},
+                        "id_registers": {name: hex(read(address, order)) for name, address, order in (
+                            ("cpuid", 0xe000ed00, 2), ("dbgmcu_idcode", 0xe0042000, 2),
+                            ("flash_size_kib", 0x1ffff7e0, 1))}}
+            boot = b"".join(read(address).to_bytes(4, "little")
+                            for address in range(0x08000000, 0x08008000, 4))
+            supported = len(boot) == 0x8000 and digest(boot) in thr_bootloaders.ADMITTED_BOOTLOADERS
+            length = manifest["thr"]["size"] if supported else 0x18000
+            region = b"".join(read(address).to_bytes(4, "little")
+                              for address in range(0x08008000, 0x08008000 + length, 4))
+            app = region[:manifest["thr"]["size"]]
+            result["snapshot"] = boot, app, metadata, region
             if reset:
+                if not supported:
+                    if capture_root is None:
+                        raise ValueError("Unrecognized installed bootloader; no reset sent")
+                    directory = Path(tempfile.mkdtemp(prefix="unsupported-thr-", dir=capture_root))
+                    save_snapshot(directory, boot, app, metadata=metadata, application_region=region)
+                    raise ValueError("Unrecognized installed bootloader; no reset sent. Capture: " + str(directory))
+                identify_bootloader(boot)
+                admitted_image(app, manifest)
+                if expected_boot is None or boot != expected_boot:
+                    raise ValueError("Installed bootloader differs from backup; no reset sent")
                 reader.send("reset")
                 loop.pause(loop.monotonic() + 0.050)
         except Exception as exc:
@@ -210,10 +240,10 @@ def application_session(manifest: dict, *, reset: bool = False) -> tuple[bytes, 
             loop.end()
 
     def timed_out(signum, frame):
-        raise TimeoutError("THR application operation exceeded 180 seconds")
+        raise TimeoutError("THR application operation exceeded 900 seconds")
 
     previous_handler = signal.signal(signal.SIGALRM, timed_out)
-    signal.alarm(180)
+    signal.alarm(900)
     loop.register_callback(run)
     try:
         loop.run()
@@ -226,14 +256,24 @@ def application_session(manifest: dict, *, reset: bool = False) -> tuple[bytes, 
     return result["snapshot"]
 
 
-def save_snapshot(directory: Path, boot: bytes, app: bytes) -> None:
-    with (directory / "bootloader.bin").open("xb") as handle:
-        handle.write(boot)
-    with (directory / "application.bin").open("xb") as handle:
-        handle.write(app)
-    with (directory / "snapshot.json").open("x", encoding="utf-8") as handle:
-        json.dump({"bootloader_sha256": digest(boot), "application_sha256": digest(app)}, handle, indent=2)
-        handle.write("\n")
+def save_snapshot(directory: Path, boot: bytes, app: bytes, *, metadata=None,
+                  application_region: bytes | None = None) -> dict:
+    report = {"bootloader_sha256": digest(boot), "application_sha256": digest(app),
+              "supported_bootloader": len(boot) == 0x8000 and digest(boot) in thr_bootloaders.ADMITTED_BOOTLOADERS,
+              "bootloader_page_sha256": [digest(boot[offset:offset + 2048]) for offset in range(0, len(boot), 2048)],
+              **(metadata or {})}
+    files = {"bootloader.bin": boot, "application.bin": app}
+    if application_region is not None:
+        files["application-region.bin"] = application_region
+        report.update(application_region_sha256=digest(application_region), application_region_bytes=len(application_region))
+    files["snapshot.json"] = (json.dumps({key: report[key] for key in ("bootloader_sha256", "application_sha256")}, indent=2) + "\n").encode()
+    files["report.json"] = (json.dumps(report, indent=2) + "\n").encode()
+    for name, data in files.items():
+        with os.fdopen(os.open(directory / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+    return report
 
 
 def main(argv=None) -> int:
@@ -242,6 +282,7 @@ def main(argv=None) -> int:
     parser.add_argument("--image", type=Path)
     parser.add_argument("--backup-dir", type=Path)
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--original-backup-dir", type=Path, help="verify bootloader unchanged from this pre-transfer snapshot")
     parser.add_argument("--printer-idle-confirmed", action="store_true")
     parser.add_argument("--reset", action="store_true", help="read and admit the running application before THR reset")
     parser.add_argument("--confirm-write", action="store_true", help="allow application erase and programming")
@@ -254,6 +295,8 @@ def main(argv=None) -> int:
             raise ValueError("--confirm-write is only used by transfer")
         if args.image is not None and args.operation not in ("transfer", "verify"):
             raise ValueError("--image is only used by transfer or verify")
+        if args.original_backup_dir is not None and args.operation != "verify":
+            raise ValueError("--original-backup-dir is only used by verify")
         image = None
         if args.operation in ("transfer", "verify"):
             if args.image is None:
@@ -263,7 +306,8 @@ def main(argv=None) -> int:
         if args.operation == "verify":
             if args.backup_dir is None:
                 raise ValueError("--backup-dir must identify the readback snapshot")
-            print(json.dumps(verify_readback(image, args.backup_dir, manifest), indent=2))
+            original_boot = load_backup(args.original_backup_dir, manifest)[0] if args.original_backup_dir else None
+            print(json.dumps(verify_readback(image, args.backup_dir, manifest, expected_bootloader=original_boot), indent=2))
             return 0
         if args.operation == "transfer" and not args.confirm_write:
             raise ValueError("Transfer requires --confirm-write; application erase was not requested")
@@ -281,19 +325,24 @@ def main(argv=None) -> int:
             raise ValueError("--output-dir is only used by snapshot")
         require_ownership(args.printer_idle_confirmed)
         if args.operation == "snapshot":
-            args.output_dir.mkdir(parents=True, exist_ok=False)
-            boot, app = application_session(manifest)
-            save_snapshot(args.output_dir, boot, app)
+            args.output_dir.mkdir(mode=0o700, parents=True, exist_ok=False)
+            boot, app, metadata, region = application_session(manifest)
+            report = save_snapshot(args.output_dir, boot, app, metadata=metadata, application_region=region)
+            if not report["supported_bootloader"]:
+                print(json.dumps({"unsupported_bootloader": True, "firmware_changed": False,
+                                  "summary": str(args.output_dir / "report.json")}, indent=2))
+                return UNSUPPORTED_BOOTLOADER
+            identify_bootloader(boot)
+            admitted_image(app, manifest)
             print(json.dumps({"application_sha256": digest(app), "bootloader_sha256": digest(boot)}, indent=2))
             return 0
+        profile = identify_bootloader(backup[0])
         if args.reset:
-            boot, _ = application_session(manifest, reset=True)
-            if boot != backup[0]:
-                raise ValueError("Installed bootloader differs from backup")
+            application_session(manifest, reset=True, expected_boot=backup[0], capture_root=args.backup_dir.parent)
             time.sleep(1)
         import serial
         with serial.Serial(DEVICE, 115200, timeout=0.05, write_timeout=2, exclusive=True) as port:
-            client = Bootloader(port)
+            client = Bootloader(port, profile)
             if args.operation == "probe":
                 reply = client.probe()
                 print(json.dumps({"bootloader_reply": reply.hex(), "erase_requested": False}, indent=2))

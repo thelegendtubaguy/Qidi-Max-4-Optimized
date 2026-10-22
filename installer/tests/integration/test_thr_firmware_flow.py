@@ -7,6 +7,7 @@ import json
 import shutil
 import subprocess
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -63,6 +64,8 @@ class Printer:
                 return result(1, 'LoadState=not-found\nActiveState=inactive\n')
             return result(output='LoadState=loaded\nActiveState=' + self.states[service] + '\n')
         if command[:1] == ['systemctl'] and command[1] in ('stop', 'start'):
+            if self.failure == 'restore' and command[1] == 'start':
+                return result(1)
             self.states[command[2]] = 'inactive' if command[1] == 'stop' else 'active'
             return result()
         if command[1].endswith('/scripts/flash_thr_firmware.py'):
@@ -78,8 +81,10 @@ class Printer:
                     boot = boot[:-1] + bytes([boot[-1] ^ 1])
                 if self.failure == 'readback' and self.snapshots == 2:
                     image = self.stock
-                protocol.save_snapshot(destination, boot, image)
-                return result()
+                supported = protocol.digest(boot) in protocol.thr_bootloaders.ADMITTED_BOOTLOADERS
+                region = image + b'\xff' * (0x18000 - len(image)) if not supported else None
+                protocol.save_snapshot(destination, boot, image, application_region=region)
+                return result(0 if supported else protocol.UNSUPPORTED_BOOTLOADER)
             if operation == 'transfer':
                 self.transfers += 1
                 if self.failure == 'interrupt':
@@ -92,12 +97,12 @@ class Printer:
 
 
 class ThrFirmwareFlowTests(unittest.TestCase):
-    def fixture(self, **kwargs):
+    def fixture(self, *, profile=protocol.thr_bootloaders.FIRST, **kwargs):
         root = temp_path('thr-firmware-flow-')
         bundle = root / 'bundle'
         (bundle / 'scripts').mkdir(parents=True)
         (bundle / 'firmware').mkdir()
-        for name in ('flash_thr_firmware.py', 'build_thr_firmware.py'):
+        for name in ('flash_thr_firmware.py', 'thr_bootloaders.py', 'build_thr_firmware.py'):
             shutil.copy2(REPO_ROOT / 'scripts' / name, bundle / 'scripts' / name)
         manifest = json.loads((REPO_ROOT / 'firmware/max4-thr-lis2dw-fifo-v1.json').read_text())
         stock = bytearray(manifest['thr']['size'])
@@ -124,11 +129,15 @@ class ThrFirmwareFlowTests(unittest.TestCase):
         paths = resolve_runtime_paths(bundle_root=bundle, environ=build_env(data, moonraker_url='http://printer.invalid/printer/objects/query'))
         boot = bytes(0x8000)
         printer = Printer(root, manifest, stock, boot, **kwargs)
+        printer.profile = replace(profile, sha256=protocol.digest(boot))
         reporter = create_reporter(io.StringIO(), prefer_plain=True, bundle_root=REPO_ROOT, environ={})
         return paths, printer, reporter
 
-    def execute(self, paths, printer, reporter, **kwargs):
-        with patch.object(protocol, 'BOOT_SHA256', hashlib.sha256(printer.boot).hexdigest()):
+    def execute(self, paths, printer, reporter, *, admit=True, **kwargs):
+        profiles = protocol.thr_bootloaders
+        with patch.dict(profiles.PROFILES, {printer.profile.sha256: printer.profile}), patch.object(
+            profiles, 'ADMITTED_BOOTLOADERS', frozenset((printer.profile.sha256,)) if admit else frozenset(),
+        ):
             return thr_firmware.flash_thr_firmware(
                 paths=paths, reporter=reporter, run=printer.run, urlopen=printer.urlopen,
                 sleep=lambda seconds: None, clock=itertools.count(0, 10).__next__, **kwargs,
@@ -151,10 +160,10 @@ class ThrFirmwareFlowTests(unittest.TestCase):
         self.assertIn('input shaper calibration', reporter.stream.getvalue())
 
     def test_stock_and_already_patched_boards_preserve_evidence_and_service_states(self):
-        for patched in (False, True):
-            for timer in (False, True):
-                with self.subTest(patched=patched, timer=timer):
-                    paths, printer, reporter = self.fixture(patched=patched, timer=timer)
+        for profile in protocol.thr_bootloaders.PROFILES.values():
+            for patched, timer in itertools.product((False, True), repeat=2):
+                with self.subTest(profile=profile.sha256, patched=patched, timer=timer):
+                    paths, printer, reporter = self.fixture(profile=profile, patched=patched, timer=timer)
                     if not timer:
                         printer.idle_state = 'Idle'
                     printer.restarting_queries = 3
@@ -179,7 +188,7 @@ class ThrFirmwareFlowTests(unittest.TestCase):
                         self.assertEqual(printer.states, printer.original)
 
     def test_unsafe_preconditions_and_unknown_images_never_program(self):
-        for case in ('printing', 'paused', 'unknown-state', 'chamber-hot', 'extra-heater-hot', 'malformed-target', 'unknown-app', 'unknown-boot', 'never-ready'):
+        for case in ('printing', 'paused', 'unknown-state', 'chamber-hot', 'extra-heater-hot', 'malformed-target', 'unknown-app', 'never-ready'):
             with self.subTest(case=case):
                 paths, printer, reporter = self.fixture(failure=case)
                 if case in ('printing', 'paused', 'unknown-state'):
@@ -197,6 +206,40 @@ class ThrFirmwareFlowTests(unittest.TestCase):
                 self.assertEqual(printer.transfers, 0)
                 self.assertEqual(printer.states, printer.original)
                 self.assertFalse((paths.printer_data_root / THR_RECOVERY_MARKER).exists())
+
+    def test_unrecognized_and_unadmitted_bootloaders_capture_without_firmware_blocker(self):
+        for failure, profile, admit in (
+            ('unknown-boot', protocol.thr_bootloaders.FIRST, True),
+            (None, protocol.thr_bootloaders.SECOND, False),
+        ):
+            with self.subTest(failure=failure, profile=profile.sha256):
+                paths, printer, reporter = self.fixture(failure=failure, profile=profile)
+                config = (paths.config_root / 'printer.cfg').read_bytes()
+                self.execute(paths, printer, reporter, admit=admit)
+                self.assertEqual(printer.transfers, 0)
+                self.assertEqual(printer.states, printer.original)
+                self.assertFalse((paths.printer_data_root / THR_RECOVERY_MARKER).exists())
+                self.assertEqual((paths.config_root / 'printer.cfg').read_bytes(), config)
+                directory, = (paths.printer_data_root / '.tltg_thr_firmware_backups').iterdir()
+                capture = directory / 'before'
+                self.assertEqual((capture / 'application-region.bin').stat().st_size, 0x18000)
+                for path in capture.iterdir():
+                    self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+                summary = json.loads((capture / 'report.json').read_text())
+                self.assertFalse(summary['supported_bootloader'])
+                self.assertEqual(len(summary['bootloader_page_sha256']), 16)
+                self.assertFalse((directory / 'verification.json').exists())
+                self.assertIn('THR firmware was not changed', reporter.stream.getvalue())
+                self.assertIn(str(capture / 'report.json'), reporter.stream.getvalue())
+                ensure_no_recovery_sentinel(paths.recovery_sentinel_path)
+
+    def test_unverified_service_restoration_retains_blocker(self):
+        paths, printer, reporter = self.fixture(failure='restore')
+        with self.assertRaises(thr_firmware.ThrFirmwareError):
+            self.execute(paths, printer, reporter, admit=False)
+        self.assertTrue((paths.printer_data_root / THR_RECOVERY_MARKER).exists())
+        self.assertEqual(printer.transfers, 0)
+        self.assertEqual(printer.states['klipper.service'], 'inactive')
 
     def test_ambiguous_writes_retain_blocker_and_do_not_roll_back_configuration(self):
         for failure in ('transfer', 'readback', 'interrupt'):

@@ -41,7 +41,7 @@ The checker compares every archive payload and the THR protocol dictionary, veri
 
 ## Before flashing
 
-Generation and checking do not contact or flash a printer. The optimized-macro installer offers a default-No interactive THR firmware question and an explicit `--flash-thr-fifo` option. It checks actual application bytes and skips programming when the fix is already installed. `--yes` alone and automatic updates do not authorize firmware programming.
+Generation and checking do not contact or flash a printer. The optimized-macro installer offers a default-No interactive THR firmware question and an explicit `--flash-thr-fifo` option. It checks actual application bytes and skips programming when the fix is already installed. Bootloaders are admitted by exact validated build identity; an unrecognized build is captured without reset or programming, with a shareable `report.json` for a GitHub issue. Its firmware remains unchanged, previous services are restored, and configuration installation is retained. `--yes` alone and automatic updates do not authorize firmware programming.
 
 The package retains QIDI's version strings and does not force a same-version THR reflash. A completed touchscreen update is not proof that the patched THR was flashed. These build checks do not establish installation or physical recovery. See [THR-only operations](FLASHING.md) for the restricted tool, readback verification, and required recovery-entry validation.
 
@@ -111,7 +111,8 @@ sleep 12
 /home/qidi/klippy-env/bin/python ~/tltg-optimized-macros/scripts/flash_thr_firmware.py snapshot \
   --output-dir "$RECOVERY/restored" --printer-idle-confirmed
 /home/qidi/klippy-env/bin/python ~/tltg-optimized-macros/scripts/flash_thr_firmware.py verify \
-  --image "$RECOVERY/before/application.bin" --backup-dir "$RECOVERY/restored"
+  --image "$RECOVERY/before/application.bin" --backup-dir "$RECOVERY/restored" \
+  --original-backup-dir "$RECOVERY/before"
 ```
 
 `--output-dir` must not already exist; use a new name when repeating this step. The restore succeeded only when verify prints `"verified": true` and `"application_sha256": "1d34b4b0142f2a2047f08c2fae59d827bcee0adbd1563b4bd1de311dff8b2d62"`. If any step fails or the application does not return, keep the services stopped and follow [THR-only operations](FLASHING.md).

@@ -1,5 +1,10 @@
 # Changelog
 
+## 26.10.22.1
+- An unsupported THR bootloader no longer turns the optional FIFO fix into a failed firmware operation. The installer keeps the configuration install, leaves THR firmware unchanged, restores previously active services, and leaves no firmware blocker after readiness is confirmed. It saves a private read-only capture and asks for only its shareable `report.json` in a GitHub issue, not the flash binaries.
+- The optional THR FIFO fix now supports the second validated Max 4 bootloader build. Exact bootloader readback selects its transfer profile, including its different identity reply and final-packet padding; the first build's transfer behavior is unchanged.
+- Documented restoring the stock THR application from retained firmware backups. Verification can compare the bootloader with the pre-transfer backup using `--original-backup-dir`; the installer always checks that it is unchanged.
+
 ## 26.10.21.2
 - You can now set QIDI Box heater temperatures from Fluidd's temperature panel. Before, QIDI's Fluidd only accepted `0`. The highest temperature you can set is 65 °C, the same as on the touchscreen.  Reload Fluidd in the browser after installing.
 - Fluidd now checks the filament in every slot of a Box before allowing heating, not just the first slot. If any loaded filament shouldn't be heated in the Box, such as PLA or TPU, the Box temperature field is locked instead of showing `Max 0`. You can still turn off a Box that is already heating.
@@ -8,6 +13,7 @@
 - On firmware `01.01.07.01`, the installer can now fix a bug in QIDI's toolhead board (THR) firmware that affects how it reads the accelerometer used for input shaper calibration. It is optional and off by default. The installer asks at the start, before changing anything, and you can just press Enter to skip it. If you say yes, the board is flashed after the rest of the install finishes; the printer must be idle with all heaters off. You can also opt in with `--flash-thr-fifo`. `--yes` and automatic updates never flash firmware, and the installer asks again on each run.
 - **After flashing, rerun input shaper calibration before printing.** The installer turns input shaping off by clearing the old calibration from `printer.cfg`, since it was measured with the buggy firmware. A copy of the old `printer.cfg` is kept with the firmware backups. A board that already has the fix is left alone and keeps its calibration.
 - Flashing only changes the toolhead board and keeps QIDI's version numbers. Before flashing, the installer saves a backup of the original firmware and afterward checks that the board holds exactly the expected firmware. If something goes wrong, your config install is kept, and the installer refuses to run again until the board is recovered using the included recovery instructions. Uninstall and config restore don't undo the firmware change.
+- THR firmware operations wait up to two minutes for Klipper to become ready before stopping services. Active or paused prints and nonzero heater targets still fail admission immediately.
 
 ## 26.10.21.1
 - On firmware `01.01.07.01`, install and update add a `qidi_filament_config` folder to Fluidd's configuration files, including when optional OS optimizations are skipped. It opens the touchscreen's filament list (`filament-0.4.json` and the other nozzle sizes) so entries can be added or edited from Fluidd; restart the printer after saving so the touchscreen and Box pick up the change. Firmware updates replace these files and discard custom entries.

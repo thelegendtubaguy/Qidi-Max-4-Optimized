@@ -185,16 +185,18 @@ def flash_thr_firmware(
     reporter.line("THR recovery files: " + str(directory))
     firmware_may_have_changed = False
     verified = False
+    unsupported_summary = None
 
-    def command(operation, *arguments):
+    def command(operation, *arguments, allow_unsupported=False):
         result = run(
             [str(python), str(tool), operation, *map(str, arguments), "--printer-idle-confirmed"],
-            capture_output=True, text=True, timeout=300,
+            capture_output=True, text=True, timeout=960,
         )
         atomic_write_text(directory / (operation + ".stdout"), result.stdout or "", mode=0o600)
         atomic_write_text(directory / (operation + ".stderr"), result.stderr or "", mode=0o600)
-        if result.returncode:
+        if result.returncode and not (allow_unsupported and result.returncode == protocol.UNSUPPORTED_BOOTLOADER):
             raise ThrFirmwareError("THR " + operation + " failed; see recovery files: " + str(directory))
+        return result
 
     def service_action(action, service):
         result = run_sudo(["systemctl", action, service], run=run, password=password, timeout=60)
@@ -207,8 +209,21 @@ def flash_thr_firmware(
                 service_action("stop", service)
         before = directory / "before"
         reporter.line("Reading and admitting THR application and bootloader...")
-        command("snapshot", "--output-dir", before)
-        _, app = protocol.load_backup(before, manifest)
+        snapshot = command("snapshot", "--output-dir", before, allow_unsupported=True)
+        if snapshot.returncode == protocol.UNSUPPORTED_BOOTLOADER:
+            boot = (before / "bootloader.bin").read_bytes()
+            region = (before / "application-region.bin").read_bytes()
+            summary = json.loads((before / "report.json").read_text())
+            if (len(boot) != 0x8000 or len(region) != 0x18000
+                    or protocol.digest(boot) in protocol.thr_bootloaders.ADMITTED_BOOTLOADERS
+                    or summary.get("bootloader_sha256") != protocol.digest(boot)
+                    or summary.get("application_region_sha256") != protocol.digest(region)):
+                raise ThrFirmwareError("Incomplete unsupported-bootloader capture")
+            fsync_directory(before)
+            fsync_directory(directory)
+            unsupported_summary = before / "report.json"
+            return
+        boot, app = protocol.load_backup(before, manifest)
         for path in before.iterdir():
             with path.open("rb") as handle:
                 os.fsync(handle.fileno())
@@ -230,7 +245,7 @@ def flash_thr_firmware(
             after = directory / "after"
             reporter.line("Reading back the complete THR application and bootloader...")
             command("snapshot", "--output-dir", after)
-            evidence = protocol.verify_readback(image, after, manifest)
+            evidence = protocol.verify_readback(image, after, manifest, expected_bootloader=boot)
         atomic_write_text(directory / "verification.json", json.dumps(evidence, indent=2) + "\n", mode=0o600)
         verified = True
         if firmware_may_have_changed:
@@ -250,6 +265,8 @@ def flash_thr_firmware(
                 atomic_delete(marker)
             except BaseException as exc:
                 raise ThrFirmwareError("THR service restoration/readiness is incomplete; recovery marker retained: " + str(marker)) from exc
+            if unsupported_summary is not None:
+                reporter.line("The THR FIFO fix is unavailable for this bootloader. Your THR firmware was not changed. Please attach this shareable summary to a GitHub issue at https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/issues: " + str(unsupported_summary))
         else:
             reporter.line("THR firmware is unverified. Serial-owning services remain stopped. Recovery files: " + str(directory))
             reporter.line("Recover and verify THR before removing the firmware blocker: " + str(marker))
