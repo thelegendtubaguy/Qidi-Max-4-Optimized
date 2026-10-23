@@ -336,6 +336,10 @@ The optional operation SHALL require supported firmware, idle ready state, zero 
 - **AND** the read-only capture stays with the recovery files, only previously active services are restored, and no firmware blocker remains
 - **AND** the configuration installation result is unaffected
 
+#### Scenario: Interrupted transfer falls back to stock firmware
+- **WHEN** a recovery-mode transfer reports that the stock fallback image was programmed
+- **THEN** the installer verifies complete readback against the stock application, restores previous service states without a firmware blocker, keeps input shaper calibration, and reports that the FIFO fix was not applied
+
 #### Scenario: Admission fails or firmware work is interrupted
 - **WHEN** firmware admission fails or firmware work does not reach verified readback
 - **THEN** no unknown image is programmed and verified configuration installation is preserved

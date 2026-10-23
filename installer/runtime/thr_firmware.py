@@ -185,16 +185,17 @@ def flash_thr_firmware(
     reporter.line("THR recovery files: " + str(directory))
     firmware_may_have_changed = False
     verified = False
+    fell_back = False
     unsupported_summary = None
 
-    def command(operation, *arguments, allow_unsupported=False):
+    def command(operation, *arguments, allow=()):
         result = run(
             [str(python), str(tool), operation, *map(str, arguments), "--printer-idle-confirmed"],
             capture_output=True, text=True, timeout=960,
         )
         atomic_write_text(directory / (operation + ".stdout"), result.stdout or "", mode=0o600)
         atomic_write_text(directory / (operation + ".stderr"), result.stderr or "", mode=0o600)
-        if result.returncode and not (allow_unsupported and result.returncode == protocol.UNSUPPORTED_BOOTLOADER):
+        if result.returncode and result.returncode not in allow:
             raise ThrFirmwareError("THR " + operation + " failed; see recovery files: " + str(directory))
         return result
 
@@ -209,7 +210,7 @@ def flash_thr_firmware(
                 service_action("stop", service)
         before = directory / "before"
         reporter.line("Reading and admitting THR application and bootloader...")
-        snapshot = command("snapshot", "--output-dir", before, allow_unsupported=True)
+        snapshot = command("snapshot", "--output-dir", before, allow=(protocol.UNSUPPORTED_BOOTLOADER,))
         if snapshot.returncode == protocol.UNSUPPORTED_BOOTLOADER:
             boot = (before / "bootloader.bin").read_bytes()
             region = (before / "application-region.bin").read_bytes()
@@ -240,15 +241,18 @@ def flash_thr_firmware(
             atomic_write_text(marker, json.dumps(record, indent=2) + "\n", mode=0o600)
             firmware_may_have_changed = True
             reporter.line("Flashing the admitted THR FIFO fix; keep printer power on...")
-            command("transfer", "--image", image_path, "--backup-dir", before, "--reset", "--confirm-write")
+            recovery = ("--recover-to-stock",) if protocol.identify_bootloader(boot).recoverable else ()
+            transfer = command("transfer", "--image", image_path, "--backup-dir", before, "--reset", "--confirm-write",
+                               *recovery, allow=(protocol.FELL_BACK, protocol.END_UNCONFIRMED) if recovery else ())
+            fell_back = transfer.returncode == protocol.FELL_BACK
             sleep(12)
             after = directory / "after"
             reporter.line("Reading back the complete THR application and bootloader...")
             command("snapshot", "--output-dir", after)
-            evidence = protocol.verify_readback(image, after, manifest, expected_bootloader=boot)
+            evidence = protocol.verify_readback(app if fell_back else image, after, manifest, expected_bootloader=boot)
         atomic_write_text(directory / "verification.json", json.dumps(evidence, indent=2) + "\n", mode=0o600)
         verified = True
-        if firmware_may_have_changed:
+        if firmware_may_have_changed and not fell_back:
             _clear_input_shaper_calibration(paths, directory, reporter)
     except Exception as exc:
         raise ThrFirmwareError("THR firmware operation failed; configuration installation is retained. Recovery files: " + str(directory) + ". " + str(exc)) from exc
@@ -270,6 +274,9 @@ def flash_thr_firmware(
         else:
             reporter.line("THR firmware is unverified. Serial-owning services remain stopped. Recovery files: " + str(directory))
             reporter.line("Recover and verify THR before removing the firmware blocker: " + str(marker))
+    if fell_back:
+        reporter.line("THR FIFO fix was not applied: the transfer failed and the stock THR firmware was reprogrammed and verified. Previous service states restored. Recovery files: " + str(directory))
+        return
     reporter.line("THR FIFO firmware verified; bootloader unchanged and previous service states restored.")
     if firmware_may_have_changed:
         reporter.line("Rerun input shaper calibration before printing. The installer has not run calibration.")

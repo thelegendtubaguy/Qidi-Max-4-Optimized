@@ -73,7 +73,7 @@ Include changed generated `.md` and `.mmd` files. If a concrete command change l
 - Slicer G-code: `python3 scripts/check_optimized_slicer_macros.py`
 - Installer behavior: `python3 scripts/run_installer_core_tests.py`
 - THR firmware generator or patch manifest: `scripts/check_thr_firmware.py` against a fresh `scripts/build_thr_firmware.py` build (setup in `firmware/README.md`)
-- THR flashing tool or protocol: `scripts/check_thr_flashing.py`, with `--bootloader-backup` when available (see `firmware/FLASHING.md`)
+- THR flashing tool or protocol: `scripts/check_thr_flashing.py`, with `--bootloader-backup` when available, and `scripts/check_thr_recovery.py` with a recoverable build's `--bootloader-backup` (see `firmware/FLASHING.md`)
 - Launcher, bundle, or release plumbing: `python3 scripts/build_installer_bundle.py --output-dir dist --channel dev --build-id local --smoke-test`
 - OpenSpec: `openspec validate --all --strict`
 - Start-print behavior or contract paths: follow **Start-print changes**.
