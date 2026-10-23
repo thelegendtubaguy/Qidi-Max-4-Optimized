@@ -105,6 +105,9 @@ class RecoveryFailed(Exception):
 class Bootloader:
     HOLD_SECONDS = 120.0
     PAIR_INTERVAL = 0.2
+    PACKET0_REJECTIONS = 5
+    MIN_CLOCK_RATE = 0.9  # slowest assumed bootloader SysTick relative to the host clock
+    RESTART_ROUNDS = 4
 
     def __init__(self, port, profile, clock=time.monotonic, sleep=time.sleep):
         self.port = port
@@ -209,8 +212,16 @@ class Bootloader:
                 return {"transfer_acknowledged": outcome == "done", "verified": False,
                         "application_sha256": digest(target), "requested_sha256": image_hash,
                         "fell_back": target is not image, "events": self.events}
-            target = fallback
-            started = outcome == "ambiguous" and self._await_reset(len(fallback))
+            target, started = fallback, False
+            if outcome == "ambiguous":
+                # Start into a session that may hold data would program the fallback offset,
+                # so an unconfirmed restart waits out any session again instead.
+                for _ in range(self.RESTART_ROUNDS):
+                    if self._await_reset(len(fallback)):
+                        break
+                else:
+                    raise RecoveryFailed("THR bootloader restart was not confirmed; THR state is unknown")
+                started = True
         raise RecoveryFailed("Fallback transfer failed repeatedly; THR state is unknown")
 
     def _log(self, event, **extra):
@@ -251,11 +262,17 @@ class Bootloader:
             self.sleep(remaining)
         # Start is only sent once the board has certainly reset: in a session that
         # already holds data it re-erases without rewinding the write position.
+        # A dying session still acknowledges start during its exit delay. Until even a
+        # slow bootloader clock must have reset, only an identity reply, which no
+        # session answers, proves the startup window; after that, a start reply can
+        # only come from a new session whose identity reply was lost.
+        reset_by = self.last_sent + (session + exit_delay) / self.MIN_CLOCK_RATE
         end = self.clock() + 2 * self.profile.startup_ticks / 1000
         start = b"\x01\x00" + size.to_bytes(4, "big")
         while self.clock() < end:
             self._send(0, b"\x01\x00")
-            self._wait(self.PAIR_INTERVAL / 2, self._is_identity)
+            if not self._wait(self.PAIR_INTERVAL / 2, self._is_identity) and self.clock() < reset_by:
+                continue
             self._send(1, start)
             if self._wait(self.PAIR_INTERVAL / 2, self._is_start):
                 self._log("restarted")
@@ -319,7 +336,8 @@ class Bootloader:
             def ack(kind, reply, header=header):
                 return kind == 2 and len(reply) == 7 and reply[:6] == header and reply[6] in (1, 2)
             if index == 0:
-                while True:
+                # Only a CRC rejection proves packet zero was not programmed.
+                for _ in range(self.PACKET0_REJECTIONS):
                     self._send(2, header + data)
                     got = self._wait(5, ack)
                     if got is None:
@@ -327,6 +345,9 @@ class Bootloader:
                         return "ambiguous"
                     if got[1][6] == 1:
                         break
+                else:
+                    self._log("packet0-rejected")
+                    return "ambiguous"
                 continue
             got = self._hold(2, header + data, ack, self.HOLD_SECONDS, index)
             if got in ("fresh", "ambiguous"):

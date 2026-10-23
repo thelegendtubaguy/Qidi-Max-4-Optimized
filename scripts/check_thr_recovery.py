@@ -14,10 +14,13 @@ from thr_bootloaders import identify_bootloader
 UART_SECONDS_PER_BYTE = 10 / 115200
 TRIGGERS = ("start", 0, 1, 17, 34, "end")
 DURATIONS = (0.5, 3, 6, 9.5, 10.5, 12, 14, 15.5, 17, 25, 40)
+QUICK_DURATIONS = (3, 12)
+# Bootloader SysTick rates relative to the host clock; the startup oscillator is unverified.
+SKEWED_RATES = (0.92, 0.97, 1.03, 1.1)
 
 
 class TimedLink:
-    def __init__(self, boot, stock, patched, fault=None):
+    def __init__(self, boot, stock, patched, fault=None, rate=1.0):
         self.boot, self.stock, self.patched = boot, stock, patched
         self.board = native.NativeBoard(boot, stock)
         self.now = 0.0
@@ -27,6 +30,7 @@ class TimedLink:
         self.fault = fault
         self.window = None
         self.resets = []
+        self.rate = rate
 
     def clock(self):
         return self.now
@@ -36,7 +40,7 @@ class TimedLink:
 
     def advance(self, seconds):
         self.now += seconds
-        target = int(self.now * 1000)
+        target = int(self.now * 1000 * self.rate)
         while self.ticks < target and self.state == "bootloader":
             self.board.advance(1)
             self.ticks += 1
@@ -82,9 +86,9 @@ class TimedLink:
         return chunk
 
 
-def run(recovering, boot, stock, patched, manifest, fault):
+def run(recovering, boot, stock, patched, manifest, fault, rate=1.0):
     profile = identify_bootloader(boot, admitted=False)
-    link = TimedLink(boot, stock, patched, fault)
+    link = TimedLink(boot, stock, patched, fault, rate)
     client = tool.Bootloader(link, profile, link.clock, link.sleep)
     try:
         if recovering:
@@ -98,7 +102,7 @@ def run(recovering, boot, stock, patched, manifest, fault):
     if link.state != "bricked":
         return link.state
     window = link.window
-    if window and window[0] == "dead" and link.resets and window[2] >= link.resets[-1] + profile.startup_ticks / 1000:
+    if window and window[0] == "dead" and link.resets and window[2] >= link.resets[-1] + profile.startup_ticks / 1000 / rate:
         return "bricked-unavoidable"
     return "bricked-avoidable"
 
@@ -115,21 +119,30 @@ def main():
     assert tool.admitted_image(stock, manifest) == manifest["thr"]["stock_sha256"]
     assert tool.admitted_image(patched, manifest) == manifest["thr"]["patched_sha256"]
     assert identify_bootloader(boot, admitted=False).recoverable, "Bootloader has no validated recovery profile"
-    durations = (3, 12) if args.quick else DURATIONS
-    faults = [None] + [(mode, trigger, duration) for mode in ("dead", "lost-reply")
-                       for trigger in TRIGGERS for duration in durations]
-    outcomes = {"transfer": collections.Counter(), "transfer_recovering": collections.Counter()}
+    def faults(durations):
+        return [None] + [(mode, trigger, duration) for mode in ("dead", "lost-reply")
+                         for trigger in TRIGGERS for duration in durations]
+    # Skewed clocks run the quick set, recovering transfers only.
+    plans = [(1.0, faults(QUICK_DURATIONS if args.quick else DURATIONS), True)]
+    plans += [(rate, faults(QUICK_DURATIONS), False) for rate in SKEWED_RATES]
+    report = {"bootloader_sha256": tool.digest(boot), "clock_rates": {}}
     avoidable = []
-    for fault in faults:
-        outcomes["transfer"][run(False, boot, stock, patched, manifest, fault)] += 1
-        outcome = run(True, boot, stock, patched, manifest, fault)
-        outcomes["transfer_recovering"][outcome] += 1
-        if fault is None:
-            assert outcome == "patched", "Uninterrupted recovering transfer did not install the patched image"
-        if outcome == "bricked-avoidable":
-            avoidable.append(fault)
-    print(json.dumps({"bootloader_sha256": tool.digest(boot), "faults": len(faults),
-                      "outcomes": {name: dict(counter) for name, counter in outcomes.items()}}, indent=2))
+    for rate, rate_faults, compare in plans:
+        outcomes = {"transfer_recovering": collections.Counter()}
+        if compare:
+            outcomes["transfer"] = collections.Counter()
+        for fault in rate_faults:
+            if compare:
+                outcomes["transfer"][run(False, boot, stock, patched, manifest, fault, rate)] += 1
+            outcome = run(True, boot, stock, patched, manifest, fault, rate)
+            outcomes["transfer_recovering"][outcome] += 1
+            if fault is None:
+                assert outcome == "patched", "Uninterrupted recovering transfer did not install the patched image"
+            if outcome == "bricked-avoidable":
+                avoidable.append((rate, fault))
+        report["clock_rates"][str(rate)] = {"faults": len(rate_faults),
+                                            "outcomes": {name: dict(counter) for name, counter in outcomes.items()}}
+    print(json.dumps(report, indent=2))
     assert not avoidable, f"Recovering transfer bricked a recoverable board: {avoidable}"
 
 
