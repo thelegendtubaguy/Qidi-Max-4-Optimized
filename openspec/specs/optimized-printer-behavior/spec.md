@@ -32,6 +32,20 @@ Optimized configuration SHALL reduce homing, probing, mesh, and filament-transit
 - **AND** the captured value is reapplied after mesh preparation
 - **AND** saved fallback is used only when the session has no capture
 
+### Requirement: Non-blocking saved Z-offset diagnostics
+Optimized configuration SHALL report requests to save a numeric zero to `z_offset` in the Klipper console and log without blocking or changing the save.
+
+#### Scenario: Zero offset save is requested
+- **WHEN** `SAVE_VARIABLE` requests a numeric zero for `z_offset`, including when the saved offset is already zero
+- **THEN** a warning identifies the request and records the previous saved offset, current runtime offset, print state and filename, available QIDI main/sub-status, captured offset and validity, and original command parameters
+- **AND** unavailable optional status fields do not prevent the save
+
+#### Scenario: Screen and Fluidd saves retain their behavior
+- **WHEN** the touchscreen, Fluidd, or a macro saves a variable
+- **THEN** the original save command receives the original parameters and quoting unchanged
+- **AND** nonzero Z offsets and unrelated variables produce no zero-offset warning
+- **AND** the original command retains responsibility for validation and save errors
+
 ### Requirement: Controlled slicer start paths
 OrcaSlicer and QIDI Studio packs SHALL implement the same functional print-start branches while printer-side Klipper state selects mesh preparation and parser-specific syntax and ordered invariants remain controlled by `openspec/contracts/gcode-paths/start-print.path.json`.
 

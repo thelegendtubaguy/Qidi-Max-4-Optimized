@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "path": "save_variable",
+  "title": "Saved-variable diagnostics",
+  "entrypoints": [],
+  "macro_files": [
+    "installer/klipper/tltg-optimized-macros/offset.cfg"
+  ],
+  "branches": [
+    {
+      "name": "non_blocking_zero_offset_warning",
+      "source_macro": "SAVE_VARIABLE",
+      "condition": "all variable saves; warn only for a numeric zero z_offset request",
+      "slice": {
+        "start": "{% if params.VARIABLE|default('') == 'z_offset' and params.VALUE|default('')|float(none) == 0 %}"
+      },
+      "must_include_order": [
+        "action_respond_info(",
+        "TLTG_Z_OFFSET_ZERO_REQUEST",
+        "svv.z_offset|default(none)",
+        "printer.gcode_move.homing_origin.z",
+        "stats.state|default(none)",
+        "stats.filename|default(none)",
+        "status.main_status|default(none)",
+        "status.sub_status|default(none)",
+        "offset.captured_z_offset_valid",
+        "offset.captured_z_offset, rawparams",
+        "{% endif %}",
+        "_TLTG_SAVE_VARIABLE_BASE {rawparams}"
+      ],
+      "must_not_include": [
+        "{% else",
+        "action_raise_error",
+        "SET_GCODE_OFFSET",
+        "SET_GCODE_VARIABLE",
+        "SAVE_VARIABLE VARIABLE=",
+        "PAUSE",
+        "CANCEL_PRINT"
+      ]
+    }
+  ],
+  "generated": {
+    "markdown": "openspec/contracts/gcode-paths/generated/save-variable.md",
+    "mermaid": "openspec/contracts/gcode-paths/generated/save-variable.mmd"
+  }
+}
