@@ -35,6 +35,7 @@ class Printer:
             del self.states['tltg-optimized-auto-update.timer']
         self.original = dict(self.states)
         self.transfers = 0
+        self.recovery_requested = None
         self.snapshots = 0
         self.state = 'standby'
         self.idle_state = 'Ready'
@@ -87,12 +88,17 @@ class Printer:
                 return result(0 if supported else protocol.UNSUPPORTED_BOOTLOADER)
             if operation == 'transfer':
                 self.transfers += 1
+                self.recovery_requested = '--recover-to-stock' in command
                 if self.failure == 'interrupt':
                     raise KeyboardInterrupt()
                 if self.failure == 'transfer':
                     return result(1)
+                if self.failure == 'fell-back':
+                    return result(protocol.FELL_BACK)
+                if self.failure == 'end-unconfirmed-stock':
+                    return result(protocol.END_UNCONFIRMED)
                 self.image = Path(command[command.index('--image') + 1]).read_bytes()
-                return result()
+                return result(protocol.END_UNCONFIRMED if self.failure == 'end-unconfirmed' else 0)
         raise AssertionError('Unexpected external operation: ' + str(command))
 
 
@@ -259,6 +265,48 @@ class ThrFirmwareFlowTests(unittest.TestCase):
                 output = io.StringIO()
                 self.assertEqual(main(['install', '--yes', '--plain'], bundle_root=REPO_ROOT, environ=build_env(paths.printer_data_root, moonraker_url='http://printer.invalid'), stream=output), 1)
                 self.assertEqual(config.read_text(), 'verified configuration')
+
+    def test_transfer_recovery_is_requested_only_for_recoverable_bootloaders(self):
+        for profile in protocol.thr_bootloaders.PROFILES.values():
+            with self.subTest(profile=profile.sha256):
+                paths, printer, reporter = self.fixture(profile=profile)
+                self.execute(paths, printer, reporter)
+                self.assertEqual(printer.recovery_requested, profile.recoverable)
+
+    def test_fallen_back_transfer_restores_services_without_blocker_or_calibration_loss(self):
+        paths, printer, reporter = self.fixture(profile=protocol.thr_bootloaders.SECOND, failure='fell-back')
+        self.execute(paths, printer, reporter)
+        self.assertEqual(printer.transfers, 1)
+        self.assertEqual(printer.states, printer.original)
+        self.assertFalse((paths.printer_data_root / THR_RECOVERY_MARKER).exists())
+        directory, = (paths.printer_data_root / '.tltg_thr_firmware_backups').iterdir()
+        evidence = json.loads((directory / 'verification.json').read_text())
+        self.assertEqual(evidence['application_sha256'], printer.manifest['thr']['stock_sha256'])
+        self.assertIn('#*# shaper_freq_x', (paths.config_root / 'printer.cfg').read_text())
+        output = reporter.stream.getvalue()
+        self.assertIn('THR FIFO fix was not applied', output)
+        self.assertNotIn('THR FIFO firmware verified', output)
+
+    def test_unconfirmed_end_is_settled_by_readback(self):
+        for failure, verified in (('end-unconfirmed', True), ('end-unconfirmed-stock', False)):
+            with self.subTest(failure=failure):
+                paths, printer, reporter = self.fixture(profile=protocol.thr_bootloaders.SECOND, failure=failure)
+                if verified:
+                    self.execute(paths, printer, reporter)
+                    self.assertFalse((paths.printer_data_root / THR_RECOVERY_MARKER).exists())
+                    self.assertNotIn('#*# shaper_freq_x', (paths.config_root / 'printer.cfg').read_text())
+                else:
+                    with self.assertRaises(thr_firmware.ThrFirmwareError):
+                        self.execute(paths, printer, reporter)
+                    self.assertTrue((paths.printer_data_root / THR_RECOVERY_MARKER).is_file())
+                    self.assertTrue(all(state == 'inactive' for state in printer.states.values()))
+
+    def test_recovery_exit_codes_fail_without_requested_recovery(self):
+        paths, printer, reporter = self.fixture(profile=protocol.thr_bootloaders.FIRST, failure='fell-back')
+        with self.assertRaises(thr_firmware.ThrFirmwareError):
+            self.execute(paths, printer, reporter)
+        self.assertFalse(printer.recovery_requested)
+        self.assertTrue((paths.printer_data_root / THR_RECOVERY_MARKER).is_file())
 
     def test_dry_run_and_ineligible_firmware_do_not_access_uart_or_services(self):
         paths, printer, reporter = self.fixture()

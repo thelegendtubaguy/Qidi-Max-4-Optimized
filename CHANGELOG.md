@@ -1,5 +1,8 @@
 # Changelog
 
+## 26.10.23.1
+- On the second Max 4 THR bootloader build, the optional FIFO fix now recovers from a failed transfer by itself instead of leaving the toolhead board for manual recovery. A short interruption resumes and finishes the fix. Otherwise the installer puts QIDI's stock THR firmware back, checks it, restarts your services, keeps your input shaper calibration, and tells you the fix was not applied, with no firmware blocker. A power loss during the few seconds of programming is still not recoverable, so keep the printer powered until the installer finishes. The first bootloader build is unchanged.
+
 ## 26.10.22.1
 - An unsupported THR bootloader no longer turns the optional FIFO fix into a failed firmware operation. The installer keeps the configuration install, leaves THR firmware unchanged, restores previously active services, and leaves no firmware blocker after readiness is confirmed. It saves a private read-only capture and asks for only its shareable `report.json` in a GitHub issue, not the flash binaries.
 - The optional THR FIFO fix now supports the second validated Max 4 bootloader build. Exact bootloader readback selects its transfer profile, including its different identity reply and final-packet padding; the first build's transfer behavior is unchanged.

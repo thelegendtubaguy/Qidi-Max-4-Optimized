@@ -28,6 +28,12 @@ class BootloaderProfile:
     reset_hook: int | None = None
     tick: int | None = None
     startup_ticks: int | None = None
+    session_ticks: int | None = None
+    exit_ticks: int | None = None
+
+    @property
+    def recoverable(self) -> bool:
+        return None not in (self.reset_hook, self.startup_ticks, self.session_ticks, self.exit_ticks)
 
 
 FIRST = BootloaderProfile(
@@ -56,6 +62,7 @@ SECOND = BootloaderProfile(
     receive_flags=(0x2000088e, 0x2000000b),
     session_timer=0x20000014, exit_timer=0x20000018,
     reset_hook=0x08000130, tick=0x08001bfc, startup_ticks=4000,
+    session_ticks=10000, exit_ticks=1000,
 )
 PROFILES = {profile.sha256: profile for profile in (FIRST, SECOND)}
 # Admission requires matching offline checks and live non-erasing evidence.

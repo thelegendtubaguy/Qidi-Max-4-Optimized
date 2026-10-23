@@ -329,6 +329,17 @@ The optional operation SHALL require supported firmware, idle ready state, zero 
 - **AND** an active or paused print or a nonzero heater target fails admission without waiting
 - **AND** if Klipper does not become ready in time, no service is stopped and no THR serial session or programming occurs
 
+#### Scenario: Installed bootloader is unrecognized
+- **WHEN** readback finds a THR bootloader that matches no admitted identity
+- **THEN** the installer reports that the FIFO fix is unavailable for this bootloader and THR firmware was not changed
+- **AND** it asks the operator to attach the capture's shareable summary to a GitHub issue
+- **AND** the read-only capture stays with the recovery files, only previously active services are restored, and no firmware blocker remains
+- **AND** the configuration installation result is unaffected
+
+#### Scenario: Interrupted transfer falls back to stock firmware
+- **WHEN** a recovery-mode transfer reports that the stock fallback image was programmed
+- **THEN** the installer verifies complete readback against the stock application, restores previous service states without a firmware blocker, keeps input shaper calibration, and reports that the FIFO fix was not applied
+
 #### Scenario: Admission fails or firmware work is interrupted
 - **WHEN** firmware admission fails or firmware work does not reach verified readback
 - **THEN** no unknown image is programmed and verified configuration installation is preserved
