@@ -1,5 +1,8 @@
 # Changelog
 
+## 26.10.23.2
+- Requests to save a zero print Z offset now emit a `TLTG_Z_OFFSET_ZERO_REQUEST` warning in Fluidd's console and Klipper's log, including the previous saved offset, runtime offset, print/file state, QIDI status, captured offset, and command parameters. Screen and Fluidd adjustments and all variable saves remain unchanged, including intentional zero saves.
+
 ## 26.10.23.1
 - On the second Max 4 THR bootloader build, the optional FIFO fix now recovers from a failed transfer by itself instead of leaving the toolhead board for manual recovery. A short interruption resumes and finishes the fix. Otherwise the installer puts QIDI's stock THR firmware back, checks it, restarts your services, keeps your input shaper calibration, and tells you the fix was not applied, with no firmware blocker. A power loss during the few seconds of programming is still not recoverable, so keep the printer powered until the installer finishes. The first bootloader build is unchanged.
 
