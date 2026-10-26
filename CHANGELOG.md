@@ -2,6 +2,9 @@
 
 ## 26.10.23.2
 - Requests to save a zero print Z offset now emit a `TLTG_Z_OFFSET_ZERO_REQUEST` warning in Fluidd's console and Klipper's log, including the previous saved offset, runtime offset, print/file state, QIDI status, captured offset, and command parameters. Screen and Fluidd adjustments and all variable saves remain unchanged, including intentional zero saves.
+- On firmware `01.01.07.01`, the Fluidd Box card's Load, Unload, and Eject buttons and RFID read work again. QIDI's Fluidd still sent commands the firmware removed, so the buttons did nothing. Unload is now available when the selected slot is loaded; before, it stayed greyed out. Older firmware keeps the original commands.
+- Fixed browsers that had opened Fluidd before an install continuing to show QIDI's unpatched Box card, with `?` slots, after a normal reload. The installer now also updates Fluidd's service worker, so browsers fetch the patched Fluidd. After installing, close every Fluidd tab and open Fluidd again. Uninstall restores the original service worker along with the Fluidd bundle.
+- Thanks to [Assur92's qidi-max4-fluidd-box-fix](https://github.com/Assur92/qidi-max4-fluidd-box-fix) for identifying the Box commands, the missing Unload state, and the service worker cache.
 
 ## 26.10.23.1
 - On the second Max 4 THR bootloader build, the optional FIFO fix now recovers from a failed transfer by itself instead of leaving the toolhead board for manual recovery. A short interruption resumes and finishes the fix. Otherwise the installer puts QIDI's stock THR firmware back, checks it, restarts your services, keeps your input shaper calibration, and tells you the fix was not applied, with no firmware blocker. A power loss during the few seconds of programming is still not recoverable, so keep the printer powered until the installer finishes. The first bootloader build is unchanged.

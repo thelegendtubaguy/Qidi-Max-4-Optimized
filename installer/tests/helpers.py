@@ -111,6 +111,7 @@ def fake_system_root(
         fluidd = root / "home/qidi/fluidd/assets/index-DlFvHGAh.js"
         fluidd.parent.mkdir(parents=True)
         shutil.copyfile(REPO_ROOT / "installer/tests/fixtures/fluidd_box_variables.js", fluidd)
+        shutil.copyfile(REPO_ROOT / "installer/tests/fixtures/fluidd_sw.js", fluidd.parent.parent / "sw.js")
     if include_klipper_box_config:
         box_config = root / "home/qidi/klipper/klippy/extras/box_config.py"
         box_config.parent.mkdir(parents=True)

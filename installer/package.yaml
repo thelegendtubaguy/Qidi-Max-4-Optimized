@@ -501,6 +501,7 @@ system_optimizations:
     restart_service: moonraker.service
   fluidd_box_filament_ids:
     file: /home/qidi/fluidd/assets/index-DlFvHGAh.js
+    service_worker: /home/qidi/fluidd/sw.js
   klipper_box_config:
     file: /home/qidi/klipper/klippy/extras/box_config.py
     restart_service: klipper.service

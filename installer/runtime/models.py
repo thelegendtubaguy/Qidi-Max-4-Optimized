@@ -221,6 +221,7 @@ class SystemMoonrakerMetadata3mfSpec:
 @dataclass(frozen=True)
 class SystemFluiddBundleSpec:
     file: str
+    service_worker: str
 
 
 @dataclass(frozen=True)

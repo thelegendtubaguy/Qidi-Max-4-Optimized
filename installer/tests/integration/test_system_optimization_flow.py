@@ -59,6 +59,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         moonraker.chmod(0o640)
         fluidd = system_root / "home/qidi/fluidd/assets/index-DlFvHGAh.js"
         fluidd_before = fluidd.read_bytes()
+        service_worker = system_root / "home/qidi/fluidd/sw.js"
+        service_worker_before = service_worker.read_bytes()
         box_config = system_root / "home/qidi/klipper/klippy/extras/box_config.py"
         box_config_before = box_config.read_bytes()
         before = snapshot_tree(system_root)
@@ -137,6 +139,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertIn(PATCH_MARKER.encode(), fluidd.read_bytes())
         self.assertIn(b"Math.floor(u/4)===t-1", fluidd.read_bytes())
         self.assertIn(b"enableFullDisplay:!0", fluidd.read_bytes())
+        self.assertIn(b"LOAD_FILAMENT_CONTROL", fluidd.read_bytes())
+        self.assertIn(fluidd_patch.SERVICE_WORKER_OPERATION, state.system_ledger["restore_preimages"])
+        self.assertIn(b'{"revision":"tltg-optimized-', service_worker.read_bytes())
         self.assertIn(KLIPPER_BOX_OPERATION, state.system_ledger["restore_preimages"])
         self.assertIn(b"config.access_tracking if module == 'heater_generic'", box_config.read_bytes())
         self.assertNotIn(b"\n", box_config.read_bytes().replace(b"\r\n", b""))
@@ -189,6 +194,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(moonraker.read_bytes(), moonraker_before)
         self.assertEqual(moonraker.stat().st_mode & 0o777, 0o640)
         self.assertEqual(fluidd.read_bytes(), fluidd_before)
+        self.assertEqual(service_worker.read_bytes(), service_worker_before)
         self.assertEqual(box_config.read_bytes(), box_config_before)
         self.assertFalse(filament_link.is_symlink())
 
