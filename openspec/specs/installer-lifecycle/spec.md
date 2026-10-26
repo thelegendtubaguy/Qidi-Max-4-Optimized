@@ -93,6 +93,21 @@ The installer SHALL deploy firmware-scoped Klipper source only from validated pr
 - **AND** every installer entrypoint resolves pending activation before further release work
 - **AND** a post-activation saved-variable mismatch retains its exact authorized expectations and blocks later install or automatic-update work until an exact live Moonraker verification succeeds; dry-run verification preserves the marker, and terminal uninstall removes it only after successful postflight while rollback preserves it
 
+### Requirement: Managed probe diagnostic helper
+Normal install and update SHALL install the bundled Klipper probe diagnostic helper independently of optional OS optimization policy, retaining ownership evidence without replacing unrecognized or operator-modified helper files.
+
+#### Scenario: Helper is installed and activated
+- **WHEN** the helper destination is absent
+- **THEN** the installer records its absence, creates the bundled helper without overwriting a concurrent file, verifies its contents, and restarts Klipper
+- **AND** an unchanged current helper is left alone, while a missing owned helper can be repaired
+- **AND** installation does not report successful activation with a missing or modified required helper
+
+#### Scenario: Helper restoration respects ownership
+- **WHEN** accepted system restoration during uninstall or host-transaction recovery processes the helper
+- **THEN** an unchanged installed helper is removed if it was originally absent, or restored to its retained preimage
+- **AND** a modified helper is preserved and reported
+- **AND** an incomplete restoration or required service restart retains a recovery blocker
+
 ### Requirement: Non-owning QIDI Box reconciliation
 The installer SHALL keep an available QIDI Box usable without claiming ownership of vendor saved variables or silently replacing existing non-empty tool mappings. Box availability SHALL be recognized for every supported firmware's Box transport, including the legacy USB Box configuration and the RS-485 Box stack.
 

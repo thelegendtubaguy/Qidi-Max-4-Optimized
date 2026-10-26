@@ -53,6 +53,13 @@
 - **Config-confirmed:** the SOC payload ships Fluidd `v1.30.5` with active bundle `/home/qidi/fluidd/assets/index-DlFvHGAh.js`, SHA-256 `178b2e076d3a75716819ee13f9ea1f0c92e536546c8b2adafde8632f6723710c`, byte-identical to the `01.01.06.05` SOC payload. Its QIDI Box card still parses saved slot values with `parseInt` and resolves them through `officiall_filas_list.cfg`; see [material metadata](qidi-box/material-metadata.md).
 - **Runtime-confirmed:** Fluidd is served by nginx over plain HTTP with `ETag` and `Last-Modified` but no explicit expiry for `/assets/`; `index.html` is `no-store`. Browsers do not register its Workbox service worker over a plain-HTTP LAN address.
 
+## Nozzle load-cell diagnostics
+
+- **Config-confirmed:** the `01.01.07.01` defaults use `[probe_air]` with `sensor_type: c_sensor`; `probe_air.py` constructs `air.PrinterAirProbe`. The ordinary `probe.py` command helper reports `QUERY_PROBE` from the supplied `query_endstop` callback.
+- **Static-recovered:** in `air.cpython-39-aarch64-linux-gnu.so` SHA-256 `6d7af36d1061216b7aa5f1cd0eb9ae1c25158f8df9926ec7e69be7e411c67d69`, `WeighEndstopWrapper.query_endstop` returns `_Py_FalseStruct` without querying hardware. `QUERY_PROBE` therefore cannot establish load-cell responsiveness through this callback. This binary is identical in the captured `01.01.06.05` and `01.01.07.01` defaults.
+- **Static-recovered:** `cs1237.cpython-39-aarch64-linux-gnu.so` SHA-256 `7beb56413a902356d0aee2d0580e820342083b3b7f7194d1f5d7217f4b7ff4b5` registers `WEIGHTING_DEBUG_QUERY`. Its handler sends `query_cs1237_read` with the sensor OID, register `0`, and read length `0`, decodes returned bytes, and reports unsigned and signed counts plus millivolts through `respond_info`. The handler contains no toolhead movement or zero-calibration call. This binary is identical in the captured `01.01.06.04`, `01.01.06.05`, and `01.01.07.01` defaults.
+- **Unresolved:** expected unloaded voltage, acceptable noise, force-to-signal scale, disconnected-sensor values, and correspondence between a responsive raw signal and reliable MCU homing triggers have not been validated on hardware. Raw readings alone do not certify safe homing.
+
 ## Rockchip first-boot service and root mount
 
 - `/proc/device-tree/compatible` on the observed Max 4 identifies RK3308, while `/etc/init.d/rockchip.sh` assigns `CHIPNAME="rk3208"` for that hardware.
