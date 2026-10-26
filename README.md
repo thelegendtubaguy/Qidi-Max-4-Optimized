@@ -76,8 +76,9 @@ Install and update patch QIDI's Fluidd, including when optional OS optimizations
 - Box slots show the filament, vendor, and color the printer is actually using. A slot set with an older numeric ID shows QIDI PLA Basic, because that is how `01.01.07.01` treats it; pick the filament again to fix it.
 - The Vendor and Filament pickers match the touchscreen: choose a vendor, then one of its filaments. Changing the vendor switches to that vendor's filament of the same type when one exists.
 - Colors chosen in Fluidd are saved the same way as on the touchscreen.
+- The Box card's Load, Unload, and Eject buttons and RFID read send the commands `01.01.07.01` uses, and Unload is available when the selected slot is loaded.
 
-Older supported firmware keeps Fluidd's original pickers. Reload Fluidd in the browser after installing; a hard refresh may be needed if the browser cached the old page.
+Older supported firmware keeps Fluidd's original pickers and commands. After installing, close every Fluidd tab, then open Fluidd again; browsers that already had Fluidd open load the updated page on the next visit.
 
 A Fluidd build the installer does not recognize is left unchanged. Uninstall can restore the original Fluidd through its system-restoration prompt; files modified after installation are preserved.
 

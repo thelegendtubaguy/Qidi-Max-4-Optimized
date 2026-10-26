@@ -208,9 +208,20 @@ Normal install and update SHALL patch the recognized QIDI Fluidd bundle so its Q
 - **AND** choosing a filament saves its `QF` ID as a string, choosing a vendor saves that vendor's filament of the current type or its first filament, and choosing a color saves a one-element RGB list
 - **AND** `vendor_slotN` is not written
 
+#### Scenario: Box buttons use the firmware's Box commands
+- **WHEN** Fluidd is connected to firmware that exposes `multi_color_controller`
+- **THEN** the Box card's Eject, Load, Unload, and RFID controls send `EJECT_FILAMENT_CONTROL`, `LOAD_FILAMENT_CONTROL`, `UNLOAD_FILAMENT_CONTROL`, and `READ_RFID` with the selected slot number
+- **AND** Load and Unload availability follows the Box path sensor from `box_extras` or, when `box_extras` omits it, from `multi_color_controller`
+
 #### Scenario: Earlier firmware keeps stock pickers
 - **WHEN** Fluidd is connected to firmware without `box485`
 - **THEN** slots display through `officiall_filas_list.cfg` and the stock pickers save numeric IDs as before
+- **AND** without `multi_color_controller`, the Box controls send the stock commands
+
+#### Scenario: Browsers load the patched bundle
+- **WHEN** a browser that previously cached Fluidd through its service worker opens Fluidd after the bundle patch changes
+- **THEN** the service worker updates and fetches the patched bundle instead of serving the cached one
+- **AND** the recognized service worker's bundle precache revision is set from the bundle patch, with the same recognition, preservation, and restoration as the bundle
 
 #### Scenario: Unrecognized Fluidd bundles are preserved
 - **WHEN** the configured bundle is missing or does not match the reviewed stock source or an earlier package patch of it

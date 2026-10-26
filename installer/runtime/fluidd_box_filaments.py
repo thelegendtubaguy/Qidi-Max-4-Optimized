@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 from functools import lru_cache
 
 from .errors import InstallerError
 
 
 OPERATION = "fluidd_box_filament_ids"
+SERVICE_WORKER_OPERATION = "fluidd_service_worker"
 PATCH_MARKER = "/*tltg-optimized:fluidd-box-filament-ids*/"
 
 # QIDI firmware 01.01.07.01 filament-0.4.json: ID, name, type, nozzle min/max, box min/max, vendor.
@@ -237,6 +240,35 @@ HEATER_TARGET_PATCHED = (
     HEATER_TARGET_STOCK.removesuffix('}') + ',disabled:s.key.includes("heater_box")&&s.targetMaxTemp===0&&!s.target}'
 )
 
+# 01.01.07.01 replaced E_BOX/E_LOAD/E_UNLOAD and RFID_READ with the multi_color_controller commands qidiclient sends.
+BUTTON_COMMANDS_STOCK = 'const n=["E_BOX","E_LOAD","E_UNLOAD"];I.printerGcodeScript(`${n[t-1]} slot=${s}`)'
+BUTTON_COMMANDS_PATCHED = (
+    'const c=this.$store.state.printer.printer.multi_color_controller,'
+    'n=c?["EJECT_FILAMENT_CONTROL","LOAD_FILAMENT_CONTROL","UNLOAD_FILAMENT_CONTROL"]:["E_BOX","E_LOAD","E_UNLOAD"];'
+    'I.printerGcodeScript(`${n[t-1]} ${c?"SLOT":"slot"}=${s}`)'
+)
+RFID_COMMAND_STOCK = 'handleRfidClick(t){I.printerGcodeScript(`RFID_READ SLOT=slot${t}`)'
+RFID_COMMAND_PATCHED = (
+    'handleRfidClick(t){I.printerGcodeScript(this.$store.state.printer.printer.multi_color_controller'
+    '?`READ_RFID SLOT=${t}`:`RFID_READ SLOT=slot${t}`)'
+)
+BUTTON_STATUS_STOCK = (
+    'get buttonStatus(){const t=new Array(3).fill(!0);return this.selectIndex>=16||('
+    'this.$store.state.printer.printer["box_stepper slot"+this.selectIndex].runout_button===0?t[0]=!1:t[0]=!0,'
+    'this.$store.state.printer.printer["box_stepper slot"+this.selectIndex].runout_button===0'
+    '?this.$store.state.printer.printer.box_extras.b_endstop_state===0&&this.variables.lastLoadSlot===this.selectIndex'
+    '?t[1]=!0:t[1]=!1:t[1]=!0,'
+    'this.$store.state.printer.printer["box_stepper slot"+this.selectIndex].runout_button===0'
+    '&&this.$store.state.printer.printer.box_extras.b_endstop_state===0&&this.variables.lastLoadSlot===this.selectIndex'
+    '?t[2]=!1:t[2]=!0),t}'
+)
+# 01.01.07.01 publishes the Box path sensor only as multi_color_controller.box.b_endstop_state, so Unload stayed disabled.
+BUTTON_STATUS_PATCHED = (
+    'get tltgBEndstop(){const p=this.$store.state.printer.printer,e=p.box_extras,m=p.multi_color_controller;'
+    'return e&&e.b_endstop_state!=null?e.b_endstop_state:m&&m.box&&m.box.b_endstop_state}'
+    + BUTTON_STATUS_STOCK.replace('this.$store.state.printer.printer.box_extras.b_endstop_state', 'this.tltgBEndstop')
+)
+
 FULL_DISPLAY_DEFAULT_STOCK = 'enableDiagnostics:!1,enableFullDisplay:!1,thumbnailSize:32'
 # QIDI's "Enable Full Display" setting defaults on; a value saved in Moonraker's database still overrides it.
 FULL_DISPLAY_DEFAULT_PATCHED = 'enableDiagnostics:!1,enableFullDisplay:!0,thumbnailSize:32'
@@ -261,6 +293,9 @@ def _steps() -> tuple[tuple[str, str, tuple[str, ...]], ...]:
         (BOX_TEMP_LIMIT_STOCK, BOX_TEMP_LIMIT_PATCHED, ()),
         (HEATER_TARGET_STOCK, HEATER_TARGET_PATCHED, ()),
         (FULL_DISPLAY_DEFAULT_STOCK, FULL_DISPLAY_DEFAULT_PATCHED, ()),
+        (BUTTON_COMMANDS_STOCK, BUTTON_COMMANDS_PATCHED, ()),
+        (RFID_COMMAND_STOCK, RFID_COMMAND_PATCHED, ()),
+        (BUTTON_STATUS_STOCK, BUTTON_STATUS_PATCHED, ()),
     )
 
 
@@ -281,3 +316,19 @@ def patch_fluidd_bundle(text: str) -> str:
     for old, patched in edits:
         text = text.replace(old, patched, 1)
     return text
+
+
+# Workbox serves its precached bundle until sw.js changes, so browsers that opened Fluidd before the patch
+# kept running the stock bundle. A revision derived from the bundle patch makes them fetch every new version.
+SERVICE_WORKER_BUNDLE_ENTRY = re.compile(r'\{"revision":(?:null|"tltg-optimized-[0-9a-f]{16}"),"url":"assets/index-DlFvHGAh\.js"\}')
+
+
+def _service_worker_bundle_entry() -> str:
+    digest = hashlib.sha256("".join(patched for _, patched, _ in _steps()).encode("utf-8")).hexdigest()[:16]
+    return '{"revision":"tltg-optimized-' + digest + '","url":"assets/index-DlFvHGAh.js"}'
+
+
+def patch_fluidd_service_worker(text: str) -> str:
+    if len(SERVICE_WORKER_BUNDLE_ENTRY.findall(text)) != 1:
+        raise FluiddBundleError("Fluidd service worker does not match the reviewed QIDI source; preserving it.")
+    return SERVICE_WORKER_BUNDLE_ENTRY.sub(lambda _: _service_worker_bundle_entry(), text)

@@ -393,6 +393,7 @@ def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec 
         ),
         fluidd_box_filament_ids=SystemFluiddBundleSpec(
             file=_validate_absolute_path(_require_str(fluidd_box_raw, "file")),
+            service_worker=_validate_absolute_path(_require_str(fluidd_box_raw, "service_worker")),
         ),
         klipper_box_config=SystemMoonrakerMetadata3mfSpec(
             file=_validate_absolute_path(_require_str(klipper_box_raw, "file")),
