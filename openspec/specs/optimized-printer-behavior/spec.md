@@ -32,6 +32,35 @@ Optimized configuration SHALL reduce homing, probing, mesh, and filament-transit
 - **AND** the captured value is reapplied after mesh preparation
 - **AND** saved fallback is used only when the session has no capture
 
+### Requirement: Motion-free nozzle load-cell signal check
+Optimized configuration SHALL provide an operator-invoked load-cell response check with console prompts and an automatic signal assessment, without homing, movement, heating, calibration changes, or homing-safety certification.
+
+#### Scenario: Operator checks the cold sensor response
+- **WHEN** the printer is idle, all heater targets are off, the nozzle and bed are below 40 °C, the raw readout command is available, and the operator confirms nozzle access and bed clearance
+- **THEN** Fluidd exposes a `CONFIRM` input that must be set to `1`
+- **AND** the test prompts the operator to leave the nozzle untouched, get ready to press lightly upward without forcing it, and stop touching it after the pressure interval
+- **AND** each preparation instruction repeats three times, one second apart, followed by a five-second wait before measurement
+- **AND** each six-second measurement interval repeats `Measuring...` or `PRESS` three times, with sampling throughout the `PRESS` interval
+- **AND** a sustained pressure change must exceed baseline noise and the signal must settle near baseline after release to report `RESPONSE_DETECTED` with a plain-language message that the readings look correct
+- **AND** an insufficient pressure change reports `INCONCLUSIVE`, while saturated, transient, unsustained, or non-recovering readings report `NO_RELIABLE_RESPONSE`, with plain-language advice to investigate further and the measured reason
+
+#### Scenario: Unsafe or unsupported test is refused
+- **WHEN** a print is active or paused, motion activity is reported, a heater target is nonzero, the nozzle or bed is too hot, clearance is unconfirmed, or the raw readout command is unavailable
+- **THEN** the test stops before sampling and explains the unmet condition
+- **AND** it does not substitute `QUERY_PROBE` or a motion-based probe command
+
+#### Scenario: Conditions change or a read fails during sampling
+- **WHEN** an admission condition becomes unsafe during the test or a raw read fails, is missing, malformed, or ambiguous
+- **THEN** the test stops sampling and reports `INCONCLUSIVE` without a stale successful result
+- **AND** it does not alter the changed printer state
+- **AND** concurrent test requests cannot replace the active measurements
+
+#### Scenario: Signal response is not a homing certification
+- **WHEN** the signal check ends
+- **THEN** it explains that the homing-trigger path remains unverified, including after a detected response
+- **AND** an unsuccessful check instructs the operator not to apply more force or home/probe until the cause is understood
+- **AND** normal homing and print-start behavior remain unchanged
+
 ### Requirement: Non-blocking saved Z-offset diagnostics
 Optimized configuration SHALL report requests to save a numeric zero to `z_offset` in the Klipper console and log without blocking or changing the save.
 

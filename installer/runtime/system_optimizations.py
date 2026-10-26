@@ -23,6 +23,7 @@ from .fluidd_box_filaments import (
     patch_fluidd_service_worker,
 )
 from .klipper_box_config import OPERATION as KLIPPER_BOX_OPERATION, patch_box_config
+from .klipper_probe_test import OPERATION as PROBE_TEST_OPERATION, FILE as PROBE_TEST_FILE, patch_probe_test
 from .fluidd_filament_config import OPERATION as FILAMENT_CONFIG_OPERATION
 from .moonraker_file_manager import OPERATION as MOONRAKER_CACHE_OPERATION, patch_file_manager
 from .auto_update import current_auto_update_checksum
@@ -84,10 +85,20 @@ class _GuardedFilePatch:
     missing_message: str | None
     # Unreviewed sources fail the transaction unless the patch is optional for that vendor file.
     skip_unrecognized: bool
+    create_if_missing: bool = False
 
 
 # Patches admit only reviewed vendor sources; patch(text) returns text unchanged once applied.
 GUARDED_FILE_PATCHES = {
+    PROBE_TEST_OPERATION: _GuardedFilePatch(
+        label="Klipper probe signal helper",
+        file=lambda spec: PROBE_TEST_FILE,
+        patch=patch_probe_test,
+        restart_service="klipper.service",
+        missing_message=None,
+        skip_unrecognized=False,
+        create_if_missing=True,
+    ),
     MOONRAKER_CACHE_OPERATION: _GuardedFilePatch(
         label="Moonraker file_manager.py",
         file=lambda spec: spec.moonraker_file_manager.file,
@@ -195,6 +206,10 @@ def maybe_apply_system_optimizations(
     updated = _replace_system_ledger(state, ledger)
     write_installed_state(state_path, updated)
     _clear_committed_rockchip_journal(paths, ledger)
+    target = _map_path(_system_root(environ), PROBE_TEST_FILE)
+    _reject_symlink_path(target, root=_system_root(environ))
+    if not target.is_file() or target.read_text(encoding="utf-8") != patch_probe_test(""):
+        raise SystemOptimizationError("Required probe signal helper is unavailable or modified; installation cannot complete.")
     return updated
 
 
@@ -427,6 +442,8 @@ def _guarded_file_has_drift(operation_id: str, spec: SystemOptimizationsSpec, ro
         return False
     target = _map_path(root, GUARDED_FILE_PATCHES[operation_id].file(spec))
     expected = _outcome_file_sha256(outcomes.get(operation_id, {}))
+    if GUARDED_FILE_PATCHES[operation_id].create_if_missing and not target.exists() and not _path_has_symlink_component(target, root=root):
+        return False
     return _path_has_symlink_component(target, root=root) or not target.is_file() or (
         hashlib.sha256(target.read_bytes()).hexdigest() != expected
         and not _file_matches_preimage(preimages[operation_id], root=root)
@@ -633,6 +650,8 @@ def apply_system_optimizations(
             started_at = _now()
             guarded = GUARDED_FILE_PATCHES.get(operation_id)
             if guarded is not None and _guarded_file_has_drift(operation_id, spec, root, restore_preimages, ledger.get("outcomes", {})):
+                if guarded.create_if_missing:
+                    raise SystemOptimizationError(f"Required {guarded.label} was modified and was preserved.")
                 reporter.line(f"{guarded.label} was modified after install and was preserved.")
                 continue
             if guarded is not None and guarded.skip_unrecognized:
@@ -920,7 +939,7 @@ def apply_system_optimizations(
                 run=run,
             )
             if guarded is not None:
-                original = Path(preimage["backup_path"]).read_bytes().decode("utf-8")
+                original = Path(preimage["backup_path"]).read_bytes().decode("utf-8") if preimage.get("exists") else ""
                 expected = hashlib.sha256(guarded.patch(original).encode("utf-8")).hexdigest()
                 if postflight.get("sha256") != expected:
                     raise SystemOptimizationError(f"{guarded.label} changed before postflight completed.")
@@ -1186,18 +1205,25 @@ def _apply_guarded_file_patch(operation_id: str, *, spec: SystemOptimizationsSpe
     path = guarded.file(spec)
     target = _map_path(root, path)
     _reject_symlink_path(target, root=root)
-    original = target.read_bytes()
-    if hashlib.sha256(original).hexdigest() != preimage.get("sha256"):
+    original = target.read_bytes() if target.exists() else None
+    if ((original is None) != (not preimage.get("exists"))
+            or (original is not None and hashlib.sha256(original).hexdigest() != preimage.get("sha256"))
+            or (original is None and not guarded.create_if_missing)):
         raise SystemOptimizationError(f"{guarded.label} changed after backup; refusing replacement.")
-    patched = guarded.patch(original.decode("utf-8"))
+    patched = guarded.patch((original or b"").decode("utf-8"))
     staged_path = f"{path}.tltg-{uuid.uuid4().hex}.tmp"
     staged = _map_path(root, staged_path)
     try:
         _write_file_preserving_preimage(staged_path, patched, preimage=preimage, root=root, sudo_password=sudo_password, run=run)
         _reject_symlink_path(target, root=root)
-        if target.read_bytes() != original:
+        if (target.read_bytes() if target.exists() else None) != original:
             raise SystemOptimizationError(f"{guarded.label} changed before replacement.")
-        if _is_fake_root(root):
+        if original is None:
+            if _is_fake_root(root):
+                os.link(staged, target)
+            else:
+                run_sudo_or_raise(["ln", "-T", staged_path, path], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
+        elif _is_fake_root(root):
             os.replace(staged, target)
         else:
             run_sudo_or_raise(["mv", "-f", staged_path, path], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
@@ -1378,8 +1404,10 @@ def _restore_guarded_file_preimage(operation_id: str, preimage: dict[str, Any], 
     guarded = GUARDED_FILE_PATCHES[operation_id]
     target = _map_path(root, preimage["path"])
     _reject_symlink_path(target, root=root)
-    original = Path(preimage["backup_path"]).read_bytes()
-    expected = guarded.patch(original.decode("utf-8")).encode("utf-8")
+    original = Path(preimage["backup_path"]).read_bytes() if preimage.get("exists") else None
+    if original is None and not target.exists():
+        return
+    expected = guarded.patch((original or b"").decode("utf-8")).encode("utf-8")
     if not target.is_file() or target.read_bytes() not in (original, expected):
         raise SystemOptimizationRecoveryError(f"{guarded.label} changed during the transaction; preserving it for recovery.")
     _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
@@ -1701,11 +1729,12 @@ def _operation_needs_apply(operation_id: str, *, spec: SystemOptimizationsSpec, 
             Path(spec.qidiclient_static_gifs.archive),
         )
     if operation_id in GUARDED_FILE_PATCHES:
-        path = _map_path(root, GUARDED_FILE_PATCHES[operation_id].file(spec))
+        guarded = GUARDED_FILE_PATCHES[operation_id]
+        path = _map_path(root, guarded.file(spec))
         if not path.exists():
-            return False
+            return guarded.create_if_missing
         text = path.read_bytes().decode("utf-8")
-        return GUARDED_FILE_PATCHES[operation_id].patch(text) != text
+        return guarded.patch(text) != text
     if operation_id == MOONRAKER_METADATA_OPERATION:
         path = _map_path(root, spec.moonraker_metadata_3mf.file)
         return path.exists() and MOONRAKER_METADATA_PATCH_MARKER not in path.read_text(encoding="utf-8")
@@ -2073,6 +2102,7 @@ def _path_has_symlink_component(path: Path, *, root: Path) -> bool:
 
 def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any]) -> tuple[str, ...]:
     ids = [
+        PROBE_TEST_OPERATION,
         MOONRAKER_METADATA_OPERATION,
         MOONRAKER_CACHE_OPERATION,
         FLUIDD_BOX_OPERATION,
@@ -2115,6 +2145,8 @@ def _service_for_operation(operation_id: str, spec: SystemOptimizationsSpec) -> 
 
 
 def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]:
+    if operation_id == PROBE_TEST_OPERATION:
+        return {"path": PROBE_TEST_FILE, "restart_service": "klipper.service"}
     if operation_id == "dns":
         return {"resolv_conf": spec.dns.target_symlink, "fallback_nameservers": list(spec.dns.fallback_nameservers)}
     if operation_id == "apt_sources":
@@ -2582,6 +2614,7 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             FLUIDD_BOX_OPERATION,
             FLUIDD_SERVICE_WORKER_OPERATION,
             KLIPPER_BOX_OPERATION,
+            PROBE_TEST_OPERATION,
             FILAMENT_CONFIG_OPERATION,
             ROCKCHIP_ROOT_SYNC_OPERATION,
             *(f"service_{service}" for service in spec.services.disable),

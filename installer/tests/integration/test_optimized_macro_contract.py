@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import unittest
 
 from installer.tests.helpers import REPO_ROOT
@@ -56,6 +57,15 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertIn("Z_TILT_ADJUST", screws_gcode)
         self.assertIn("SCREWS_TILT_CALCULATE", screws_gcode)
         self.assertNotIn("params.", screws_gcode)
+
+    def test_probe_signal_check_cannot_issue_motion_heating_or_calibration_commands(self):
+        gcode = self._macro_gcode("TLTG_TEST_PROBE")
+        commands = set(re.findall(r"^\s*([A-Za-z_][A-Za-z_0-9]*)(?=\s|$)", gcode, re.MULTILINE))
+        self.assertTrue(commands)
+        self.assertLessEqual(
+            {command.upper() for command in commands},
+            {"_TLTG_TEST_PROBE"},
+        )
 
     def test_cancel_on_error_reenables_bed_mesh_without_moving(self):
         gcode = self._macro_gcode("OPTIMIZED_CANCEL_PRINT_ON_ERROR")

@@ -106,11 +106,16 @@ Install and update turn on QIDI's **Enable Full Display** setting in Fluidd by d
 After install and Klipper restart, the optimized macro set includes:
 
 ```gcode
+TLTG_TEST_PROBE CONFIRM=1
 TLTG_PROBE_ACCURACY_CENTER
 TLTG_CORNER_BED_SCREW_CHECK
 SCREWS_TILT_CALCULATE
 TLTG_RESET_TOOL_MAPPINGS
 ```
+
+`TLTG_TEST_PROBE CONFIRM=1` runs a guided nozzle load-cell response check without moving, homing, heating, or changing calibration. In Fluidd's macro controls, enter `1` in the `CONFIRM` field. Before confirming, make sure the nozzle is accessible and clear of the bed; **do not home to prepare for this test**. The printer must be idle, all heater targets off, and the nozzle and bed below 40 °C. Follow the console prompts: leave the nozzle untouched, get ready to apply light upward pressure, then stop touching it after the `PRESS` interval. Each preparation instruction repeats three times, one second apart, followed by a five-second wait. Each measurement interval lasts six seconds with three `Measuring...` or `PRESS` prompts; sampling continues throughout the `PRESS` interval. The test takes about 39 seconds.
+
+The included Python helper calculates the pressure change against baseline noise and checks that the signal recovers after release. It reports that the readings look correct (`RESPONSE_DETECTED`), that the response was inappropriate (`NO_RELIABLE_RESPONSE`), or that there was insufficient difference to determine (`INCONCLUSIVE`), with the reason and measured change. **A detected response does not verify the MCU homing-trigger path or certify safe homing.** Missing or malformed readings, saturation, isolated spikes, and a signal that stays displaced after release cannot pass. Detection is noise-relative, not a calibrated-force test. If no reliable response is detected, do not press harder or home/probe until the cause is understood. Unsupported firmware is rejected; `QUERY_PROBE` is not a substitute. `TLTG_PROBE_ACCURACY_CENTER` and the screw check below both home and are not safe tests for a suspected failed sensor.
 
 `TLTG_PROBE_ACCURACY_CENTER [SAMPLES=20]` homes, moves to `X195 Y195 Z10`, and runs Klipper `PROBE_ACCURACY`.
 
