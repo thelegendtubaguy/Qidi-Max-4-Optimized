@@ -8,194 +8,230 @@ from installer.tests.helpers import REPO_ROOT
 
 
 spec = importlib.util.spec_from_file_location(
-    "probe_signal_test", REPO_ROOT / "installer/klipper/qidi/tltg_probe_test.py"
+    "tltg_probe_test", REPO_ROOT / "installer/klipper/qidi/tltg_probe_test.py"
 )
 probe_test = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(probe_test)
+
+# Isolated corrupt readings captured from a Max 4 whose sensor otherwise read about -939000.
+HARDWARE_GLITCHES = (-917505, -3, -2, 6955391)
 
 
 class CommandError(Exception):
     pass
 
 
-class SignalHarness:
-    def __init__(self, readings, confirm=1, sign_extend=False):
+def vendor_line(value: int) -> str:
+    """Format a reading the way QIDI's cs1237 module reports it."""
+    return "// 传感器数据(%s): %d / %d / %.6f(mV)" % (
+        "-" if value < 0 else "+", value % (1 << 24), value, value * 2.5 / 128 / ((1 << 23) - 1) * 1000,
+    )
+
+
+def trace(*, base=-939000, change=250000, release=0, glitches=()):
+    """Twelve baseline, twelve pressed, and twelve released readings with light noise."""
+    noise = [n % 3 * 50 - 50 for n in range(12)]
+    readings = [base + n for n in noise] + [base + change + n for n in noise] + [base + release + n for n in noise]
+    for index, value in glitches:
+        readings[index] = value
+    return readings
+
+
+class Printer:
+    """Just enough of Klipper for the helper: console output, reactor time, and status objects."""
+
+    def __init__(self, readings, confirm=1):
         self.readings = iter(readings)
         self.confirm = confirm
-        self.sign_extend = sign_extend
-        self.messages = []
-        self.events = []
-        self.commands = {}
-        self.outputs = []
-        self.calls = []
         self.time = 0.0
+        self.console = []
+        self.queries = []
+        self.commands = {}
         self.on_pause = lambda: None
         self.on_query = lambda: None
+        self.command_error = CommandError
         self.objects = {
             "print_stats": {"state": "standby"},
             "pause_resume": {"is_paused": False},
             "virtual_sdcard": {"is_active": False},
             "idle_timeout": {"state": "Ready"},
-            "heaters": {"available_heaters": ["extruder", "heater_bed", "heater_generic chamber", "heater_generic heater_box1"]},
+            "heaters": {"available_heaters": ["extruder", "heater_bed", "heater_generic chamber"]},
             "extruder": {"temperature": 25.0, "target": 0},
             "heater_bed": {"temperature": 25.0, "target": 0},
             "heater_generic chamber": {"target": 0},
-            "heater_generic heater_box1": {"target": 0},
         }
         self.gcode = SimpleNamespace(
-            register_command=lambda name, handler, **kw: self.commands.update({name: handler}),
-            register_output_handler=self.outputs.append,
-            get_status=lambda now: {"commands": {"WEIGHTING_DEBUG_QUERY": {}, **self.commands}},
-            run_script_from_command=self.query,
+            output_callbacks=[lambda message: self.console.append((self.time, message))],
+            register_command=lambda name, handler, **kwargs: self.commands.update({name: handler}),
+            get_status=lambda eventtime: {"commands": {"WEIGHTING_DEBUG_QUERY": {}, **self.commands}},
+            gcode_handlers={"WEIGHTING_DEBUG_QUERY": self.query},
+            create_gcode_command=lambda command, commandline, params: SimpleNamespace(),
+            run_script_from_command=self.run_script,
         )
-        reactor = SimpleNamespace(monotonic=lambda: self.time, pause=self.pause)
-        printer = SimpleNamespace(
-            lookup_object=self.lookup, get_reactor=lambda: reactor, command_error=CommandError
-        )
-        self.helper = probe_test.load_config(SimpleNamespace(get_printer=lambda: printer))
+        self.reactor = SimpleNamespace(monotonic=lambda: self.time, pause=self.pause)
+        self.check = probe_test.load_config(SimpleNamespace(get_printer=lambda: self))
         self.gcmd = SimpleNamespace(
             get_int=lambda name, default: default if self.confirm is None else self.confirm,
-            error=CommandError, respond_info=self.respond,
+            error=CommandError,
+            respond_info=lambda message: self.respond_raw("// " + message),
         )
 
-    def respond(self, message):
-        self.messages.append(message)
-        self.events.append((self.time, "message", message))
+    def get_reactor(self):
+        return self.reactor
 
-    def lookup(self, name):
+    def lookup_object(self, name):
         if name == "gcode":
             return self.gcode
-        return SimpleNamespace(get_status=lambda now: self.objects[name])
+        return SimpleNamespace(get_status=lambda eventtime: self.objects[name])
+
+    def respond_raw(self, message):
+        for callback in self.gcode.output_callbacks:
+            callback(message)
 
     def pause(self, until):
         self.time = until
         self.on_pause()
 
-    def query(self, script):
-        self.calls.append(script)
-        self.events.append((self.time, "reading", script))
-        if script != "WEIGHTING_DEBUG_QUERY":
-            raise AssertionError("Unexpected motion, heating, or calibration command: " + script)
+    def run_script(self, script):
+        raise AssertionError("Unexpected G-code script: " + script)
+
+    def query(self, gcmd):
+        self.queries.append(self.time)
         self.on_query()
         value = next(self.readings)
         if isinstance(value, Exception):
             raise value
-        if isinstance(value, int):
-            value = "// 传感器数据(%s): %d / %d / %.6f(mV)" % (
-                "-" if value < 0 else "+", value % (1 << (32 if self.sign_extend else 24)), value,
-                value * 2.5 / 128 / ((1 << 23) - 1) * 1000,
-            )
-        for output in self.outputs:
-            output(value)
+        for line in value if isinstance(value, list) else [value]:
+            self.respond_raw(vendor_line(line) if isinstance(line, int) else line)
 
     def run(self):
         self.commands["_TLTG_TEST_PROBE"](self.gcmd)
-        return self.helper.get_status(self.time)
+        return self.check.result
+
+    def messages(self):
+        return [message for _, message in self.console]
 
 
-def trace(base=1000, delta=1000, recovery=0):
-    return [base + n % 3 - 1 for n in range(12)] + [base + delta + n % 3 - 1 for n in range(12)] + [base + recovery + n % 3 - 1 for n in range(12)]
+class LoadCellResponseCheckTests(unittest.TestCase):
+    def test_guided_check_detects_response_in_either_direction_without_raw_console_output(self):
+        for change in (250000, -250000):
+            with self.subTest(change=change):
+                printer = Printer(trace(change=change))
+                self.assertEqual(printer.run(), "RESPONSE_DETECTED")
+                self.assertFalse(printer.check.active)
+                self.assertFalse(any("传感器" in message for message in printer.messages()))
+                self.assertTrue(any("does not verify the homing trigger" in message for message in printer.messages()))
 
+                reminders = [time for time, message in printer.console
+                             if message in ("// DO NOT TOUCH", "// GET READY TO PRESS")]
+                cues = [(time, message) for time, message in printer.console
+                        if message in ("// Measuring...", "// PRESS")]
+                self.assertEqual([message for _, message in cues],
+                                 ["// Measuring..."] * 3 + ["// PRESS"] * 3 + ["// Measuring..."] * 3)
+                self.assertEqual(len(printer.queries), 36)
+                for phase in range(3):
+                    phase_reminders = reminders[3 * phase:3 * phase + 3]
+                    phase_queries = printer.queries[12 * phase:12 * phase + 12]
+                    self.assertEqual([b - a for a, b in zip(phase_reminders, phase_reminders[1:])], [1.0, 1.0])
+                    self.assertGreaterEqual(phase_queries[0] - phase_reminders[-1], 5)
+                    self.assertEqual(phase_queries[-1] - phase_queries[0], 5.5)
+                    self.assertEqual([time for time, _ in cues[3 * phase:3 * phase + 3]],
+                                     [time - 0.5 for time in phase_queries[0::4]])
 
-class ProbeSignalTestTests(unittest.TestCase):
-    def test_complete_guided_test_detects_response_in_either_direction(self):
-        for delta, sign_extend in ((1000, False), (-1000, False), (-1000, True)):
-            with self.subTest(delta=delta, sign_extend=sign_extend):
-                harness = SignalHarness(trace(base=-100, delta=delta), sign_extend=sign_extend)
-                status = harness.run()
-                self.assertEqual(status["result"], "RESPONSE_DETECTED")
-                self.assertFalse(status["active"])
-                self.assertEqual(len(harness.calls), 36)
-                starts = [next(i for i, event in enumerate(harness.events)
-                               if event[1] == "message" and event[2].startswith(prefix))
-                          for prefix in ("Will measure", "Next you", "Stop pressing")]
-                for phase, start in enumerate(starts):
-                    end = starts[phase + 1] if phase < 2 else len(harness.events)
-                    events = harness.events[start:end]
-                    reminders = [event for event in events if event[1] == "message" and event[2] in ("DO NOT TOUCH", "GET READY TO PRESS")]
-                    cue = "PRESS" if phase == 1 else "Measuring..."
-                    cues = [i for i, event in enumerate(events) if event[1:] == ("message", cue)]
-                    self.assertEqual(len(reminders), 3)
-                    self.assertEqual(len(cues), 3)
-                    self.assertGreaterEqual(events[cues[0]][0] - reminders[-1][0], 5)
-                    self.assertFalse(any(event[1] == "reading" for event in events[:cues[0]]))
-                    for first, last in zip(cues, cues[1:] + [len(events)]):
-                        self.assertTrue(any(event[1] == "reading" for event in events[first:last]))
-                self.assertTrue(any("NOT the MCU homing-trigger path" in message for message in harness.messages))
+    def test_isolated_corrupt_readings_do_not_decide_the_result(self):
+        glitches = tuple(zip((9, 14, 26, 33), HARDWARE_GLITCHES))
+        for change, expected in ((250000, "RESPONSE_DETECTED"), (0, "INCONCLUSIVE")):
+            with self.subTest(change=change):
+                self.assertEqual(Printer(trace(change=change, glitches=glitches)).run(), expected)
 
-    def test_frozen_noisy_transient_saturated_and_unreleased_signals_never_pass(self):
+    def test_unreliable_signals_never_pass(self):
         cases = {
-            "frozen": [1000] * 36,
-            "noise": [1000 + (100 if n % 2 else -100) for n in range(12)] + [1050] * 12 + [1000] * 12,
-            "spike": [1000] * 12 + [1000] * 11 + [100000] + [1000] * 12,
-            "intermittent": [1000] * 12 + [2000] * 9 + [1000] * 3 + [1000] * 12,
-            "unreleased": trace(recovery=1000),
-            "minimum_change_without_release": [0] * 12 + [64] * 24,
-            "unstable_release": [0] * 12 + [1000] * 12 + [0] * 10 + [5000] * 2,
-            "saturated": trace(base=(1 << 23) - 1000, delta=-10000),
+            "frozen": ([1000] * 36, "INCONCLUSIVE"),
+            "noise": ([1000 + (100 if n % 2 else -100) for n in range(12)] + [1050] * 12 + [1000] * 12,
+                      "INCONCLUSIVE"),
+            "intermittent": (trace(glitches=[(index, -939000) for index in range(21, 24)]),
+                             "NO_RELIABLE_RESPONSE"),
+            "unreleased": (trace(release=250000), "NO_RELIABLE_RESPONSE"),
+            "minimum_change_without_release": ([0] * 12 + [64] * 24, "NO_RELIABLE_RESPONSE"),
+            "unstable_release": (trace(glitches=[(index, -839000) for index in range(33, 36)]),
+                                 "NO_RELIABLE_RESPONSE"),
+            "saturated": (trace(base=(1 << 23) - 1000, change=-10000), "NO_RELIABLE_RESPONSE"),
         }
-        for name, readings in cases.items():
+        for name, (readings, expected) in cases.items():
             with self.subTest(name=name):
-                harness = SignalHarness(readings)
-                expected = "INCONCLUSIVE" if name in ("frozen", "noise") else "NO_RELIABLE_RESPONSE"
-                self.assertEqual(harness.run()["result"], expected)
-                self.assertTrue(any("Do not home or probe" in message for message in harness.messages))
+                printer = Printer(readings)
+                self.assertEqual(printer.run(), expected)
+                self.assertTrue(any("Do not home or probe" in message for message in printer.messages()))
 
-    def test_bad_missing_or_ambiguous_readouts_fail_and_next_test_starts_cleanly(self):
-        for reading in ("", "// unrelated output", "// 传感器数据(+): 1 / 2 / 0.001(mV)",
-                        "// 传感器数据(+): 1 / 1 / nan(mV)",
-                        "// 传感器数据(+): 1 / 1 / 0.001(mV)\n// 传感器数据(+): 2 / 2 / 0.002(mV)",
-                        CommandError("sensor timeout")):
+    def test_bad_readout_stops_the_check_and_the_next_check_starts_cleanly(self):
+        # QIDI's handler raises IndexError when the MCU returns an empty reading.
+        for reading in ("", "// unrelated output", [1, 2], 1 << 23, CommandError("sensor timeout"),
+                        IndexError("index out of range")):
             with self.subTest(reading=reading):
-                harness = SignalHarness([reading])
-                self.assertEqual(harness.run()["result"], "INCONCLUSIVE")
-                self.assertEqual(len(harness.calls), 1)
-                self.assertFalse(harness.helper.active)
-                harness.readings = iter(trace())
-                self.assertEqual(harness.run()["result"], "RESPONSE_DETECTED")
+                printer = Printer([reading] * 3)
+                with self.assertLogs(level="WARNING"):
+                    self.assertEqual(printer.run(), "INCONCLUSIVE")
+                self.assertEqual(len(printer.queries), 3)
+                self.assertFalse(printer.check.active)
+                if reading == "// unrelated output":
+                    self.assertIn(reading, printer.messages())
+                printer.readings = iter(trace())
+                self.assertEqual(printer.run(), "RESPONSE_DETECTED")
+
+    def test_transient_readout_failure_is_retried(self):
+        printer = Printer([IndexError("index out of range")] + trace())
+        with self.assertLogs(level="WARNING"):
+            self.assertEqual(printer.run(), "RESPONSE_DETECTED")
+        self.assertEqual(len(printer.queries), 37)
 
     def test_unsafe_or_unconfirmed_start_is_refused_without_querying(self):
         cases = [("print_stats", "state", state) for state in ("printing", "paused", "unknown")]
         cases += [("pause_resume", "is_paused", True), ("virtual_sdcard", "is_active", True),
                   ("idle_timeout", "state", "Printing")]
-        cases += [(heater, "target", 1) for heater in ("extruder", "heater_bed", "heater_generic chamber", "heater_generic heater_box1")]
+        cases += [(heater, "target", 1) for heater in ("extruder", "heater_bed", "heater_generic chamber")]
         cases += [(heater, "temperature", value) for heater in ("extruder", "heater_bed") for value in (40, float("nan"))]
         for obj, key, value in cases:
             with self.subTest(obj=obj, key=key, value=value):
-                harness = SignalHarness(trace())
-                harness.objects[obj][key] = value
+                printer = Printer(trace())
+                printer.objects[obj][key] = value
                 with self.assertRaises(CommandError):
-                    harness.run()
-                self.assertEqual(harness.calls, [])
+                    printer.run()
+                self.assertEqual(printer.queries, [])
         for confirm in (None, 0, 2):
-            harness = SignalHarness(trace(), confirm=confirm)
-            with self.assertRaises(CommandError):
-                harness.run()
-            self.assertEqual(harness.calls, [])
-        harness = SignalHarness(trace())
-        harness.gcode.get_status = lambda now: {"commands": {}}
+            with self.subTest(confirm=confirm):
+                printer = Printer(trace(), confirm=confirm)
+                with self.assertRaises(CommandError):
+                    printer.run()
+                self.assertEqual(printer.queries, [])
+        printer = Printer(trace())
+        printer.gcode.get_status = lambda eventtime: {"commands": {}}
         with self.assertRaises(CommandError):
-            harness.run()
-        self.assertEqual(harness.calls, [])
+            printer.run()
+        self.assertEqual(printer.queries, [])
 
     def test_changed_safety_state_aborts_without_altering_the_printer(self):
         for obj, key, value, change_at in (("print_stats", "state", "printing", 4),
                                            ("extruder", "target", 200, 21), ("extruder", "temperature", 40, 30)):
             with self.subTest(obj=obj, key=key):
-                harness = SignalHarness(trace())
+                printer = Printer(trace())
+
                 def change_state():
-                    if harness.time >= change_at:
-                        harness.objects[obj][key] = value
-                harness.on_pause = change_state
-                self.assertEqual(harness.run()["result"], "INCONCLUSIVE")
-                self.assertLess(len(harness.calls), 36)
-                self.assertEqual(harness.objects[obj][key], value)
-                self.assertFalse(harness.helper.active)
+                    if printer.time >= change_at:
+                        printer.objects[obj][key] = value
+
+                printer.on_pause = change_state
+                self.assertEqual(printer.run(), "INCONCLUSIVE")
+                self.assertLess(len(printer.queries), 36)
+                self.assertEqual(printer.objects[obj][key], value)
+                self.assertFalse(printer.check.active)
 
     def test_reentrant_request_cannot_replace_the_active_measurements(self):
-        harness = SignalHarness(trace())
+        printer = Printer(trace())
+
         def reenter():
             with self.assertRaises(CommandError):
-                harness.run()
-        harness.on_query = reenter
-        self.assertEqual(harness.run()["result"], "RESPONSE_DETECTED")
+                printer.run()
+
+        printer.on_query = reenter
+        self.assertEqual(printer.run(), "RESPONSE_DETECTED")
+

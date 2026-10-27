@@ -37,6 +37,7 @@ from installer.runtime.system_optimizations import (
 )
 from installer.runtime.uninstall import run_uninstall
 from installer.tests.helpers import (
+    FIXTURES_ROOT,
     REPO_ROOT,
     build_env,
     copy_base_runtime,
@@ -181,6 +182,17 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(fluidd.read_bytes(), fluidd_current)
         self.assertEqual(reconciled["restore_preimages"][FLUIDD_BOX_OPERATION], fluidd_preimage)
         self.assertEqual(os.readlink(filament_link), filament_config.target)
+        # Updates replace an unchanged helper from an earlier pre-release build.
+        prior_helper = (FIXTURES_ROOT / "tltg_probe_test_prerelease.py").read_bytes()
+        probe_helper.write_bytes(prior_helper)
+        reconciled["outcomes"][PROBE_TEST_OPERATION]["postflight"]["sha256"] = __import__("hashlib").sha256(prior_helper).hexdigest()
+        reconciled = apply_system_optimizations(
+            paths=paths, spec=manifest.system_optimizations, ledger=reconciled,
+            reporter=PlainReporter(io.StringIO()), input_stream=None, environ=env,
+            source="auto_update_reconcile", run=host_run,
+        )
+        self.assertEqual(probe_helper.read_bytes(), PROBE_TEST_PAYLOAD.read_bytes())
+        self.assertFalse(reconciled["restore_preimages"][PROBE_TEST_OPERATION]["exists"])
         write_installed_state(printer_root / manifest.state_file, _replace_system_ledger(state, reconciled))
 
         run_uninstall(
