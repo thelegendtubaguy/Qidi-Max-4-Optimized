@@ -162,9 +162,21 @@ SCREWS_TILT_CALCULATE
 TLTG_RESET_TOOL_MAPPINGS
 ```
 
-`TLTG_TEST_PROBE CONFIRM=1` runs a guided nozzle load-cell response check without moving, homing, heating, or changing calibration. In Fluidd's macro controls, enter `1` in the `CONFIRM` field. Before confirming, make sure the nozzle is accessible and clear of the bed; **do not home to prepare for this test**. The printer must be idle, all heater targets off, and the nozzle and bed below 40 °C. Follow the console prompts: leave the nozzle untouched, get ready to apply light upward pressure, then stop touching it after the `PRESS` interval. Each preparation instruction repeats three times, one second apart, followed by a five-second wait. Each measurement interval lasts six seconds with three `Measuring...` or `PRESS` prompts; sampling continues throughout the `PRESS` interval. The test takes about 39 seconds.
+`TLTG_TEST_PROBE CONFIRM=1` checks that the nozzle load cell responds to light pressure. It does not move, home, heat, or change calibration. In Fluidd's macro controls, enter `1` in the `CONFIRM` field. The printer must be idle with all heaters off and the nozzle and bed below 40 °C. Make sure you can reach the nozzle and it is clear of the bed; **do not home to prepare for this test**.
 
-The included Python helper calculates the pressure change against baseline noise and checks that the signal recovers after release. It reports that the readings look correct (`RESPONSE_DETECTED`), that the response was inappropriate (`NO_RELIABLE_RESPONSE`), or that there was insufficient difference to determine (`INCONCLUSIVE`), with the reason and measured change. **A detected response does not verify the MCU homing-trigger path or certify safe homing.** Missing or malformed readings, saturation, isolated spikes, and a signal that stays displaced after release cannot pass. Detection is noise-relative, not a calibrated-force test. If no reliable response is detected, do not press harder or home/probe until the cause is understood. Unsupported firmware is rejected; `QUERY_PROBE` is not a substitute. `TLTG_PROBE_ACCURACY_CENTER` and the screw check below both home and are not safe tests for a suspected failed sensor.
+Follow the console prompts. The test takes about 40 seconds:
+
+1. Leave the nozzle alone through `DO NOT TOUCH` and `Measuring...`.
+2. At `GET READY TO PRESS`, get ready. At `PRESS`, press lightly upward on the nozzle and hold.
+3. When told to stop pressing, let go and leave the nozzle alone through `DO NOT TOUCH` and `Measuring...`.
+
+The result is one of:
+
+- `RESPONSE_DETECTED`: the readings look correct.
+- `NO_RELIABLE_RESPONSE`: the sensor did not respond as expected.
+- `INCONCLUSIVE`: there was not enough difference between pressing and not pressing to tell, or the test stopped early.
+
+**A detected response does not verify the homing trigger or certify safe homing.** For any other result, do not press harder, and do not home or probe until the cause is understood. `QUERY_PROBE` cannot check this sensor. `TLTG_PROBE_ACCURACY_CENTER` and the screw check below both home, so they are not safe tests for a suspected failed sensor.
 
 `TLTG_PROBE_ACCURACY_CENTER [SAMPLES=20]` homes, moves to `X195 Y195 Z10`, and runs Klipper `PROBE_ACCURACY`.
 

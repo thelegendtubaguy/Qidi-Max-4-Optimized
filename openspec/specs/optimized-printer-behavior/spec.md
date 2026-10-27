@@ -41,8 +41,10 @@ Optimized configuration SHALL provide an operator-invoked load-cell response che
 - **AND** the test prompts the operator to leave the nozzle untouched, get ready to press lightly upward without forcing it, and stop touching it after the pressure interval
 - **AND** each preparation instruction repeats three times, one second apart, followed by a five-second wait before measurement
 - **AND** each six-second measurement interval repeats `Measuring...` or `PRESS` three times, with sampling throughout the `PRESS` interval
+- **AND** the console shows only the English prompts and result, not QIDI's raw readout lines
 - **AND** a sustained pressure change must exceed baseline noise and the signal must settle near baseline after release to report `RESPONSE_DETECTED` with a plain-language message that the readings look correct
-- **AND** an insufficient pressure change reports `INCONCLUSIVE`, while saturated, transient, unsustained, or non-recovering readings report `NO_RELIABLE_RESPONSE`, with plain-language advice to investigate further and the measured reason
+- **AND** an insufficient pressure change reports `INCONCLUSIVE`, while saturated, unsustained, or non-recovering readings report `NO_RELIABLE_RESPONSE`, with plain-language advice to investigate further and the measured reason
+- **AND** up to two isolated outlier readings per interval do not change the result
 
 #### Scenario: Unsafe or unsupported test is refused
 - **WHEN** a print is active or paused, motion activity is reported, a heater target is nonzero, the nozzle or bed is too hot, clearance is unconfirmed, or the raw readout command is unavailable
@@ -50,8 +52,9 @@ Optimized configuration SHALL provide an operator-invoked load-cell response che
 - **AND** it does not substitute `QUERY_PROBE` or a motion-based probe command
 
 #### Scenario: Conditions change or a read fails during sampling
-- **WHEN** an admission condition becomes unsafe during the test or a raw read fails, is missing, malformed, or ambiguous
+- **WHEN** an admission condition becomes unsafe during the test, or a raw read still fails, is missing, malformed, or ambiguous after brief retries
 - **THEN** the test stops sampling and reports `INCONCLUSIVE` without a stale successful result
+- **AND** a failed raw read, including an empty sensor reply, does not shut down Klipper
 - **AND** it does not alter the changed printer state
 - **AND** concurrent test requests cannot replace the active measurements
 
