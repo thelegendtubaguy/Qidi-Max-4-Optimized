@@ -31,6 +31,14 @@ Vendor names are occupied across the final Klipper config even when their includ
 
 `box_stepper.so`, `box_extras.so`, `box_autofeed.so`, `box_rfid.so`, `box_detect.so`, and `multi_color_controller.so` are captured aarch64 Cython extension modules. Their static symbols and strings locate behavior; fake-harness and runtime evidence determine readable behavior.
 
+## Transport identity
+
+**Runtime-confirmed.** A two-Box machine presented two `mcu_box*` objects that are each a USB CDC-ACM Klipper MCU whose USB product string is `QIDI_BOX_V2_1.2.1`. That string is also embedded in the `QD_MAX4_BOX` firmware image, so the USB Box MCU runs the Klipper-fork firmware described in `mcu-firmware.md`. Both boxes sat behind the same internal hub tree, one of them behind a nested hub. `mcu_box2` and `mcu_box1` are not interchangeable names: each is bound to one box by hardware serial in `box.cfg`.
+
+The firmware bundle also ships an RS-485 Box MCU image (`QD_MAX4_BOX485`), which is a separate, non-Klipper, polled STM32F103 application. On a machine with two USB boxes, the `[box485]`/`[box2base]` stack is still loaded and probes for an RS-485 device about every two seconds, logging `Can not find 485 device`. That probe does not indicate a fault or an attached 485 Box.
+
+Link-loss behaviour, failure signatures, and what the host can attribute are recorded in `link-failures.md`.
+
 ## Generated object topology
 
 Plain Python `box_config.py` expands `[box_config boxN]` using:
@@ -140,5 +148,6 @@ Treat concurrent vendor detection mutation as possible. Installer changes involv
 - Optimized fresh-load start delegates feeder movement to `BOX_PRINT_START`, then performs repository-owned purge/cleanup.
 - Retained-filament start bypasses vendor start only after physical continuity and metadata checks.
 - External-spool start avoids Box commands when the stack is absent or disabled.
-- Repository macros may wrap vendor behavior but do not tune compiled feeder motion, replace RFID/autofeed/retry logic, or redefine vendor names.
+- Repository macros may wrap vendor behavior but do not replace RFID/autofeed/retry logic or redefine vendor names.
+- The only repository code that changes compiled feeder motion is `tltg_box_feed_motion`. Wherever QIDI's Box code provides the traced methods and plausible arguments, it rewrites the arguments of each slot's three-stage load home and two-stage unload home from operator saved variables. It doesn't change the load pre-stage, plain `do_home`/`do_move`, or vendor motion keys.
 - `config/box.cfg` remains stock-mapped and sensitive; exact MCU serial identifiers are never tracked.

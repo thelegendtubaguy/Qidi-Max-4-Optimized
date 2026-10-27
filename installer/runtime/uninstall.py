@@ -36,7 +36,11 @@ from .interaction import (
 from .fs_atomic import atomic_delete
 from .mirror import detect_uninstall_managed_tree_drift, remove_tree
 from .path_safety import ensure_uninstall_paths_safe
-from .source_patches import restore_source_patch, validate_source_state
+from .source_patches import (
+    remove_extra_module,
+    restore_source_patch,
+    validate_source_state,
+)
 from .process_restart import read_printer_info, write_restart_marker
 from .models import (
     DriftRecord,
@@ -430,6 +434,10 @@ def _execute_uninstall(
         )
         uninstall_counters["include_removal"][0] = int(include_changed)
         reporter.emit_uninstall_counters(**_freeze_counters(uninstall_counters))
+
+        for module in manifest.install.extra_modules:
+            if remove_extra_module(paths=paths, module=module):
+                journal.note_write()
 
         remove_tree(managed_tree_root, journal)
         uninstall_counters["managed_tree_removal"][0] = 1

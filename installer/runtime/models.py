@@ -158,11 +158,19 @@ class SourcePatchSpec:
 
 
 @dataclass(frozen=True)
+class ExtraModuleSpec:
+    id: str
+    source: str
+    destination: str
+
+
+@dataclass(frozen=True)
 class InstallSpec:
     ensure_directories: tuple[str, ...]
     managed_tree: ManagedTreeSpec
     ensure_lines: tuple[EnsureLineSpec, ...]
     source_patches: tuple[SourcePatchSpec, ...] = ()
+    extra_modules: tuple[ExtraModuleSpec, ...] = ()
 
 
 @dataclass(frozen=True)

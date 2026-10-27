@@ -12,6 +12,7 @@ from .auto_update import (
     maybe_repair_configured_auto_updates,
 )
 from .box_enablement import (
+    maybe_initialize_box_motion,
     maybe_initialize_filament_retention,
     maybe_prompt_align_tool_slots,
     maybe_prompt_enable_box,
@@ -69,6 +70,7 @@ from .source_patches import (
     SourcePatchError,
     classify_install_source_patch,
     deploy_source_patch,
+    install_extra_module,
     validate_source_state,
 )
 from .process_restart import read_printer_info, write_restart_marker
@@ -429,6 +431,13 @@ def _execute_install(
             written=saved_variables_written,
             urlopen=urlopen,
         )
+        maybe_initialize_box_motion(
+            paths=paths,
+            reporter=reporter,
+            journal=journal,
+            written=saved_variables_written,
+            urlopen=urlopen,
+        )
         maybe_prompt_enable_box(
             paths=paths,
             reporter=reporter,
@@ -480,6 +489,12 @@ def _execute_install(
             if result.classification != "noop_desired":
                 journal.note_write()
                 deploy_source_patch(paths=paths, patch=patch, firmware=detected_firmware, result=result)
+
+        for module in manifest.install.extra_modules:
+            install_extra_module(
+                paths=paths, module=module, journal=journal, reporter=reporter
+            )
+            install_counters["extra_modules"][0] += 1
 
         mirror_tree(
             source_root=paths.installer_root / manifest.managed_tree.source,
@@ -790,6 +805,7 @@ def _install_counters_template(
         patch_count = len(active_patch_entries(manifest, detected_firmware))
     return {
         "ensure_directories": [0, len(manifest.install.ensure_directories)],
+        "extra_modules": [0, len(manifest.install.extra_modules)],
         "managed_trees": [0, 1],
         "ensure_lines": [0, len(manifest.install.ensure_lines)],
         "patches": [0, patch_count],

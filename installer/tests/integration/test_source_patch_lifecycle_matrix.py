@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from installer.runtime import klipper_cfg
+from installer.runtime import box_enablement, klipper_cfg
 from installer.runtime.box_enablement import (
     SavedVariablePersistenceError,
     detect_box_enablement_opportunity,
@@ -161,7 +161,8 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 self.assertEqual(entry.original_bytes, stock_source)
                 self.assertEqual(entry.original_sha256, hashlib.sha256(stock_source).hexdigest())
 
-    def test_install_initializes_absent_filament_retention_and_preserves_zero(self):
+    def test_install_initializes_absent_release_defaults_and_preserves_operator_values(self):
+        # An operator's 0 retention, or a Box motion setting reset to QIDI's value (None), is a choice.
         for existing, expected in ((None, "1"), ("0", "0")):
             with self.subTest(existing=existing):
                 printer_root, paths, _ = self._fixture("01.01.06.03")
@@ -169,7 +170,9 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 if existing is not None:
                     text = saved_variables_path.read_text(encoding="utf-8")
                     saved_variables_path.write_text(
-                        text + f"tltg_keep_loaded_between_prints = {existing}\n",
+                        text
+                        + f"tltg_keep_loaded_between_prints = {existing}\n"
+                        + "tltg_box_load_approach_speed = None\n",
                         encoding="utf-8",
                     )
 
@@ -184,6 +187,14 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                     ).value,
                     expected,
                 )
+                for name, value in box_enablement.BOX_MOTION_DEFAULTS.items():
+                    if existing is None:
+                        self.assertEqual(
+                            klipper_cfg.resolve_unique_option(saved_variables, "Variables", name).value,
+                            value,
+                        )
+                    elif name != "tltg_box_load_approach_speed":
+                        self.assertNotIn(f"{name} =", saved_variables)
 
     def test_noninteractive_box_reconciliation_adds_missing_mappings_without_replacing_existing_ones(self):
         printer_root, paths, _ = self._fixture("01.01.06.03")
