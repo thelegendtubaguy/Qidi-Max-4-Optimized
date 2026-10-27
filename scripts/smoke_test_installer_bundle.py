@@ -187,6 +187,16 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(install.stdout + install.stderr)
         if not (plain_printer_root / "config/tltg_optimized_state.yaml").exists():
             raise SystemExit("install smoke test did not create state file")
+        module_targets = {
+            plain_printer_root / f"klipper/klippy/extras/tltg_{name}.py":
+                REPO_ROOT / f"installer/klipper/tltg/{name}.py"
+            for name in ("box_link_monitor", "box_feed_motion")
+        }
+        for module_target, module_source in module_targets.items():
+            if not module_target.is_file():
+                raise SystemExit(f"install smoke test did not install {module_target.name}")
+            if module_target.read_bytes() != module_source.read_bytes():
+                raise SystemExit(f"install smoke test installed an unexpected {module_target.name} payload")
 
         uninstall_dry_run = run_command(
             [str(bundle_root / "install.sh"), "--uninstall", "--dry-run", "--plain"],
@@ -212,6 +222,9 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(uninstall.stdout + uninstall.stderr)
         if (plain_printer_root / "config/tltg_optimized_state.yaml").exists():
             raise SystemExit("uninstall smoke test did not remove state file")
+        for module_target in module_targets:
+            if module_target.exists():
+                raise SystemExit(f"uninstall smoke test did not remove {module_target.name}")
 
         rich_printer_root = prepare_printer_root(workspace / "rich-printer")
         rich_env = build_env(rich_printer_root, moonraker_url=url)

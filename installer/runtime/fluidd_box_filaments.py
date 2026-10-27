@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 from functools import lru_cache
+from pathlib import Path
 
 from .errors import InstallerError
 
@@ -278,7 +279,34 @@ class FluiddBundleError(InstallerError):
     pass
 
 
-def _steps() -> tuple[tuple[str, str, tuple[str, ...]], ...]:
+# The Box Config view ends with its auto-reload switch; a package-owned motion section follows it.
+BOX_MOTION_DEFINE_HEAD = "If=J9([L],If);"
+BOX_MOTION_DEFINE_TAIL = "var Nle=function(){"
+BOX_MOTION_DEFINE_STOCK = BOX_MOTION_DEFINE_HEAD + BOX_MOTION_DEFINE_TAIL
+BOX_MOTION_RENDER_STOCK = 'expression:"autoReloadDetect"}})],1)],1)],1)],1)],1)},zle=[]'
+BOX_MOTION_RENDER_PATCHED = 'expression:"autoReloadDetect"}})],1)],1)],1)],1),t(TltgBoxMotion)],1)},zle=[]'
+BOX_MOTION_START = "/*tltg-optimized:fluidd-box-motion*/"
+BOX_MOTION_END = "/*/tltg-optimized:fluidd-box-motion*/"
+BOX_MOTION_SOURCE = Path(__file__).with_name("fluidd_box_motion.js")
+# Any earlier package version of the section sits between the same markers and is replaced in place.
+BOX_MOTION_DEFINE_PREVIOUS = re.compile(
+    re.escape(BOX_MOTION_DEFINE_HEAD + BOX_MOTION_START) + ".*?" + re.escape(BOX_MOTION_END + BOX_MOTION_DEFINE_TAIL),
+    re.DOTALL,
+)
+
+
+@lru_cache(maxsize=1)
+def _box_motion_define_patched() -> str:
+    try:
+        source = BOX_MOTION_SOURCE.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise FluiddBundleError(f"Fluidd Box motion section is missing from the package: {exc}") from exc
+    if BOX_MOTION_START in source or BOX_MOTION_END in source:
+        raise FluiddBundleError("Fluidd Box motion section contains its own patch markers.")
+    return BOX_MOTION_DEFINE_HEAD + BOX_MOTION_START + "\n" + source + "\n" + BOX_MOTION_END + BOX_MOTION_DEFINE_TAIL
+
+
+def _steps() -> tuple[tuple[str, str, tuple[str | re.Pattern[str], ...]], ...]:
     # (stock, current patch, superseded patches this release replaces)
     return (
         (SLOT_PARSE_STOCK, SLOT_PARSE_PATCHED, ()),
@@ -296,6 +324,8 @@ def _steps() -> tuple[tuple[str, str, tuple[str, ...]], ...]:
         (BUTTON_COMMANDS_STOCK, BUTTON_COMMANDS_PATCHED, ()),
         (RFID_COMMAND_STOCK, RFID_COMMAND_PATCHED, ()),
         (BUTTON_STATUS_STOCK, BUTTON_STATUS_PATCHED, ()),
+        (BOX_MOTION_DEFINE_STOCK, _box_motion_define_patched(), (BOX_MOTION_DEFINE_PREVIOUS,)),
+        (BOX_MOTION_RENDER_STOCK, BOX_MOTION_RENDER_PATCHED, ()),
     )
 
 
@@ -304,8 +334,12 @@ def patch_fluidd_bundle(text: str) -> str:
     edits = []
     for stock, patched, superseded in _steps():
         current = text.count(patched)
+        # A superseded pattern stands for every earlier form it matches other than the current patch.
+        olds = [stock]
+        for old in superseded:
+            olds.extend(sorted({m for m in old.findall(text) if m != patched}) if isinstance(old, re.Pattern) else (old,))
         # Some patches keep their stock span as a suffix; those matches are not unpatched source.
-        counts = {old: text.count(old) - (current if old in patched else 0) for old in (stock, *superseded)}
+        counts = {old: text.count(old) - (current if old in patched else 0) for old in olds}
         present = [old for old, count in counts.items() if count]
         if current == 1 and not present:
             continue

@@ -106,12 +106,22 @@ install:
       - "offset.cfg"
       - "start_end.cfg"
       - "temperatures.cfg"
+      - "box_link_monitor.cfg"
+      - "box_feed_motion.cfg"
 
   ensure_lines:
     - id: include_optimized_macros
       file: "config/printer.cfg"
       line: "[include tltg-optimized-macros/*.cfg]"
       after: "[include klipper-macros-qd/*.cfg]"
+
+  extra_modules:
+    - id: box_link_monitor
+      source: "klipper/tltg/box_link_monitor.py"
+      destination: "klippy/extras/tltg_box_link_monitor.py"
+    - id: box_feed_motion
+      source: "klipper/tltg/box_feed_motion.py"
+      destination: "klippy/extras/tltg_box_feed_motion.py"
 
   source_patches:
     - id: qidi_homing

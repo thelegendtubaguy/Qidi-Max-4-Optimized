@@ -144,6 +144,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertIn(b"Math.floor(u/4)===t-1", fluidd.read_bytes())
         self.assertIn(b"enableFullDisplay:!0", fluidd.read_bytes())
         self.assertIn(b"LOAD_FILAMENT_CONTROL", fluidd.read_bytes())
+        self.assertIn(fluidd_patch.BOX_MOTION_START.encode(), fluidd.read_bytes())
+        self.assertIn(b"t(TltgBoxMotion)", fluidd.read_bytes())
         self.assertIn(fluidd_patch.SERVICE_WORKER_OPERATION, state.system_ledger["restore_preimages"])
         self.assertIn(b'{"revision":"tltg-optimized-', service_worker.read_bytes())
         self.assertIn(KLIPPER_BOX_OPERATION, state.system_ledger["restore_preimages"])
@@ -154,10 +156,14 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(os.readlink(filament_link), filament_config.target)
         self.assertIn(FILAMENT_CONFIG_OPERATION, state.system_ledger["restore_preimages"])
         fluidd_current = fluidd.read_bytes()
-        # Package 26.10.20.1 left an earlier owned Fluidd patch that updates must replace in place.
+        # Earlier package versions left owned Fluidd patches, including an older Box motion section, that updates must replace in place.
         fluidd_previous = fluidd_before.decode().replace(fluidd_patch.SLOT_PARSE_STOCK, fluidd_patch.SLOT_PARSE_PATCHED).replace(
             fluidd_patch.FILAS_LIST_STOCK, fluidd_patch._filas_list_patched_v1()
-        ).encode()
+        ).replace(
+            fluidd_patch.BOX_MOTION_DEFINE_STOCK,
+            fluidd_patch.BOX_MOTION_DEFINE_HEAD + fluidd_patch.BOX_MOTION_START + "const TltgBoxMotion={render:h=>h()};"
+            + fluidd_patch.BOX_MOTION_END + fluidd_patch.BOX_MOTION_DEFINE_TAIL,
+        ).replace(fluidd_patch.BOX_MOTION_RENDER_STOCK, fluidd_patch.BOX_MOTION_RENDER_PATCHED).encode()
         fluidd.write_bytes(fluidd_previous)
         prior_preimage = state.system_ledger["restore_preimages"][cache_id]
         fluidd_preimage = state.system_ledger["restore_preimages"][FLUIDD_BOX_OPERATION]

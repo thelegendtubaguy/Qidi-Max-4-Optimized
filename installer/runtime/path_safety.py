@@ -114,4 +114,9 @@ def _manifest_runtime_targets(*, paths: RuntimePaths, manifest: Manifest) -> set
             root=paths.managed_klipper_root,
             target=paths.managed_klipper_root / patch.destination,
         )
+    for module in manifest.install.extra_modules:
+        ensure_external_path_has_no_symlink_components(
+            root=paths.managed_klipper_root,
+            target=paths.managed_klipper_root / module.destination,
+        )
     return targets

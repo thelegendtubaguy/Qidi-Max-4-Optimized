@@ -37,6 +37,7 @@ ALLOWED_DIRECTORIES = [
     "installer/runtime",
     "installer/klipper/tltg-optimized-macros",
     "installer/klipper/qidi",
+    "installer/klipper/tltg",
     "installer/stock",
     "installer/system",
 ]

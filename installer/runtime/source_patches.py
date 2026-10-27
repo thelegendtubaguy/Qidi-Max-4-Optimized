@@ -8,6 +8,7 @@ from pathlib import Path, PurePosixPath
 from .fs_atomic import atomic_write_bytes
 from .manifest import source_patch_variants_for_firmware
 from .models import (
+    ExtraModuleSpec,
     InstalledState,
     RuntimePaths,
     SourcePatchSpec,
@@ -281,3 +282,50 @@ def _prior_entry(
     return next(
         (entry for entry in state.source_patches if entry.id == patch_id), None
     )
+
+
+def install_extra_module(
+    *, paths: RuntimePaths, module: ExtraModuleSpec, journal, reporter=None
+) -> str:
+    """Install a Python module that the installer owns into the Klipper tree."""
+    source = paths.installer_root / module.source
+    if source.is_symlink() or not source.is_file():
+        raise SourcePatchError(f"Extra module payload is not a regular file: {source}")
+    payload = source.read_bytes()
+    compile(payload, str(source), "exec")
+    target = paths.managed_klipper_root / PurePosixPath(module.destination)
+    ensure_external_path_has_no_symlink_components(
+        root=paths.managed_klipper_root, target=target
+    )
+    if target.is_file() and not target.is_symlink():
+        if target.read_bytes() == payload:
+            return "unchanged"
+    journal.track_file(target)
+    journal.note_write()
+    atomic_write_bytes(target, payload)
+    if target.read_bytes() != payload:
+        raise SourcePatchError(
+            f"Extra module post-write verification failed: {module.destination}"
+        )
+    if reporter is not None:
+        reporter.debug(
+            event="install.extra_module.installed", module=module.id,
+            destination=module.destination,
+        )
+    return "installed"
+
+
+def remove_extra_module(*, paths: RuntimePaths, module: ExtraModuleSpec) -> bool:
+    """Remove an installer-owned module, leaving a modified file in place."""
+    source = paths.installer_root / module.source
+    target = paths.managed_klipper_root / PurePosixPath(module.destination)
+    if target.is_symlink() or not target.is_file():
+        return False
+    try:
+        payload = source.read_bytes()
+    except OSError:
+        return False
+    if target.read_bytes() != payload:
+        return False
+    target.unlink()
+    return True

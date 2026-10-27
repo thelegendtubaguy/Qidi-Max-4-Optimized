@@ -101,6 +101,55 @@ Set a QIDI Box heater target from the `Heater Box1`/`Heater Box2` rows in Fluidd
 
 Install and update turn on QIDI's **Enable Full Display** setting in Fluidd by default. It shows the bed mesh card on the Tune page and adds sensors without a target temperature, such as the chamber thermal protection and electronics sensors, to the temperature panel and chart. Turning it off in Fluidd's settings is remembered across updates.
 
+### Box MCU link monitoring
+
+A Box that drops off its USB link shows up as `Lost communication with MCU 'mcu_boxN'` with no shutdown reason, so the cause is not recorded anywhere by default. The installer adds a monitor that is **off by default**. Enable it from Fluidd's console:
+
+```gcode
+SAVE_VARIABLE VARIABLE=tltg_box_link_monitor VALUE=1
+```
+
+While it is enabled, it writes `printer_data/logs/tltg_box_link.log`, separate from `klippy.log` so it survives log rotation. It records Box MCU serial counters and any change to them, box heater and print context, the reset reason each Box MCU reports at connect, and the first `Got EOF when reading from device`, `Timeout with MCU`, or `shutdown:` line that appears in `klippy.log`. Kernel USB lines are captured at that point too.
+
+Set the variable back to `0` to stop recording; it takes effect without a restart. The log is capped at 2 MB and rotates once to `tltg_box_link.log.1`.
+
+When reporting a Box MCU disconnect, include this file alongside the end of `klippy.log`.
+
+### QIDI Box load and unload speed
+
+You can tune how the Box pushes filament to the toolhead and pulls it back. A load pushes fast for most of the way, then approaches slowly until the toolhead filament sensor trips. Installing or updating saves the package defaults below unless you've already saved any of these settings, in which case all of yours are kept. Set them in Fluidd's Box card under **Config** → **Load/unload motion**, or with `TLTG_BOX_MOTION` in the console. Run `TLTG_BOX_MOTION` with no parameters to see the current settings and each slot's profile. After installing, close every Fluidd tab and open Fluidd again to load the new Box card.
+
+| Parameter | What it sets | Package default | QIDI value | Allowed |
+|---|---|---|---|---|
+| `FAST_LENGTH` | How far the fast push goes, in mm | 950 | 930 | 100–2000 |
+| `FAST_SPEED_1` | Speed of the first fast stage, in mm/s | 120 | 85 | 10–150 |
+| `FAST_SPEED_2` | Speed of the second fast stage, in mm/s | 100 | 65 | 10–150 |
+| `APPROACH_SPEED` | Speed for the rest of the way to the toolhead sensor, in mm/s | 15 | 10 | 2–40, below both fast speeds |
+| `LOAD_ACCEL` | Load acceleration | QIDI's | 100 | 20–400 |
+| `UNLOAD_SPEED_1`, `UNLOAD_SPEED_2` | Speeds of the two unload stages, in mm/s | 115, 120 | 65, 85 | 10–150, must differ |
+| `UNLOAD_ACCEL` | Unload acceleration | QIDI's | 100 | 20–400 |
+| `UNLOAD_EXTRUDER_LENGTH` | How far the extruder pulls filament back before the Box takes over, in mm. All slots only. | 50 | 120 | 20–300 |
+
+```gcode
+TLTG_BOX_MOTION FAST_SPEED_1=100 FAST_SPEED_2=100 APPROACH_SPEED=20
+```
+
+The command refuses a combination the Box can't run and says why. Settings take effect on the next load or unload, without a restart. Use `PARAM=vendor` to put one setting back to QIDI's value, or `TLTG_BOX_MOTION RESET=1` to go back to QIDI's motion everywhere, including slot settings. Updates don't reapply the package defaults after that.
+
+Any setting can also be set for a single slot, which takes priority over the setting for all slots. For example, to load slot 2 more gently:
+
+```gcode
+TLTG_BOX_MOTION SLOT=2 FAST_SPEED_1=60 FAST_SPEED_2=60 APPROACH_SPEED=8
+```
+
+Slots are numbered from 0 the same way as `LOAD_FILAMENT_CONTROL SLOT=`, so the Box card's 1A is slot 0 and 2A is slot 4. Use `SLOT=2 FAST_SPEED_1=global` to make slot 2 follow the all-slots setting again, or `SLOT=2 RESET=1` to clear all of slot 2's settings.
+
+`FAST_LENGTH` is used exactly as set. On the test printer, filament reached the toolhead sensor 1001–1016 mm into the push, so QIDI's 930 mm leaves about 70–85 mm for the slow approach. Set it past the sensor and the filament reaches the toolhead at full fast speed.
+
+An unload starts with the extruder pulling the cut filament back 30 mm, then `UNLOAD_EXTRUDER_LENGTH` more at 10 mm/s, before the Box retracts at your unload speeds. On the test printer the filament left the toolhead sensor 34 mm into the unload, only about 4 mm into this second retract, so most of QIDI's 120 mm is the Box pulling free filament at 10 mm/s. The sensor sits above the extruder gears, so once it clears, the filament is out of the gears. A value of 20–30 mm keeps a margin past the sensor and saves about 9 seconds per unload.
+
+If you saved one of the settings with an invalid value using `SAVE_VARIABLE`, the affected load or unload goes back to QIDI's motion and the console says why. If a QIDI firmware update changes how the Box moves filament in a way the settings don't recognize, the Box keeps QIDI's motion and the console says so.
+
 ### Helpful Klipper tools
 
 After install and Klipper restart, the optimized macro set includes:

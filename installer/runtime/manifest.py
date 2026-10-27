@@ -9,6 +9,7 @@ from .backup import CONFIG_BACKUP_IGNORED_SYMLINKS
 from .models import (
     BackupSpec,
     EnsureLineSpec,
+    ExtraModuleSpec,
     FirmwareSpec,
     InstallSpec,
     LineSpec,
@@ -140,6 +141,7 @@ def parse_manifest(raw: Any) -> Manifest:
             "Manifest must define exactly one install.ensure_lines entry."
         )
     source_patches = _parse_source_patches(install_raw, firmware)
+    extra_modules = _parse_extra_modules(install_raw)
     install = InstallSpec(
         ensure_directories=tuple(
             _validate_relative_path(item, allowed_roots=("config",))
@@ -161,6 +163,7 @@ def parse_manifest(raw: Any) -> Manifest:
         ),
         ensure_lines=ensure_lines,
         source_patches=source_patches,
+        extra_modules=extra_modules,
     )
 
     patches_raw = _require_mapping(raw, "patches")
@@ -259,6 +262,46 @@ def parse_manifest(raw: Any) -> Manifest:
         postflight=postflight,
         system_optimizations=_parse_system_optimizations(raw),
     )
+
+
+def _parse_extra_modules(install_raw: dict[str, Any]) -> tuple[ExtraModuleSpec, ...]:
+    entries = install_raw.get("extra_modules", [])
+    if not isinstance(entries, list):
+        raise ManifestValidationError("Expected list at install.extra_modules.")
+    modules: list[ExtraModuleSpec] = []
+    ids: set[str] = set()
+    destinations: set[str] = set()
+    for item in entries:
+        if not isinstance(item, dict):
+            raise ManifestValidationError(
+                "Expected mapping entries at install.extra_modules."
+            )
+        module_id = _require_str(item, "id")
+        if module_id in ids:
+            raise ManifestValidationError(f"Duplicate extra module id: {module_id}")
+        ids.add(module_id)
+        destination = _validate_relative_path(
+            _require_str(item, "destination"), allowed_roots=("klippy",)
+        )
+        if not destination.endswith(".py"):
+            raise ManifestValidationError(
+                f"Extra module destination must be a .py file: {destination}"
+            )
+        if destination in destinations:
+            raise ManifestValidationError(
+                f"Duplicate extra module destination: {destination}"
+            )
+        destinations.add(destination)
+        modules.append(
+            ExtraModuleSpec(
+                id=module_id,
+                source=_validate_relative_path(
+                    _require_str(item, "source"), allowed_roots=("klipper",)
+                ),
+                destination=destination,
+            )
+        )
+    return tuple(modules)
 
 
 def _parse_source_patches(install_raw: dict[str, Any], firmware: FirmwareSpec) -> tuple[SourcePatchSpec, ...]:
