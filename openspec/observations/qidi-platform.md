@@ -91,6 +91,16 @@ Measurements used Linux `5.10.160`, Python `3.9.2`, and ext4 with `19,766,173,69
 
 The 4 KiB batch increased from `1.324 MiB/s` to `35.617 MiB/s`; the 256 KiB batch increased from `27.001 MiB/s` to `40.345 MiB/s`. The per-write `fsync` control changed by 5.1% because both modes explicitly requested durability for each write.
 
+## Touchscreen display and input
+
+- **Runtime-confirmed:** on one Max 4 running `01.01.07.01`, `qidiclient` (root, pinned to CPU 0) holds `/dev/fb0` and `/dev/input/event0` open. `/dev/fb0` is `rockchipdrmfb`, 800×480 at 32 bpp with red at bit offset 16 (XRGB), stride 3200, and virtual size equal to the visible size. It is `root:video` mode `0660`; `/dev/input/event*` are `root:input` mode `0660`, and the `qidi` user is in `video` but not `input`.
+- **Static-recovered:** `qidiclient` contains LVGL display and input driver registration symbols and the string `/dev/input/event0`.
+- **Runtime-confirmed:** `event0` is `Goodix Capacitive TouchScreen` (`INPUT_PROP_DIRECT`), reporting `ABS_X`/`ABS_Y` and `ABS_MT_POSITION_X`/`_Y` over 0–799 and 0–479, slots 0–4, tracking IDs up to 65535, and `BTN_TOUCH`. `event1` is a USB button device.
+- **Runtime-confirmed:** capturing `/dev/fb0` as `qidi` produced the displayed screen. Writing slot-0 multi-touch events with `BTN_TOUCH` and single-touch axes to `event0`, then a release, pressed the touchscreen at the written screen coordinates: a press at (40, 335) opened the Settings tab and (40, 45) returned to Home.
+- **Runtime-confirmed:** a press and release written to `event0` within a few milliseconds of each other was ignored, while the same press held 80 ms was acted on. `qidiclient` appears to act on the final state of the queued events it reads, so very short presses are lost.
+- **Runtime-confirmed:** on that host (RK3308, four cores, 486 MB RAM), a full framebuffer copy through `mmap` took about 28 ms of CPU and every eighth row about 5 ms; Moonraker's virtualenv Pillow `10.0.1` with libjpeg-turbo encoded the frame as a quality-75 JPEG (about 27 KB) in about 19 ms and as WebP in about 350 ms. `ffmpeg` fbdev capture with MJPEG encoding used about 66% of a core at 4 fps and about 130% at 10 fps.
+- **Runtime-confirmed:** QIDI's nginx (`/etc/nginx/sites-available/fluidd`, CRLF line endings, not owned by a Debian package) serves Fluidd on ports 80 and 10088 with `--with-http_auth_request_module`, defines the `apiserver` upstream and `$connection_upgrade` map in `/etc/nginx/conf.d/`, and forwards `X-Real-IP`. Moonraker runs with `xheaders`, so `/access/user` answered 200 for a forwarded `192.168.1.50` and 401 for `8.8.8.8` under QIDI's default trusted ranges. QIDI's Moonraker also accepts loopback clients without authorization.
+
 ## Touchscreen AI state
 
 - `Spaghetti Detection` and `Foreign Object Detection` toggles under `Settings -> Printing Options` are qidiclient UI state, not `algo_app.service` enablement state.

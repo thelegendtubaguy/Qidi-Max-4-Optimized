@@ -12,6 +12,7 @@ from unittest import mock
 
 from installer.runtime import system_optimizations
 from installer.runtime import fluidd_box_filaments as fluidd_patch
+from installer.runtime import remote_screen
 from installer.runtime.fluidd_box_filaments import OPERATION as FLUIDD_BOX_OPERATION, PATCH_MARKER
 from installer.runtime.fluidd_filament_config import OPERATION as FILAMENT_CONFIG_OPERATION
 from installer.runtime.klipper_box_config import OPERATION as KLIPPER_BOX_OPERATION
@@ -58,6 +59,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             include_filament_config=True,
             include_klipper_box_config=True,
             include_klipper_print_stats_manager=True,
+            include_nginx_site=True,
         )
         host_run = fake_host_run(system_root)
         moonraker = system_root / "home/qidi/moonraker/moonraker/components/file_manager/file_manager.py"
@@ -73,6 +75,11 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         stats_manager = system_root / "home/qidi/klipper/klippy/extras/print_stats_manager.py"
         stats_manager_before = stats_manager.read_bytes()
         probe_helper = system_root / PROBE_TEST_FILE.lstrip("/")
+        nginx_site = system_root / remote_screen.NGINX_SITE.lstrip("/")
+        nginx_site_before = nginx_site.read_bytes()
+        screen_unit = system_root / remote_screen.UNIT_FILE.lstrip("/")
+        screen_server = system_root / remote_screen.SERVER_FILE.lstrip("/")
+        screen_state = system_root / "systemd" / f"{remote_screen.UNIT}.json"
         before = snapshot_tree(system_root)
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
         env[SYSTEM_ROOT_ENV] = str(system_root)
@@ -166,6 +173,13 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         filament_link = printer_root / filament_config.link
         self.assertEqual(os.readlink(filament_link), filament_config.target)
         self.assertIn(FILAMENT_CONFIG_OPERATION, state.system_ledger["restore_preimages"])
+        self.assertIn(b"TltgScreenCard:TltgScreenCard", fluidd.read_bytes())
+        self.assertIn(b'{id:"tltg-screen-card",enabled:!0,collapsed:!0}', fluidd.read_bytes())
+        self.assertEqual(screen_unit.read_text(encoding="utf-8"), remote_screen.UNIT_CONTENT)
+        self.assertEqual(screen_server.read_bytes(), remote_screen.SERVER_PAYLOAD.read_bytes())
+        self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "enabled")
+        self.assertIn(b"location /tltg-screen/ {\r\n", nginx_site.read_bytes())
+        self.assertNotIn(b"\n", nginx_site.read_bytes().replace(b"\r\n", b""))
         fluidd_current = fluidd.read_bytes()
         # Earlier package versions left owned Fluidd patches, including an older Box motion section, that updates must replace in place.
         fluidd_previous = fluidd_before.decode().replace(fluidd_patch.SLOT_PARSE_STOCK, fluidd_patch.SLOT_PARSE_PATCHED).replace(
@@ -203,6 +217,17 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         )
         self.assertEqual(probe_helper.read_bytes(), PROBE_TEST_PAYLOAD.read_bytes())
         self.assertFalse(reconciled["restore_preimages"][PROBE_TEST_OPERATION]["exists"])
+        # Updates replace the screen service from an earlier package version.
+        prior_server = remote_screen.SERVER_MARKER.encode() + b"print('earlier screen service')\n"
+        screen_server.write_bytes(prior_server)
+        reconciled["outcomes"][remote_screen.SERVER_OPERATION]["postflight"]["sha256"] = __import__("hashlib").sha256(prior_server).hexdigest()
+        reconciled = apply_system_optimizations(
+            paths=paths, spec=manifest.system_optimizations, ledger=reconciled,
+            reporter=PlainReporter(io.StringIO()), input_stream=None, environ=env,
+            source="auto_update_reconcile", run=host_run,
+        )
+        self.assertEqual(screen_server.read_bytes(), remote_screen.SERVER_PAYLOAD.read_bytes())
+        self.assertFalse(reconciled["restore_preimages"][remote_screen.SERVER_OPERATION]["exists"])
         write_installed_state(printer_root / manifest.state_file, _replace_system_ledger(state, reconciled))
 
         run_uninstall(
@@ -234,6 +259,10 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(stats_manager.read_bytes(), stats_manager_before)
         self.assertFalse(probe_helper.exists())
         self.assertFalse(filament_link.is_symlink())
+        self.assertEqual(nginx_site.read_bytes(), nginx_site_before)
+        self.assertFalse(screen_unit.exists())
+        self.assertFalse(screen_server.exists())
+        self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "disabled")
 
     def test_unreviewed_fluidd_bundle_is_preserved_without_blocking_other_patches(self):
         printer_root = copy_base_runtime()
