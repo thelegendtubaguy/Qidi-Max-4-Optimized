@@ -427,6 +427,41 @@ Normal install and update SHALL extend the recognized QIDI Fluidd bundle's Box C
 - **WHEN** a print is running or paused, or the feed-motion object is absent or inactive
 - **THEN** the section offers no editing controls, and an absent or inactive object shows its status instead of a profile
 
+### Requirement: QidiBox card in Fluidd
+Normal install and update SHALL add a QidiBox dashboard card beside the stock Box card in the recognized QIDI Fluidd bundle, with the same recognition, preservation, service-worker revision, and restoration as the other Fluidd Box patches.
+
+#### Scenario: Every slot is shown at once
+- **WHEN** Fluidd is connected to a printer with a configured Box
+- **THEN** the QidiBox card shows every Box's slots and the external spool together, each with the filament and color the Box card resolves for it, whether filament is at the slot inlet, the tools mapped to it, and which slot feeds the extruder
+- **AND** each Box shows its humidity, temperature, and active heater target, and the card shows the tool-to-slot mapping
+
+#### Scenario: The filament path follows the sensors
+- **WHEN** the operator selects a slot
+- **THEN** the card draws that slot's filament to the slot inlet, past the hub, or into the toolhead as the slot inlet, hub, and toolhead sensors report it
+- **AND** the shared hub and toolhead sensors are shown as detecting filament only for the slot whose filament they detect: the hub for the loaded slot, or the last-loaded slot when none is loaded, and the toolhead for the loaded slot
+
+#### Scenario: Slot controls match the Box card
+- **WHEN** the operator selects a slot and uses Load, Unload, Eject, Read RFID, or edits its filament
+- **THEN** the card sends the same commands and saves the same values, under the same availability, as the Box card
+- **AND** the controls are unavailable while printing, while the Box runs an operation, or while Klipper is not ready
+- **AND** Box settings opens the Box card's configuration view
+
+#### Scenario: Auto-reload groups are shown
+- **WHEN** automatic reload is on
+- **THEN** loaded Box slots with the same color, filament, and vendor, the slots the Box card's AUTO view groups for reload, carry the same group marker
+- **AND** the selected slot lists the other slots it can reload from, or that it has none
+- **AND** when automatic reload is off, no group markers are shown and the selected slot says automatic reload is off
+
+#### Scenario: Tool mappings are edited while idle
+- **WHEN** the printer is idle and the operator edits the tool mapping from the card
+- **THEN** the card saves each changed tool's slot to `value_tN` in the format Fluidd's print dialog uses and leaves unchanged tools alone
+- **AND** Default proposes the identity mapping for every active Box slot
+- **AND** editing is unavailable while a print is running or paused, while the Box runs an operation, or while Klipper is not ready
+
+#### Scenario: Printers without a Box hide the card
+- **WHEN** no Box is configured
+- **THEN** the QidiBox card is hidden like the Box card
+
 ### Requirement: QIDI Box motion release defaults
 The installer SHALL save the release Box motion profile only when no Box motion setting exists in Klipper saved variables.
 

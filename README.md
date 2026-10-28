@@ -101,6 +101,22 @@ Set a QIDI Box heater target from the `Heater Box1`/`Heater Box2` rows in Fluidd
 
 Install and update turn on QIDI's **Enable Full Display** setting in Fluidd by default. It shows the bed mesh card on the Tune page and adds sensors without a target temperature, such as the chamber thermal protection and electronics sensors, to the temperature panel and chart. Turning it off in Fluidd's settings is remembered across updates.
 
+### QidiBox card in Fluidd (preview)
+
+Install and update add a **QidiBox** card to Fluidd's dashboard, a preview of a redesigned Box card. The existing Box card stays as it is, so you can compare them and use either. Existing dashboards get the card at the bottom of the first column; drag it wherever you like in Fluidd's layout mode.
+
+![QidiBox card in Fluidd showing two Boxes with auto-reload groups, the filament path, and the tool mapping](.github/images/fluidd-qidibox-card.png)
+
+- Every Box's slots and the external spool are shown at once. Each spool shows its color and the tools mapped to it above, and the slot label below has a green border when filament is at the slot's inlet. The loaded slot's tool label is highlighted.
+- Under each Box are its humidity, temperature, and heater target when heating.
+- The filament path shows how far the selected slot's filament reaches, following the slot inlet, hub, and toolhead sensors. The hub and toolhead only light up for the slot whose filament is actually there.
+- With **Automatic Reload** on in Box settings, slots that can stand in for each other when one runs out are outlined in their filament color and share a reload letter (↻ A, ↻ B, …) under their labels: Box slots with the same filament, vendor, and color, as the Box card's AUTO view groups them. The selected slot also lists its backups.
+- Click a slot to select it, then **Load**, **Unload**, **Eject**, **Read RFID**, or **Edit filament**. These do the same as the Box card's buttons and pickers and are unavailable while printing.
+- The tool mapping at the bottom shows which slot each tool loads, one diagram per Box. While the printer is idle, click a tool or **Edit** to change it; **Default** restores T0 → 1A, T1 → 1B, and so on. Fluidd's print dialog sets the mapping for the print it starts, and a normal print end restores the default.
+- **Box settings** opens the same settings as the Box card's **Config**, including load/unload motion.
+
+After installing, close every Fluidd tab and open Fluidd again. Feedback on the layout is welcome in GitHub issues.
+
 ### Printer screen in Fluidd
 
 Install and update add a **Printer screen** card to Fluidd's dashboard that shows the printer's touchscreen live, so you can check or use it from another room. This applies even when optional OS optimizations are skipped. The card starts collapsed and the printer does no screen work until you expand it. It stops when you collapse it, leave the dashboard, or switch to another tab. Existing dashboards get the card at the bottom of the first column; drag it wherever you like in Fluidd's layout mode.
