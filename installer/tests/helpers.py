@@ -85,6 +85,7 @@ def fake_system_root(
     include_fluidd_bundle: bool = False,
     include_filament_config: bool = False,
     include_klipper_box_config: bool = False,
+    include_klipper_print_stats_manager: bool = False,
 ) -> Path:
     root = temp_path("system-optimization-flow-")
     (root / "etc/resolvconf/resolv.conf.d").mkdir(parents=True)
@@ -116,6 +117,10 @@ def fake_system_root(
         box_config = root / "home/qidi/klipper/klippy/extras/box_config.py"
         box_config.parent.mkdir(parents=True)
         box_config.write_bytes((REPO_ROOT / "installer/tests/fixtures/klipper_box_config.py").read_bytes().replace(b"\n", b"\r\n"))
+    if include_klipper_print_stats_manager:
+        stats_manager = root / "home/qidi/klipper/klippy/extras/print_stats_manager.py"
+        stats_manager.parent.mkdir(parents=True, exist_ok=True)
+        stats_manager.write_bytes((REPO_ROOT / "installer/tests/fixtures/klipper_print_stats_manager.py").read_bytes().replace(b"\n", b"\r\n"))
     if include_filament_config:
         filaments = root / "home/qidi/QIDI_Client/resource/filament_config/filament-0.4.json"
         filaments.parent.mkdir(parents=True)
