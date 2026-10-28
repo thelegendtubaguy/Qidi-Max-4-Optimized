@@ -93,21 +93,6 @@ The installer SHALL deploy firmware-scoped Klipper source only from validated pr
 - **AND** every installer entrypoint resolves pending activation before further release work
 - **AND** a post-activation saved-variable mismatch retains its exact authorized expectations and blocks later install or automatic-update work until an exact live Moonraker verification succeeds; dry-run verification preserves the marker, and terminal uninstall removes it only after successful postflight while rollback preserves it
 
-### Requirement: Managed probe diagnostic helper
-Normal install and update SHALL install the bundled Klipper probe diagnostic helper independently of optional OS optimization policy, retaining ownership evidence without replacing unrecognized or operator-modified helper files.
-
-#### Scenario: Helper is installed and activated
-- **WHEN** the helper destination is absent
-- **THEN** the installer records its absence, creates the bundled helper without overwriting a concurrent file, verifies its contents, and restarts Klipper
-- **AND** an unchanged current helper is left alone, while a missing owned helper can be repaired
-- **AND** installation does not report successful activation with a missing or modified required helper
-
-#### Scenario: Helper restoration respects ownership
-- **WHEN** accepted system restoration during uninstall or host-transaction recovery processes the helper
-- **THEN** an unchanged installed helper is removed if it was originally absent, or restored to its retained preimage
-- **AND** a modified helper is preserved and reported
-- **AND** an incomplete restoration or required service restart retains a recovery blocker
-
 ### Requirement: Non-owning QIDI Box reconciliation
 The installer SHALL keep an available QIDI Box usable without claiming ownership of vendor saved variables or silently replacing existing non-empty tool mappings. Box availability SHALL be recognized for every supported firmware's Box transport, including the legacy USB Box configuration and the RS-485 Box stack.
 
@@ -402,9 +387,14 @@ The optional operation SHALL require supported firmware, idle ready state, zero 
 Install and update SHALL place each bundled package-owned Klipper extra module, together with the optimized configuration section that loads it, and uninstall SHALL remove the module only when it still matches the bundled payload.
 
 #### Scenario: Install places and verifies the module
-- **WHEN** install or update runs
-- **THEN** each bundled extra module is written atomically to its `klippy/extras/tltg_*.py` destination and verified against the bundled payload
+- **WHEN** install or update runs, including an automatic update and an install that skips optional OS optimizations
+- **THEN** each bundled extra module, including the probe diagnostic helper, is written atomically to its `klippy/extras/tltg_*.py` destination and verified against the bundled payload before the configuration that loads it is written
 - **AND** an identical installed module is left unchanged
+
+#### Scenario: Earlier host ownership of the probe helper is retired
+- **WHEN** installed state from an earlier build records the probe diagnostic helper as an OS optimization
+- **THEN** loading that state drops the record, so system restoration never acts on the helper
+- **AND** the helper is managed as an extra module from then on
 
 #### Scenario: Uninstall respects modified modules
 - **WHEN** uninstall runs
