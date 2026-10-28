@@ -54,10 +54,27 @@ def ensure_printer_idle(
     timeout: int = 5,
     urlopen: UrlOpenFn = urllib.request.urlopen,
 ) -> str:
-    state = query_printer_state(url, timeout=timeout, urlopen=urlopen)
+    try:
+        state = query_printer_state(url, timeout=timeout, urlopen=urlopen)
+    except PrinterStateError:
+        # A Klipper halted on an error has no print state and cannot be printing.
+        if klipper_halted(url, urlopen=urlopen):
+            return "error"
+        raise
     if state in {"printing", "paused"}:
         raise ActivePrintError()
     return state
+
+
+def klipper_halted(url: str, *, urlopen: UrlOpenFn = urllib.request.urlopen) -> bool:
+    """Return True when Moonraker reports Klipper stopped with an error, such as a config error."""
+    from .process_restart import ProcessRestartError, read_printer_info
+
+    try:
+        _, state = read_printer_info(url, urlopen=urlopen)
+    except ProcessRestartError:
+        return False
+    return state == "error"
 
 
 def current_free_bytes(

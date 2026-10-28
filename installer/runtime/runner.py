@@ -5,7 +5,7 @@ import subprocess
 import urllib.request
 from dataclasses import replace
 
-from . import klipper_cfg, messages, patches
+from . import klipper_cfg, messages, patches, safety
 from .auto_update import (
     LOCK_HELD_ENV,
     maybe_prompt_enable_auto_updates,
@@ -17,6 +17,7 @@ from .box_enablement import (
     maybe_prompt_align_tool_slots,
     maybe_prompt_enable_box,
     maybe_write_required_tool_slot_variables,
+    saved_variable_verify_marker_path,
     verify_pending_saved_variable_expectations,
     write_saved_variable_verify_marker,
 )
@@ -73,7 +74,13 @@ from .source_patches import (
     install_extra_module,
     validate_source_state,
 )
-from .process_restart import read_printer_info, write_restart_marker
+from .process_restart import (
+    ProcessRestartError,
+    read_printer_info,
+    restart_klipper_service,
+    restart_pending,
+    write_restart_marker,
+)
 from .postflight import verify_install_postflight
 from .preflight import run_install_config_preflight, run_install_environment_preflight
 from .rollback import RollbackJournal
@@ -162,7 +169,13 @@ def run_install(
     else:
         reporter.debug(event="install.prior_state.missing", state_path=state_path)
 
-    verify_pending_saved_variable_expectations(paths, clear=not dry_run, urlopen=urlopen)
+    if saved_variable_verify_marker_path(paths).exists() and safety.klipper_halted(
+        paths.moonraker_url, urlopen=urlopen
+    ):
+        # Kept until Klipper runs again; the install may be what lets it start.
+        reporter.line(messages.SAVED_VARIABLE_CHECK_DEFERRED_KLIPPER_HALTED)
+    else:
+        verify_pending_saved_variable_expectations(paths, clear=not dry_run, urlopen=urlopen)
 
     reporter.status(messages.PERFORMING_PREFLIGHT_CHECKS)
     run_install_environment_preflight(
@@ -424,43 +437,20 @@ def _execute_install(
             tracked_trees=1,
         )
 
-        maybe_initialize_filament_retention(
-            paths=paths,
-            reporter=reporter,
-            journal=journal,
-            written=saved_variables_written,
-            urlopen=urlopen,
-        )
-        maybe_initialize_box_motion(
-            paths=paths,
-            reporter=reporter,
-            journal=journal,
-            written=saved_variables_written,
-            urlopen=urlopen,
-        )
-        maybe_prompt_enable_box(
-            paths=paths,
-            reporter=reporter,
-            input_stream=input_stream,
-            journal=journal,
-            written=saved_variables_written,
-            urlopen=urlopen,
-        )
-        maybe_write_required_tool_slot_variables(
-            paths=paths,
-            reporter=reporter,
-            journal=journal,
-            written=saved_variables_written,
-            urlopen=urlopen,
-        )
-        maybe_prompt_align_tool_slots(
-            paths=paths,
-            reporter=reporter,
-            input_stream=input_stream,
-            journal=journal,
-            written=saved_variables_written,
-            urlopen=urlopen,
-        )
+        # Saved variables go through Klipper. A Klipper halted on an error
+        # gets the files first, then a restart, then the saved variables.
+        klipper_halted = safety.klipper_halted(paths.moonraker_url, urlopen=urlopen)
+        if klipper_halted:
+            reporter.line(messages.INSTALLING_WHILE_KLIPPER_HALTED)
+        else:
+            _update_saved_variables(
+                paths=paths,
+                reporter=reporter,
+                input_stream=input_stream,
+                journal=journal,
+                written=saved_variables_written,
+                urlopen=urlopen,
+            )
 
         for directory in manifest.install.ensure_directories:
             target = paths.printer_data_root / directory
@@ -613,7 +603,15 @@ def _execute_install(
             environ=environ,
             urlopen=urlopen,
         )
-    if paths.restart_marker_path.exists():
+    if klipper_halted:
+        _restart_halted_klipper_and_update_saved_variables(
+            paths=paths,
+            manifest=manifest,
+            reporter=reporter,
+            input_stream=input_stream,
+            urlopen=urlopen,
+        )
+    elif paths.restart_marker_path.exists():
         if saved_variables_written:
             write_saved_variable_verify_marker(paths, saved_variables_written)
         restarted = maybe_restart_pending_service_if_idle(
@@ -653,6 +651,58 @@ def _execute_install(
         )
     return result
 
+
+
+def _update_saved_variables(*, paths, reporter, input_stream, journal, written, urlopen) -> None:
+    maybe_initialize_filament_retention(
+        paths=paths, reporter=reporter, journal=journal, written=written, urlopen=urlopen
+    )
+    maybe_initialize_box_motion(
+        paths=paths, reporter=reporter, journal=journal, written=written, urlopen=urlopen
+    )
+    maybe_prompt_enable_box(
+        paths=paths, reporter=reporter, input_stream=input_stream, journal=journal,
+        written=written, urlopen=urlopen,
+    )
+    maybe_write_required_tool_slot_variables(
+        paths=paths, reporter=reporter, journal=journal, written=written, urlopen=urlopen
+    )
+    maybe_prompt_align_tool_slots(
+        paths=paths, reporter=reporter, input_stream=input_stream, journal=journal,
+        written=written, urlopen=urlopen,
+    )
+
+
+def _restart_halted_klipper_and_update_saved_variables(
+    *, paths, manifest: Manifest, reporter, input_stream, urlopen
+) -> None:
+    """Restart a Klipper that was halted before the install, then update saved variables."""
+    reporter.line(messages.RESTARTING_HALTED_KLIPPER)
+    try:
+        if paths.restart_marker_path.exists():
+            restart_pending(
+                paths,
+                allowed_entries={
+                    patch.id: patch.destination for patch in manifest.install.source_patches
+                },
+                urlopen=urlopen,
+            )
+        else:
+            restart_klipper_service(paths, urlopen=urlopen)
+    except ProcessRestartError as exc:
+        reporter.debug(event="install.halted_klipper.restart_failed", message=exc.message)
+        reporter.line(messages.HALTED_KLIPPER_DID_NOT_START)
+        return
+    reporter.line(messages.KLIPPER_SERVICE_RESTARTED)
+    verify_pending_saved_variable_expectations(paths, urlopen=urlopen)
+    _update_saved_variables(
+        paths=paths,
+        reporter=reporter,
+        input_stream=input_stream,
+        journal=None,
+        written=None,
+        urlopen=urlopen,
+    )
 
 
 def _collect_install_patch_results(
