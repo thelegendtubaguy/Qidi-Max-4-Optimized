@@ -186,6 +186,10 @@ An unload starts with the extruder pulling the cut filament back 30 mm, then `UN
 
 If you saved one of the settings with an invalid value using `SAVE_VARIABLE`, the affected load or unload goes back to QIDI's motion and the console says why. If a QIDI firmware update changes how the Box moves filament in a way the settings don't recognize, the Box keeps QIDI's motion and the console says so.
 
+### QIDI Box eject
+
+QIDI's eject parks the toolhead over the waste chute before and after the Box pulls the filament back, so an eject homes X and Y on a printer that isn't homed. When the eject only needs the Box to pull filament back, the toolhead now stays where it is. That's when nothing is fed past the Box hub, or when another slot's filament is the one loaded. An eject that first has to heat and unload filament from the path to the toolhead still parks the way QIDI does. Either way the eject turns the hotend off and disables the extruder motor afterwards.
+
 ### Helpful Klipper tools
 
 After install and Klipper restart, the optimized macro set includes:

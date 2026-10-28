@@ -161,6 +161,8 @@ When `enable_box=0`, recovered setup runs and the command returns without feeder
 
 ## Task queue
 
+**Harness-recovered (`.07.01`, `TaskQueueManager.FLOW_MAP` read from the imported module, 2026-10-28):**
+
 | Flow | Ordered steps |
 |---:|---|
 | `0` | none / idle |
@@ -169,10 +171,16 @@ When `enable_box=0`, recovered setup runs and the command returns without feeder
 | `3` | `BOX_HEAT`, `BOX_CUT`, `BOX_UNLOAD` |
 | `4` | `BOX_EJECT` |
 | `5` | `BOX_HEAT`, `BOX_CUT`, `BOX_UNLOAD`, `BOX_EJECT` |
-| `6` | `EXT_HEAT`, `EXT_LOAD`, `EXT_BITE`, `EXT_WIPE` |
+| `6` | `EXT_HEAT`, `EXT_BITE`, `EXT_LOAD`, `EXT_WIPE` |
 | `7` | `EXT_HEAT`, `EXT_CUT`, `EXT_UNLOAD` |
-| `8` | `EXT_HEAT`, `EXT_CUT`, `EXT_UNLOAD`, `WAIT_USER`, `BOX_HEAT`, `BOX_LOAD`, `BOX_WIPE` |
-| `9` | `BOX_HEAT`, `BOX_CUT`, `BOX_UNLOAD`, `WAIT_USER`, `EXT_HEAT`, `EXT_LOAD`, `EXT_BITE`, `EXT_WIPE` |
+| `8` | `EXT_HEAT`, `EXT_CUT`, `EXT_UNLOAD`, `BOX_HEAT`, `BOX_LOAD`, `BOX_WIPE` |
+| `9` | `BOX_HEAT`, `BOX_CUT`, `BOX_UNLOAD`, `EXT_HEAT`, `EXT_BITE`, `EXT_LOAD`, `EXT_WIPE` |
+| `10` | `BOX_HEAT`, `BOX_UNLOAD`, `BOX_LOAD`, `BOX_WIPE` |
+| `11` | `BOX_HEAT`, `BOX_UNLOAD`, `BOX_EJECT` |
+| `12` | `BOX_HEAT`, `BOX_UNLOAD`, `EXT_HEAT`, `EXT_BITE`, `EXT_LOAD`, `EXT_WIPE` |
+| `13` | `BOX_CUT`, `BOX_UNLOAD`, `BOX_LOAD` |
+
+The `.04` harness recorded flows `0`–`9` only, with `EXT_LOAD` before `EXT_BITE` and a `WAIT_USER` step between the extruder and Box halves of flows `8` and `9`.
 
 Firmware `.04` fake-manager `_decide_flow_id()` results:
 
@@ -183,6 +191,24 @@ Firmware `.04` fake-manager `_decide_flow_id()` results:
 - `LOAD` with filament and `last_load_slot=slot16` raised `TypeError`; `last_load_slot=None` raised `AttributeError`.
 
 `start_flow()` sets the flow ID, copies steps, initializes operation index `0`, and clears waiting/active-step state. Default-state `tick()` completed box-side flows `1`, `2`, `3`, and `5` but not extruder/mixed flows `6` through `9`; this is harness behavior, not live operation proof.
+
+### `.07.01` eject
+
+- **Harness-recovered (2026-10-28, fake objects):** `cmd_EJECT_FILAMENT_CONTROL` reads `SLOT`, asks `box_adapter.flow_decision_func("EJECT", slot)` for the flow, and calls `task_queue_manager.start_flow(flow_id, self.normal_complete_script)`. `BoxAdapterV1.flow_decision_func` reads the toolhead `filament_switch_sensor`, saved `last_load_slot`, and `box1base.b_endstop_state`. For an eject of slot 2 it returned:
+
+  | Hub (`b_endstop_state`) | `last_load_slot` | Toolhead sensor | Flow |
+  |---|---|---|---:|
+  | clear (`1`) | any harnessed value | either | `4` |
+  | occupied (`0`) | `slot16` | either | `0` |
+  | occupied | `slot2` | filament | `5` |
+  | occupied | `slot2` | empty | `11` |
+  | occupied | another slot | filament | `4` |
+  | occupied | another slot | empty | `11` |
+
+- **Harness-recovered:** `BoxAdapterV1.eject()` first sends `MOVE_TO_TRASH` through its own `gcode` attribute, then reads `b_endstop_state` and `task_queue_manager.targer_eject_slot`. `BoxAdapterV2.eject()` returned `True` without sending G-code. `normal_complete_script(flow_task)` sends `MOVE_TO_TRASH`, `M104 S0`, and `SET_STEPPER_ENABLE STEPPER=extruder enable=0` through the controller's `gcode` attribute, adds `G4 P5000` and `WIPE_NOZZLE_DROP` when `current_flow_temp` is set, then waits for moves. The completion callback runs before `_cleanup_completed_task()`.
+- **Runtime-confirmed (2026-10-28, two USB Boxes, X and Y unhomed):** `EJECT_FILAMENT_CONTROL SLOT=2` with the toolhead sensor clear and `loaded_slot` `slot16` homed X and Y through `MOVE_TO_TRASH` in about 20 s, retracted slot 2, parked again, set the hotend target to 0, and disabled the extruder. Nothing heated or cut.
+- **Runtime-confirmed (2026-10-28):** `box_adapter` and `task_queue_manager.operation_adapter` were still `None` when a package module's `klippy:ready` handler and a reactor callback it scheduled ran, and `MultiColorController is ready.` was logged after them. Later both held the same `BoxAdapterV1`, and `task_queue_manager` stayed the same object. During flow `4`, `task_queue_manager.current_task.queue` was `['BOX_EJECT']` both when the eject step and when the completion script sent G-code.
+- **Unresolved:** live eject flows `5` and `11` were not exercised.
 
 ## Command risk boundary
 
