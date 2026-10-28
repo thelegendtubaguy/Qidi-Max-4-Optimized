@@ -96,6 +96,8 @@ rfid_state
 | `config` | Saved Box, mapping, metadata, runout, retry, retained-filament, and interruption variables. |
 | `config_summary` | `enable_box`, `auto_reload_detect`, `auto_read_rfid`, `auto_init_detect`, `slot_sync`, `retry_step`, `load_retry_num` |
 
+The `.07.01` `box.b_endstop_state` polarity and its discrepancy with `/printer/query_endstops/status` are documented in [hardware and protocol observations](hardware-and-protocols.md#slot-hardware).
+
 `save_variables` should be consumed through its `variables` dictionary; duplicated top-level fields are a Moonraker representation detail.
 
 `heater_generic heater_boxN.target` is authoritative for heater target. Captures showed `target=45` while both vendor drying-state surfaces reported `dry_state=0`.
@@ -144,7 +146,13 @@ When `enable_box=0`, recovered setup runs and the command returns without feeder
 - **Runtime-confirmed (two USB Boxes, 2026-10-19):** the update regenerated `box.cfg` with `[box_config boxN]`, `[box_extras]`, `[box_autofeed]`, and `[mcu mcu_boxN]` only. `T{n}`, `UNLOAD_T{n}`, and `UNLOAD_FILAMENT` macros are no longer generated.
 - **Runtime-confirmed:** `gcode.commands` does not contain `CUT_FILAMENT` or `UNLOAD_T{n}`. It contains `T_MANAGER`, `EXTRUDER_LOAD`, `EXTRUDER_UNLOAD`, `SLOT_UNLOAD`, compiled `UNLOAD_FILAMENT`, `UNLOAD_FILAMENT_CONTROL`, `LOAD_FILAMENT_CONTROL`, `EJECT_FILAMENT_CONTROL`, `TRY_RESUME_PRINT`, `INIT_RFID_READ`, `CLEAR_FLUSH`, `CLEAR_OOZE`, `BOX_PRINT_START`, `TOOL_CHANGE_START`, `TOOL_CHANGE_END`, `AUTO_RELOAD_FILAMENT`, `DISABLE_BOX_HEATER`, `FLOW_RETRY`, `FLOW_STOP`, `INTERNAL_BOX_UNLOAD`, and `QUERY_CURRENT_BOX_CHANNEL_FILAMENT`.
 - **Runtime-confirmed:** `multi_color_controller` status adds top-level `box_count`, `enable_box`, `auto_reload_detect`, `load_retry_num`, `task` (`flow_id`, `current_queue`, `current_step`, `is_paused`), `box` (`identity`, `box_count`, `loaded_slot`, `last_load_slot`, `is_tool_change`, buffer fields, and flattened per-Box fields), `extra` (external spool), and `operation.active_slot`. USB Boxes report `box.identity` `box_v1`. `box485` status reports `box_count` and `boxes`; `box2base` publishes no status.
+- **Runtime-confirmed (2026-10-26):** `box_extras` status no longer publishes `b_endstop_state`; it publishes `buffer` (`hall0_adc`, `hall1_adc`, `photo0`, `photo1`, `version`), `last_load_slot`, `loaded_slot`, `is_tool_change`, and per-Box `boxes` entries. The hub filament sensor is `multi_color_controller.box.b_endstop_state`. An idle controller reports `task` as `flow_id: None`, `current_queue: []`, `current_step: ''`.
+- **Runtime-confirmed (2026-10-26):** klippy logs `检查到！！错误，恢复默认状态！！` ("error detected, restoring default state") after a G-code command error and repeatedly while Klipper connects at startup; the observed effect was a print sub-status reset.
 - **Static-recovered:** `box_extras.so` no longer has `CUT_FILAMENT`, `INIT_RFID_READ`, `RETRY`, `DISABLE_BOX_DRY`, `TRY_RESUME_PRINT`, `AUTO_RELOAD_FILAMENT`, `BOX_PRINT_START`, or `TOOL_CHANGE_START`/`END` handlers. `multi_color_controller.so` implements `BoxAdapterV1` (USB), `BoxAdapterV2` (RS-485), and `ExternalAdapter`, each with cut, unload, load, wipe, eject, print-start, tool-change, try-resume, and auto-reload operations driven by `FlowTask`. Its embedded scripts call stock `CUT_FILAMENT_1`, `MOVE_TO_TRASH`, `WIPE_NOZZLE_DROP`, and `DROP_TRASH`.
+- **Runtime-confirmed (two USB Boxes, 2026-10-26):** `gcode/help` lists `LOAD_FILAMENT_CONTROL`, `UNLOAD_FILAMENT_CONTROL`, `EJECT_FILAMENT_CONTROL`, `READ_RFID`, and `UPDATE_FILAMENT_INFORMATION`, and omits `E_BOX`, `E_LOAD`, `E_UNLOAD`, and `RFID_READ`, which stock Fluidd's Box card sends. `box_extras` status carries `auto_refill`, `boxes`, `buffer`, `is_tool_change`, `last_load_slot`, and `loaded_slot`, but no `b_endstop_state`, `e_endstop_state`, or `box_button_state`; `multi_color_controller.box.b_endstop_state` is published. `box_extras.boxes[N].filament_info` mirrors the resolved per-slot filament fields.
+- **Static-recovered:** qidiclient sends `EJECT_FILAMENT_CONTROL SLOT=`, `LOAD_FILAMENT_CONTROL SLOT=`, `UNLOAD_FILAMENT_CONTROL SLOT=`, and `READ_RFID SLOT=` with a numeric slot.
+- **Runtime-confirmed:** QIDI's Fluidd `sw.js` precaches `assets/index-DlFvHGAh.js` with revision `null`, so a browser whose service worker already cached the bundle keeps serving it after the file changes on disk until `sw.js` changes.
+- **Unresolved:** whether `UPDATE_FILAMENT_INFORMATION` has effects beyond the `SAVE_VARIABLE` slot updates, for example on RS-485 Boxes.
 - **Static-recovered:** QIDI Studio `v2.07.02.73` still emits `CUT_FILAMENT T=`, `MOVE_TO_TRASH`, `UNLOAD_T[current_extruder]`, and `T[next_extruder]` for filament change and `UNLOAD_FILAMENT T=` at print end. On `.07.01` the first and third are ignored as unknown commands.
 - **Runtime-confirmed (2026-10-19, stock `.07.01` config, QIDI Studio stock filament-change G-code, two USB Boxes):** during a print, `T[n]` → `T_MANAGER` cut once (the extruder stepper was disabled at the start of the change, matching `CUT_FILAMENT_1`), unloaded the previous filament, and attempted the new load; the ignored `CUT_FILAMENT T=` and `UNLOAD_T[n]` lines caused no second cut. A load that never reached the toolhead sensor reported `QDE_004_006` (`Extruder loading failure.`) with `b_endstop_state = 1` and `e_endstop_state = 0` and paused the print; the same code paused print-start loading. The operator attributed both failures to filament quality. Operator `RESUME` retried the load and printing continued.
 - **Runtime-confirmed (same print):** each of five further tool changes showed exactly one extruder-stepper disable, consistent with one flow cut per change. Stock end G-code `UNLOAD_FILAMENT T=` cut once (extruder disable one second after `print_end`), unloaded to the Box, and the print reached `ready` about 65 seconds after `print_end`; afterward `loaded_slot` and `last_load_slot` were `slot16`, the toolhead sensor reported no filament, and the extruder target was `0`. Whether the vendor unload wipes the nozzle was not observed.
@@ -152,6 +160,8 @@ When `enable_box=0`, recovered setup runs and the command returns without feeder
 - **Unresolved:** whether vendor `UNLOAD_FILAMENT` wipes the nozzle or changes the hotend target itself; whether `TRY_RESUME_PRINT` refuses an external-spool resume with the toolhead sensor empty (`ExternalAdapter` contains `No filament detected. Please insert filament and try again.`); and RS-485 `BoxAdapterV2` status and behavior on hardware.
 
 ## Task queue
+
+**Harness-recovered (`.07.01`, `TaskQueueManager.FLOW_MAP` read from the imported module, 2026-10-28):**
 
 | Flow | Ordered steps |
 |---:|---|
@@ -161,10 +171,16 @@ When `enable_box=0`, recovered setup runs and the command returns without feeder
 | `3` | `BOX_HEAT`, `BOX_CUT`, `BOX_UNLOAD` |
 | `4` | `BOX_EJECT` |
 | `5` | `BOX_HEAT`, `BOX_CUT`, `BOX_UNLOAD`, `BOX_EJECT` |
-| `6` | `EXT_HEAT`, `EXT_LOAD`, `EXT_BITE`, `EXT_WIPE` |
+| `6` | `EXT_HEAT`, `EXT_BITE`, `EXT_LOAD`, `EXT_WIPE` |
 | `7` | `EXT_HEAT`, `EXT_CUT`, `EXT_UNLOAD` |
-| `8` | `EXT_HEAT`, `EXT_CUT`, `EXT_UNLOAD`, `WAIT_USER`, `BOX_HEAT`, `BOX_LOAD`, `BOX_WIPE` |
-| `9` | `BOX_HEAT`, `BOX_CUT`, `BOX_UNLOAD`, `WAIT_USER`, `EXT_HEAT`, `EXT_LOAD`, `EXT_BITE`, `EXT_WIPE` |
+| `8` | `EXT_HEAT`, `EXT_CUT`, `EXT_UNLOAD`, `BOX_HEAT`, `BOX_LOAD`, `BOX_WIPE` |
+| `9` | `BOX_HEAT`, `BOX_CUT`, `BOX_UNLOAD`, `EXT_HEAT`, `EXT_BITE`, `EXT_LOAD`, `EXT_WIPE` |
+| `10` | `BOX_HEAT`, `BOX_UNLOAD`, `BOX_LOAD`, `BOX_WIPE` |
+| `11` | `BOX_HEAT`, `BOX_UNLOAD`, `BOX_EJECT` |
+| `12` | `BOX_HEAT`, `BOX_UNLOAD`, `EXT_HEAT`, `EXT_BITE`, `EXT_LOAD`, `EXT_WIPE` |
+| `13` | `BOX_CUT`, `BOX_UNLOAD`, `BOX_LOAD` |
+
+The `.04` harness recorded flows `0`–`9` only, with `EXT_LOAD` before `EXT_BITE` and a `WAIT_USER` step between the extruder and Box halves of flows `8` and `9`.
 
 Firmware `.04` fake-manager `_decide_flow_id()` results:
 
@@ -175,6 +191,24 @@ Firmware `.04` fake-manager `_decide_flow_id()` results:
 - `LOAD` with filament and `last_load_slot=slot16` raised `TypeError`; `last_load_slot=None` raised `AttributeError`.
 
 `start_flow()` sets the flow ID, copies steps, initializes operation index `0`, and clears waiting/active-step state. Default-state `tick()` completed box-side flows `1`, `2`, `3`, and `5` but not extruder/mixed flows `6` through `9`; this is harness behavior, not live operation proof.
+
+### `.07.01` eject
+
+- **Harness-recovered (2026-10-28, fake objects):** `cmd_EJECT_FILAMENT_CONTROL` reads `SLOT`, asks `box_adapter.flow_decision_func("EJECT", slot)` for the flow, and calls `task_queue_manager.start_flow(flow_id, self.normal_complete_script)`. `BoxAdapterV1.flow_decision_func` reads the toolhead `filament_switch_sensor`, saved `last_load_slot`, and `box1base.b_endstop_state`. For an eject of slot 2 it returned:
+
+  | Hub (`b_endstop_state`) | `last_load_slot` | Toolhead sensor | Flow |
+  |---|---|---|---:|
+  | clear (`1`) | any harnessed value | either | `4` |
+  | occupied (`0`) | `slot16` | either | `0` |
+  | occupied | `slot2` | filament | `5` |
+  | occupied | `slot2` | empty | `11` |
+  | occupied | another slot | filament | `4` |
+  | occupied | another slot | empty | `11` |
+
+- **Harness-recovered:** `BoxAdapterV1.eject()` first sends `MOVE_TO_TRASH` through its own `gcode` attribute, then reads `b_endstop_state` and `task_queue_manager.targer_eject_slot`. `BoxAdapterV2.eject()` returned `True` without sending G-code. `normal_complete_script(flow_task)` sends `MOVE_TO_TRASH`, `M104 S0`, and `SET_STEPPER_ENABLE STEPPER=extruder enable=0` through the controller's `gcode` attribute, adds `G4 P5000` and `WIPE_NOZZLE_DROP` when `current_flow_temp` is set, then waits for moves. The completion callback runs before `_cleanup_completed_task()`.
+- **Runtime-confirmed (2026-10-28, two USB Boxes, X and Y unhomed):** `EJECT_FILAMENT_CONTROL SLOT=2` with the toolhead sensor clear and `loaded_slot` `slot16` homed X and Y through `MOVE_TO_TRASH` in about 20 s, retracted slot 2, parked again, set the hotend target to 0, and disabled the extruder. Nothing heated or cut.
+- **Runtime-confirmed (2026-10-28):** `box_adapter` and `task_queue_manager.operation_adapter` were still `None` when a package module's `klippy:ready` handler and a reactor callback it scheduled ran, and `MultiColorController is ready.` was logged after them. Later both held the same `BoxAdapterV1`, and `task_queue_manager` stayed the same object. During flow `4`, `task_queue_manager.current_task.queue` was `['BOX_EJECT']` both when the eject step and when the completion script sent G-code.
+- **Unresolved:** live eject flows `5` and `11` were not exercised.
 
 ## Command risk boundary
 

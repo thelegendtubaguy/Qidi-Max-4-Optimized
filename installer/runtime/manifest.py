@@ -9,6 +9,7 @@ from .backup import CONFIG_BACKUP_IGNORED_SYMLINKS
 from .models import (
     BackupSpec,
     EnsureLineSpec,
+    ExtraModuleSpec,
     FirmwareSpec,
     InstallSpec,
     LineSpec,
@@ -140,6 +141,7 @@ def parse_manifest(raw: Any) -> Manifest:
             "Manifest must define exactly one install.ensure_lines entry."
         )
     source_patches = _parse_source_patches(install_raw, firmware)
+    extra_modules = _parse_extra_modules(install_raw)
     install = InstallSpec(
         ensure_directories=tuple(
             _validate_relative_path(item, allowed_roots=("config",))
@@ -161,6 +163,7 @@ def parse_manifest(raw: Any) -> Manifest:
         ),
         ensure_lines=ensure_lines,
         source_patches=source_patches,
+        extra_modules=extra_modules,
     )
 
     patches_raw = _require_mapping(raw, "patches")
@@ -261,6 +264,46 @@ def parse_manifest(raw: Any) -> Manifest:
     )
 
 
+def _parse_extra_modules(install_raw: dict[str, Any]) -> tuple[ExtraModuleSpec, ...]:
+    entries = install_raw.get("extra_modules", [])
+    if not isinstance(entries, list):
+        raise ManifestValidationError("Expected list at install.extra_modules.")
+    modules: list[ExtraModuleSpec] = []
+    ids: set[str] = set()
+    destinations: set[str] = set()
+    for item in entries:
+        if not isinstance(item, dict):
+            raise ManifestValidationError(
+                "Expected mapping entries at install.extra_modules."
+            )
+        module_id = _require_str(item, "id")
+        if module_id in ids:
+            raise ManifestValidationError(f"Duplicate extra module id: {module_id}")
+        ids.add(module_id)
+        destination = _validate_relative_path(
+            _require_str(item, "destination"), allowed_roots=("klippy",)
+        )
+        if not destination.endswith(".py"):
+            raise ManifestValidationError(
+                f"Extra module destination must be a .py file: {destination}"
+            )
+        if destination in destinations:
+            raise ManifestValidationError(
+                f"Duplicate extra module destination: {destination}"
+            )
+        destinations.add(destination)
+        modules.append(
+            ExtraModuleSpec(
+                id=module_id,
+                source=_validate_relative_path(
+                    _require_str(item, "source"), allowed_roots=("klipper",)
+                ),
+                destination=destination,
+            )
+        )
+    return tuple(modules)
+
+
 def _parse_source_patches(install_raw: dict[str, Any], firmware: FirmwareSpec) -> tuple[SourcePatchSpec, ...]:
     entries = install_raw.get("source_patches", [])
     if not isinstance(entries, list):
@@ -342,6 +385,7 @@ def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec 
     moonraker_file_manager_raw = _require_mapping(system_raw, "moonraker_file_manager")
     fluidd_box_raw = _require_mapping(system_raw, "fluidd_box_filament_ids")
     klipper_box_raw = _require_mapping(system_raw, "klipper_box_config")
+    klipper_print_stats_raw = _require_mapping(system_raw, "klipper_print_stats_manager")
     filament_config_raw = _require_mapping(system_raw, "fluidd_filament_config")
     rockchip_raw = _require_mapping(system_raw, "rockchip_root_sync")
     optional_raw = services_raw.get("optional_disable", [])
@@ -393,10 +437,15 @@ def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec 
         ),
         fluidd_box_filament_ids=SystemFluiddBundleSpec(
             file=_validate_absolute_path(_require_str(fluidd_box_raw, "file")),
+            service_worker=_validate_absolute_path(_require_str(fluidd_box_raw, "service_worker")),
         ),
         klipper_box_config=SystemMoonrakerMetadata3mfSpec(
             file=_validate_absolute_path(_require_str(klipper_box_raw, "file")),
             restart_service=_require_str(klipper_box_raw, "restart_service"),
+        ),
+        klipper_print_stats_manager=SystemMoonrakerMetadata3mfSpec(
+            file=_validate_absolute_path(_require_str(klipper_print_stats_raw, "file")),
+            restart_service=_require_str(klipper_print_stats_raw, "restart_service"),
         ),
         fluidd_filament_config=SystemFluiddFilamentConfigSpec(
             link=_validate_filament_config_link(_require_str(filament_config_raw, "link")),

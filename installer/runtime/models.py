@@ -158,11 +158,19 @@ class SourcePatchSpec:
 
 
 @dataclass(frozen=True)
+class ExtraModuleSpec:
+    id: str
+    source: str
+    destination: str
+
+
+@dataclass(frozen=True)
 class InstallSpec:
     ensure_directories: tuple[str, ...]
     managed_tree: ManagedTreeSpec
     ensure_lines: tuple[EnsureLineSpec, ...]
     source_patches: tuple[SourcePatchSpec, ...] = ()
+    extra_modules: tuple[ExtraModuleSpec, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -221,6 +229,7 @@ class SystemMoonrakerMetadata3mfSpec:
 @dataclass(frozen=True)
 class SystemFluiddBundleSpec:
     file: str
+    service_worker: str
 
 
 @dataclass(frozen=True)
@@ -256,6 +265,7 @@ class SystemOptimizationsSpec:
     moonraker_file_manager: SystemMoonrakerMetadata3mfSpec
     fluidd_box_filament_ids: SystemFluiddBundleSpec
     klipper_box_config: SystemMoonrakerMetadata3mfSpec
+    klipper_print_stats_manager: SystemMoonrakerMetadata3mfSpec
     fluidd_filament_config: SystemFluiddFilamentConfigSpec
     rockchip_root_sync: SystemRockchipRootSyncSpec
 

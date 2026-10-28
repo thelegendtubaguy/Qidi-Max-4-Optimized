@@ -1,106 +1,106 @@
-# Development
+# Running the dev branch
 
-## Install from GitHub
+The `dev` branch is where new changes land before they make it into a release. Every push to `dev` builds a fresh installer and publishes it to the [`prerelease`](https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/tag/prerelease) release on GitHub, so you can run the newest work on your printer without building anything yourself.
 
-Install the latest dev-branch bundle published to the `prerelease` GitHub prerelease. The bootstrap script is read from the `dev` branch; the `prerelease` release carries `tltg-optimized-macros-dev.tar.gz` and its `.sha256` file.
+The catch is that it hasn't had the same testing as a release. On any given day something might be half-finished or just broken. If you only want a printer that works, use the normal install in the [README](README.md) instead.
+
+> [!CAUTION]
+> I refuse to be responsible for your printer. PLEASE watch prints start ensuring the printer doesn't do something horrible like gouge your bed and be ready to cut power at a moment's notice. That goes double on dev.
+
+## Installing
+
+1. SSH into your printer: `ssh qidi@<your printer's ip>`
+2. Paste this in and run it. It's one command split across two lines, so copy both:
+
+   ```bash
+   TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/download/prerelease/tltg-optimized-macros-dev.tar.gz \
+   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/thelegendtubaguy/Qidi-Max-4-Optimized/dev/installer/release/install-latest.sh)"
+   ```
+
+3. Follow the prompts. They're the same as a normal install with one exception: **answer No to automatic updates.** Auto-updates only follow stable releases, so with them on, your printer will quietly drift back to the stable version.
+4. Update your slicer. Copy the machine G-code from the `dev` branch so it matches the macros you just installed: [`orcaslicer_gcode/`](https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/tree/dev/orcaslicer_gcode) for OrcaSlicer, or [`qidistudio_gcode/`](https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/tree/dev/qidistudio_gcode) for QIDI Studio.
+
+To pick up newer dev changes later, run the same command again. Do the same with the slicer G-code if it has changed.
+
+### Already have auto-updates turned on?
+
+Turn them off before (or right after) installing dev, or the next stable release will replace your dev install:
 
 ```bash
-TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/download/prerelease/tltg-optimized-macros-dev.tar.gz \
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/thelegendtubaguy/Qidi-Max-4-Optimized/dev/installer/release/install-latest.sh)"
+~/tltg-optimized-macros/auto-update.sh --disable-systemd
 ```
 
-Dry-run the latest dev-branch bundle:
+### Want a look before anything changes?
+
+Add `-- --dry-run` to the end of the command. The installer will show what it would do without writing anything:
 
 ```bash
 TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/download/prerelease/tltg-optimized-macros-dev.tar.gz \
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/thelegendtubaguy/Qidi-Max-4-Optimized/dev/installer/release/install-latest.sh)" -- --dry-run
 ```
 
-And to uninstall from dev:
+## Going back to stable
+
+Run the normal install command from the [README](README.md). It replaces the dev install with the latest release, and you can turn auto-updates back on then if you want them.
+
+To remove everything instead:
 
 ```bash
-TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/download/prerelease/tltg-optimized-macros-dev.tar.gz \
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/thelegendtubaguy/Qidi-Max-4-Optimized/dev/installer/release/install-latest.sh)" -- --uninstall
+~/tltg-optimized-macros/install.sh --uninstall --plain
 ```
 
-## Build, copy, and dry-run on a printer
+Backups, restore, and recovery all work the same as on a release. See [If something goes wrong](README.md#if-something-goes-wrong) in the README.
 
-Run the helper from the repo root:
+## Telling me how it went
+
+Good or bad, I want to hear about it. [TESTING.md](TESTING.md) covers what's useful to include. Open an issue here on GitHub or come chat in the [TubaMakes Discord](https://l.tubaguy.com/tmdiscord).
+
+## Working on the code
+
+The rest of this page is for people changing the repo itself.
+
+### Test a local build on your printer
+
+This builds a dev bundle from your checkout, copies it to the printer, and runs a dry-run there:
 
 ```bash
-scripts/build_copy_dry_run.sh --host 192.168.20.165
+scripts/build_copy_dry_run.sh --host <printer-ip>
 ```
 
-Default SSH user is `qidi`.
+It connects as `qidi` by default. Use `--user <name>` to change that, `--password '<password>'` if you aren't using SSH keys (this needs `sshpass` installed locally), and `--debug` for extra installer output.
 
-Use a different SSH user:
+### Checks to run before opening a PR
 
-```bash
-scripts/build_copy_dry_run.sh --host 192.168.20.165 --user other-user
-```
-
-Use a password instead of SSH keys:
+Run the ones that match what you touched:
 
 ```bash
-scripts/build_copy_dry_run.sh --host 192.168.20.165 --password 'your-password'
-```
-
-Add installer debug output to the remote dry-run:
-
-```bash
-scripts/build_copy_dry_run.sh --host 192.168.20.165 --debug
-```
-
-Password-based runs require local `sshpass`.
-
-## Testing
-
-Run the full installer test suite:
-
-```bash
+# Installer behavior
 python3 scripts/run_installer_core_tests.py
-```
 
-Validate that `installer/package.yaml` and `installer/supported_upgrade_sources.yaml` agree on supported installed-package versions:
-
-```bash
+# installer/package.yaml or installer/supported_upgrade_sources.yaml
 python3 scripts/check_installer_known_versions.py
-```
 
-Validate that the OrcaSlicer and QIDI Studio machine G-code packs only reference known macros and allowed external commands:
-
-```bash
+# Slicer G-code in orcaslicer_gcode/ or qidistudio_gcode/
 python3 scripts/check_optimized_slicer_macros.py
-```
 
-Build the release-shaped installer bundle and smoke-test the extracted launchers against fixture runtime trees:
+# Anything in installer/klipper/tltg-optimized-macros/
+python3 scripts/format_klipper_configs.py
 
-```bash
+# Bundle or launcher changes: build and smoke-test the dev and release bundles
+python3 scripts/build_installer_bundle.py --output-dir dist --channel dev --build-id local --smoke-test
 python3 scripts/build_installer_bundle.py --output-dir dist --channel release --smoke-test
 ```
 
-Build the dev installer bundle and smoke-test the extracted launchers against fixture runtime trees:
+### THR firmware
 
-```bash
-python3 scripts/build_installer_bundle.py --output-dir dist --channel dev --build-id local --smoke-test
-```
+Building and checking the Max 4 LIS2DW FIFO fix is covered in [`firmware/README.md`](firmware/README.md). The firmware is separate from the macro installer bundle, and building or checking it never flashes a printer.
 
-If you changed `installer/klipper/tltg-optimized-macros/`, run the formatter before finishing:
+### Pointing the installer at a fake printer
 
-```bash
-python3 scripts/format_klipper_configs.py
-```
-
-## THR firmware package
-
-Generate and verify the Max 4 LIS2DW FIFO fix using the commands in [`firmware/README.md`](firmware/README.md). Firmware artifacts are separate from the macro installer bundle; the build and checks do not flash a printer.
-
-## Runtime override hooks
-
-`installer/runtime/cli.py` accepts these environment overrides:
+`installer/runtime/cli.py` reads these environment variables, so tests can run against a fixture directory instead of a live printer:
 
 - `TLTG_OPTIMIZED_PRINTER_DATA_ROOT`
 - `TLTG_OPTIMIZED_FIRMWARE_MANIFEST`
 - `TLTG_OPTIMIZED_MOONRAKER_URL`
 
-`installer/tests/helpers.py` and `scripts/smoke_test_installer_bundle.py` use those overrides to run against fixture runtime trees instead of a live printer.
+`installer/tests/helpers.py` and `scripts/smoke_test_installer_bundle.py` both use them.

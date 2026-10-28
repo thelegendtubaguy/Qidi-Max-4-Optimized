@@ -32,6 +32,57 @@ Optimized configuration SHALL reduce homing, probing, mesh, and filament-transit
 - **AND** the captured value is reapplied after mesh preparation
 - **AND** saved fallback is used only when the session has no capture
 
+#### Scenario: Print ends before the offset is reapplied
+- **WHEN** a print is cancelled or ends after start G-code clears the runtime Z offset but before the captured value is reapplied
+- **THEN** end-of-print handling leaves the saved `z_offset` unchanged and reports that it was not saved
+- **AND** a print that ends after reapplication saves the runtime offset, including touchscreen adjustments, as before
+
+### Requirement: Motion-free nozzle load-cell signal check
+Optimized configuration SHALL provide an operator-invoked load-cell response check with console prompts and an automatic signal assessment, without homing, movement, heating, calibration changes, or homing-safety certification.
+
+#### Scenario: Operator checks the cold sensor response
+- **WHEN** the printer is idle, all heater targets are off, the nozzle and bed are below 40 °C, the raw readout command is available, and the operator confirms nozzle access and bed clearance
+- **THEN** Fluidd exposes a `CONFIRM` input that must be set to `1`
+- **AND** the test prompts the operator to leave the nozzle untouched, get ready to press lightly upward without forcing it, and stop touching it after the pressure interval
+- **AND** each preparation instruction repeats three times, one second apart, followed by a five-second wait before measurement
+- **AND** each six-second measurement interval repeats `Measuring...` or `PRESS` three times, with sampling throughout the `PRESS` interval
+- **AND** the console shows only the English prompts and result, not QIDI's raw readout lines
+- **AND** a sustained pressure change must exceed baseline noise and the signal must settle near baseline after release to report `RESPONSE_DETECTED` with a plain-language message that the readings look correct
+- **AND** an insufficient pressure change reports `INCONCLUSIVE`, while saturated, unsustained, or non-recovering readings report `NO_RELIABLE_RESPONSE`, with plain-language advice to investigate further and the measured reason
+- **AND** up to two isolated outlier readings per interval do not change the result
+
+#### Scenario: Unsafe or unsupported test is refused
+- **WHEN** a print is active or paused, motion activity is reported, a heater target is nonzero, the nozzle or bed is too hot, clearance is unconfirmed, or the raw readout command is unavailable
+- **THEN** the test stops before sampling and explains the unmet condition
+- **AND** it does not substitute `QUERY_PROBE` or a motion-based probe command
+
+#### Scenario: Conditions change or a read fails during sampling
+- **WHEN** an admission condition becomes unsafe during the test, or a raw read still fails, is missing, malformed, or ambiguous after brief retries
+- **THEN** the test stops sampling and reports `INCONCLUSIVE` without a stale successful result
+- **AND** a failed raw read, including an empty sensor reply, does not shut down Klipper
+- **AND** it does not alter the changed printer state
+- **AND** concurrent test requests cannot replace the active measurements
+
+#### Scenario: Signal response is not a homing certification
+- **WHEN** the signal check ends
+- **THEN** it explains that the homing-trigger path remains unverified, including after a detected response
+- **AND** an unsuccessful check instructs the operator not to apply more force or home/probe until the cause is understood
+- **AND** normal homing and print-start behavior remain unchanged
+
+### Requirement: Non-blocking saved Z-offset diagnostics
+Optimized configuration SHALL report requests to save a numeric zero to `z_offset` in the Klipper console and log without blocking or changing the save.
+
+#### Scenario: Zero offset save is requested
+- **WHEN** `SAVE_VARIABLE` requests a numeric zero for `z_offset`, including when the saved offset is already zero
+- **THEN** a warning identifies the request and records the previous saved offset, current runtime offset, print state and filename, available QIDI main/sub-status, captured offset and validity, and original command parameters
+- **AND** unavailable optional status fields do not prevent the save
+
+#### Scenario: Screen and Fluidd saves retain their behavior
+- **WHEN** the touchscreen, Fluidd, or a macro saves a variable
+- **THEN** the original save command receives the original parameters and quoting unchanged
+- **AND** nonzero Z offsets and unrelated variables produce no zero-offset warning
+- **AND** the original command retains responsibility for validation and save errors
+
 ### Requirement: Controlled slicer start paths
 OrcaSlicer and QIDI Studio packs SHALL implement the same functional print-start branches while printer-side Klipper state selects mesh preparation and parser-specific syntax and ordered invariants remain controlled by `openspec/contracts/gcode-paths/start-print.path.json`.
 
@@ -298,3 +349,70 @@ Optimized configuration SHALL provide a default-disabled print-start mode that o
 - **WHEN** staggered heating is enabled and the bed or chamber target is zero or its heater is unavailable
 - **THEN** that stage is skipped without waiting
 - **AND** the remaining requested stages retain bed-before-chamber-before-nozzle order
+
+### Requirement: Operator-configurable QIDI Box feed motion
+Optimized configuration SHALL let operators set the QIDI Box load fast distance, fast stage speeds, approach speed, and acceleration, and the unload stage speeds and acceleration, through Klipper saved variables, globally and per slot. It SHALL keep vendor motion whenever settings are absent, invalid, or unsupported. The load pre-stage, hot phases, and vendor flow control SHALL remain vendor-owned.
+
+#### Scenario: Absent settings keep vendor motion
+- **WHEN** no feed-motion settings are saved
+- **THEN** Box loads and unloads move exactly as the vendor firmware does
+
+#### Scenario: A load pushes fast, then approaches the toolhead switch
+- **WHEN** a valid feed-motion profile is saved
+- **AND** a Box load runs, including a tool change during a print
+- **THEN** the Box pushes the filament at the configured fast stage speeds for the effective fast distance, then at the configured approach speed until the toolhead filament switch trips
+- **AND** the load can reach at least as far as the vendor load before giving up
+- **AND** cutting, synced extruder motion, purge, wipe, retries, error reporting, RFID, feed assist, and status are unchanged
+
+#### Scenario: An unload uses the configured speeds
+- **WHEN** a valid feed-motion profile is saved
+- **AND** a Box unload runs
+- **THEN** the Box-only retract to the hub sensor uses the configured unload speeds and acceleration and the vendor distances
+
+#### Scenario: The extruder retract before the Box unload is configurable
+- **WHEN** an extruder retract length is saved
+- **THEN** every slot's unload retracts the extruder by that length in its second extruder retract, at the vendor speed
+- **AND** the first extruder retract is unchanged
+- **AND** the length cannot be overridden per slot
+
+#### Scenario: Slot overrides take precedence
+- **WHEN** a setting is saved for one slot
+- **THEN** that slot's loads or unloads use it in place of the global setting or vendor value
+- **AND** other slots are unaffected
+- **AND** clearing the override returns the slot to the global setting
+
+#### Scenario: An invalid profile falls back as a whole
+- **WHEN** a slot's saved settings and overrides, combined with vendor values for anything unset, include an out-of-range value or form a profile the vendor planner cannot run
+- **THEN** that slot's whole load or unload profile uses vendor motion
+- **AND** the operator is told which check failed
+
+#### Scenario: The fast distance applies as set
+- **WHEN** a fast distance within its bounds is saved
+- **THEN** the next load's fast push covers that distance, including when it is longer than the vendor's
+
+#### Scenario: Unexpected vendor calls keep vendor motion
+- **WHEN** QIDI's Box code lacks the load and unload methods, or a call's arguments don't match the traced shape or plausible values
+- **THEN** feed-motion settings are not applied and vendor motion is unchanged
+
+### Requirement: Published QIDI Box feed motion
+The feed-motion integration SHALL publish its effective per-slot motion as Klipper printer-object status.
+
+#### Scenario: Effective motion is published
+- **WHEN** a client queries the feed-motion printer object
+- **THEN** it reports whether the integration is active, the global settings, their bounds, and for each slot its overrides, the load and unload profile its next operation would use, and why a profile falls back to vendor motion
+
+### Requirement: QIDI Box eject without an unneeded toolhead park
+Optimized configuration SHALL keep the toolhead still during a QIDI Box eject that the vendor runs as its eject step alone, and SHALL leave the rest of that eject and every other vendor Box flow unchanged.
+
+#### Scenario: A Box-only eject leaves the toolhead alone
+- **WHEN** the vendor runs an eject as its eject step alone, such as with the Box hub clear
+- **THEN** the toolhead neither homes nor parks
+- **AND** the slot retract, hotend-off, extruder-disable, and flow completion are unchanged
+
+#### Scenario: An eject that unloads first keeps the vendor park
+- **WHEN** the vendor heats or unloads before ejecting
+- **THEN** the eject parks over the waste chute as the vendor eject does
+
+#### Scenario: Other flows and unrecognized controllers are unchanged
+- **WHEN** a Box load, unload, or other vendor flow runs, or QIDI's Box controller lacks the traced flow structure
+- **THEN** its G-code runs unchanged

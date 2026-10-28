@@ -53,6 +53,22 @@
 - **Config-confirmed:** the SOC payload ships Fluidd `v1.30.5` with active bundle `/home/qidi/fluidd/assets/index-DlFvHGAh.js`, SHA-256 `178b2e076d3a75716819ee13f9ea1f0c92e536546c8b2adafde8632f6723710c`, byte-identical to the `01.01.06.05` SOC payload. Its QIDI Box card still parses saved slot values with `parseInt` and resolves them through `officiall_filas_list.cfg`; see [material metadata](qidi-box/material-metadata.md).
 - **Runtime-confirmed:** Fluidd is served by nginx over plain HTTP with `ETag` and `Last-Modified` but no explicit expiry for `/assets/`; `index.html` is `no-store`. Browsers do not register its Workbox service worker over a plain-HTTP LAN address.
 
+## Klipper shutdown reporting
+
+- **Config-confirmed:** `klipper/klippy/extras/print_stats_manager.py` is byte-identical in the captured `01.01.06.04` and `01.01.07.01` defaults (LF-normalized SHA-256 `8fc2f3150c1b5da407bd3175d5c38e830ec73a349cb419110a32e449f5fc8858`; the live `01.01.07.01` file uses CRLF, SHA-256 `f5d5f58d17dc6dbbae359a955535d4eec0de2085863d25167dbd14c312abef6d`). It handles every `gcode:command_error` by setting main status `ready`. Leaving `printing` runs `SET_TMC_FIELD ... tpwmthrs VELOCITY=9999999999` for `stepper_z` and `stepper_z1` through `run_script_from_command` before the status changes.
+- **Config-confirmed:** after a shutdown, QIDI's `gcode.py` dispatches only commands registered for the not-ready state, so `SET_TMC_FIELD` is refused. Its dispatcher sends `gcode:command_error` for the refusal and re-raises it, so the reset re-enters itself while the status is still `printing`.
+- **Runtime-confirmed:** on one Max 4 running `01.01.07.01`, `Lost communication with MCU 'mcu_box2'` during a print was followed within two seconds by 136 reset log lines (`检查到！！错误，恢复默认状态！！`, "error detected, restoring default state"), each after a `Printer is shutdown` refusal. A logged traceback shows the refusals nested inside one another in `gcode.py` `_process_commands`, ending in a `BlockingIOError` from the G-code response pipe. Klippy then stopped without a final error and started again 12 seconds later.
+- **Unresolved:** the screen and Moonraker state text after that restart was not captured.
+
+## Nozzle load-cell diagnostics
+
+- **Config-confirmed:** the `01.01.07.01` defaults use `[probe_air]` with `sensor_type: c_sensor`; `probe_air.py` constructs `air.PrinterAirProbe`. The ordinary `probe.py` command helper reports `QUERY_PROBE` from the supplied `query_endstop` callback.
+- **Static-recovered:** in `air.cpython-39-aarch64-linux-gnu.so` SHA-256 `6d7af36d1061216b7aa5f1cd0eb9ae1c25158f8df9926ec7e69be7e411c67d69`, `WeighEndstopWrapper.query_endstop` returns `_Py_FalseStruct` without querying hardware. `QUERY_PROBE` therefore cannot establish load-cell responsiveness through this callback. This binary is identical in the captured `01.01.06.05` and `01.01.07.01` defaults.
+- **Static-recovered:** `cs1237.cpython-39-aarch64-linux-gnu.so` SHA-256 `7beb56413a902356d0aee2d0580e820342083b3b7f7194d1f5d7217f4b7ff4b5` registers `WEIGHTING_DEBUG_QUERY`. Its handler sends `query_cs1237_read` with the sensor OID, register `0`, and read length `0`, decodes returned bytes, and reports unsigned and signed counts plus millivolts through `respond_info`. The handler contains no toolhead movement or zero-calibration call. This binary is identical in the captured `01.01.06.04`, `01.01.06.05`, and `01.01.07.01` defaults.
+- **Runtime-confirmed:** on one Max 4 running `01.01.07.01`, each `WEIGHTING_DEBUG_QUERY` emits one console line of the form `// 传感器数据(-): 16091627 / -685589 / -1.596261(mV)` ("sensor data": unsigned counts, signed counts, millivolts). Unloaded readings sat near `-939000` counts with roughly 100 counts of noise, and light upward finger pressure moved them by about 250000 counts. About 4 of 150 readings were isolated outliers (`-917505`, `-3`, `-2`, `6955391`) between normal neighbors.
+- **Runtime-confirmed:** on the same printer, idle and cold, a `WEIGHTING_DEBUG_QUERY` after several Klipper restarts received `query_cs1237_data` with empty `data`. The handler raised `IndexError` at `cs1237.pyx` line 54. Run through `run_script_from_command`, Klipper's G-code dispatcher treated the exception as an internal error and shut down the MCU before the caller could handle it; the following automatic Klippy restart failed because the MCU remained shut down. Earlier queries on that printer returned readings normally; the cause of the empty reply is unresolved.
+- **Unresolved:** acceptable noise across printers, force-to-signal scale, disconnected-sensor values, the cause of isolated outlier readings, and correspondence between a responsive raw signal and reliable MCU homing triggers have not been validated. Raw readings alone do not certify safe homing.
+
 ## Rockchip first-boot service and root mount
 
 - `/proc/device-tree/compatible` on the observed Max 4 identifies RK3308, while `/etc/init.d/rockchip.sh` assigns `CHIPNAME="rk3208"` for that hardware.
@@ -74,6 +90,16 @@ Measurements used Linux `5.10.160`, Python `3.9.2`, and ext4 with `19,766,173,69
 | Create and remove 64 files | 706.394 ms (669.849–711.707) | 96.790 ms (91.821–101.043) | 86.3% | 7.30× |
 
 The 4 KiB batch increased from `1.324 MiB/s` to `35.617 MiB/s`; the 256 KiB batch increased from `27.001 MiB/s` to `40.345 MiB/s`. The per-write `fsync` control changed by 5.1% because both modes explicitly requested durability for each write.
+
+## Touchscreen display and input
+
+- **Runtime-confirmed:** on one Max 4 running `01.01.07.01`, `qidiclient` (root, pinned to CPU 0) holds `/dev/fb0` and `/dev/input/event0` open. `/dev/fb0` is `rockchipdrmfb`, 800×480 at 32 bpp with red at bit offset 16 (XRGB), stride 3200, and virtual size equal to the visible size. It is `root:video` mode `0660`; `/dev/input/event*` are `root:input` mode `0660`, and the `qidi` user is in `video` but not `input`.
+- **Static-recovered:** `qidiclient` contains LVGL display and input driver registration symbols and the string `/dev/input/event0`.
+- **Runtime-confirmed:** `event0` is `Goodix Capacitive TouchScreen` (`INPUT_PROP_DIRECT`), reporting `ABS_X`/`ABS_Y` and `ABS_MT_POSITION_X`/`_Y` over 0–799 and 0–479, slots 0–4, tracking IDs up to 65535, and `BTN_TOUCH`. `event1` is a USB button device.
+- **Runtime-confirmed:** capturing `/dev/fb0` as `qidi` produced the displayed screen. Writing slot-0 multi-touch events with `BTN_TOUCH` and single-touch axes to `event0`, then a release, pressed the touchscreen at the written screen coordinates: a press at (40, 335) opened the Settings tab and (40, 45) returned to Home.
+- **Runtime-confirmed:** a press and release written to `event0` within a few milliseconds of each other was ignored, while the same press held 80 ms was acted on. `qidiclient` appears to act on the final state of the queued events it reads, so very short presses are lost.
+- **Runtime-confirmed:** on that host (RK3308, four cores, 486 MB RAM), a full framebuffer copy through `mmap` took about 28 ms of CPU and every eighth row about 5 ms; Moonraker's virtualenv Pillow `10.0.1` with libjpeg-turbo encoded the frame as a quality-75 JPEG (about 27 KB) in about 19 ms and as WebP in about 350 ms. `ffmpeg` fbdev capture with MJPEG encoding used about 66% of a core at 4 fps and about 130% at 10 fps.
+- **Runtime-confirmed:** QIDI's nginx (`/etc/nginx/sites-available/fluidd`, CRLF line endings, not owned by a Debian package) serves Fluidd on ports 80 and 10088 with `--with-http_auth_request_module`, defines the `apiserver` upstream and `$connection_upgrade` map in `/etc/nginx/conf.d/`, and forwards `X-Real-IP`. Moonraker runs with `xheaders`, so `/access/user` answered 200 for a forwarded `192.168.1.50` and 401 for `8.8.8.8` under QIDI's default trusted ranges. QIDI's Moonraker also accepts loopback clients without authorization.
 
 ## Touchscreen AI state
 

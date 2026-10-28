@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "path": "probe_signal",
+  "title": "Motion-free nozzle load-cell signal check",
+  "entrypoints": [],
+  "macro_files": [
+    "installer/klipper/tltg-optimized-macros/helpers.cfg"
+  ],
+  "branches": [
+    {
+      "name": "guarded_console_signal_check",
+      "source_macro": "TLTG_TEST_PROBE",
+      "condition": "Python helper owns admission, sampling, console prompts, and response assessment",
+      "slice": {
+        "start": "_TLTG_TEST_PROBE CONFIRM={params.CONFIRM|default(0)}"
+      },
+      "must_include_order": [
+        "_TLTG_TEST_PROBE CONFIRM={params.CONFIRM|default(0)}"
+      ],
+      "must_not_include": [
+        "QUERY_PROBE",
+        "WEIGHTING_TEST",
+        "SAVE_CONFIG",
+        "SET_KINEMATIC_POSITION"
+      ]
+    }
+  ],
+  "generated": {
+    "markdown": "openspec/contracts/gcode-paths/generated/probe-signal.md",
+    "mermaid": "openspec/contracts/gcode-paths/generated/probe-signal.mmd"
+  }
+}

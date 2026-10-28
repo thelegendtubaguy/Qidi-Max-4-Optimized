@@ -137,6 +137,49 @@ def maybe_initialize_filament_retention(
     return True
 
 
+# Release defaults for tltg_box_feed_motion, saved as a set only when no motion
+# setting exists. A setting saved as None (QIDI's value) counts as present.
+BOX_MOTION_DEFAULTS = {
+    "tltg_box_load_fast_length": "950",
+    "tltg_box_load_fast_speed_1": "120",
+    "tltg_box_load_fast_speed_2": "100",
+    "tltg_box_load_approach_speed": "15",
+    "tltg_box_unload_speed_1": "115",
+    "tltg_box_unload_speed_2": "120",
+    "tltg_box_unload_extruder_length": "50",
+}
+BOX_MOTION_SETTINGS = frozenset(BOX_MOTION_DEFAULTS) | {
+    "tltg_box_load_accel",
+    "tltg_box_unload_accel",
+}
+
+
+def maybe_initialize_box_motion(
+    *,
+    paths: RuntimePaths,
+    reporter,
+    journal=None,
+    written: dict[str, str] | None = None,
+    urlopen: UrlOpenFn = urllib.request.urlopen,
+) -> bool:
+    if read_live_saved_variable_names(paths, urlopen=urlopen) & BOX_MOTION_SETTINGS:
+        reporter.debug(event="box_motion_defaults.preserved")
+        return False
+    saved = save_live_variables(
+        paths,
+        BOX_MOTION_DEFAULTS,
+        missing_only=frozenset(BOX_MOTION_DEFAULTS),
+        urlopen=urlopen,
+    )
+    if written is not None:
+        written.update(saved)
+    if not saved:
+        reporter.debug(event="box_motion_defaults.preserved")
+        return False
+    reporter.line(messages.BOX_MOTION_DEFAULTS_SAVED)
+    return True
+
+
 def maybe_prompt_enable_box(
     *,
     paths: RuntimePaths,
@@ -217,6 +260,9 @@ def maybe_repair_saved_variables(
     changed = maybe_initialize_filament_retention(
         paths=paths, reporter=reporter, written=written, urlopen=urlopen
     )
+    changed = maybe_initialize_box_motion(
+        paths=paths, reporter=reporter, written=written, urlopen=urlopen
+    ) or changed
     return maybe_write_required_tool_slot_variables(
         paths=paths, reporter=reporter, written=written, urlopen=urlopen
     ) or changed
@@ -372,6 +418,26 @@ def detect_tool_slot_alignment_opportunity(
 def read_live_saved_variables(
     paths: RuntimePaths, *, urlopen: UrlOpenFn = urllib.request.urlopen
 ) -> dict[str, str]:
+    variables: dict[str, str] = {}
+    for name, value in _read_live_saved_variables_raw(paths, urlopen=urlopen).items():
+        if isinstance(name, str) and isinstance(value, (str, int, float, bool)):
+            variables[name] = str(value)
+    return variables
+
+
+def read_live_saved_variable_names(
+    paths: RuntimePaths, *, urlopen: UrlOpenFn = urllib.request.urlopen
+) -> frozenset[str]:
+    """Return every saved variable name, including those saved as None."""
+    return frozenset(
+        name for name in _read_live_saved_variables_raw(paths, urlopen=urlopen)
+        if isinstance(name, str)
+    )
+
+
+def _read_live_saved_variables_raw(
+    paths: RuntimePaths, *, urlopen: UrlOpenFn
+) -> Mapping:
     try:
         _, state = read_printer_info(paths.moonraker_url, urlopen=urlopen)
     except ProcessRestartError as exc:
@@ -387,11 +453,7 @@ def read_live_saved_variables(
         raise SavedVariablePersistenceError("Could not read Klipper saved variables.") from exc
     if not isinstance(raw, Mapping):
         raise SavedVariablePersistenceError("Moonraker returned invalid saved variables.")
-    variables: dict[str, str] = {}
-    for name, value in raw.items():
-        if isinstance(name, str) and isinstance(value, (str, int, float, bool)):
-            variables[name] = str(value)
-    return variables
+    return raw
 
 
 def save_live_variables(
@@ -462,7 +524,12 @@ def _validate_saved_values(values: Mapping[str, str]) -> None:
             raise SavedVariablePersistenceError("Saved-variable name is invalid.")
         if not isinstance(value, str) or not value or len(value) > MAX_SAVED_VARIABLE_VALUE_LENGTH:
             raise SavedVariablePersistenceError("Saved-variable value is invalid.")
-        if value not in {"0", "1"} and not re.fullmatch(r"'(?:slot(?:[0-9]|1[0-5]))'", value):
+        # 0/1 flags, quoted slot names, and whole-number Box motion settings.
+        if (
+            value not in {"0", "1"}
+            and not re.fullmatch(r"'(?:slot(?:[0-9]|1[0-5]))'", value)
+            and not re.fullmatch(r"[1-9][0-9]{0,3}", value)
+        ):
             raise SavedVariablePersistenceError("Saved-variable value is not authorized.")
 
 

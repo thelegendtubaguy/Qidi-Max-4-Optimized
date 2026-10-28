@@ -76,8 +76,9 @@ Install and update patch QIDI's Fluidd, including when optional OS optimizations
 - Box slots show the filament, vendor, and color the printer is actually using. A slot set with an older numeric ID shows QIDI PLA Basic, because that is how `01.01.07.01` treats it; pick the filament again to fix it.
 - The Vendor and Filament pickers match the touchscreen: choose a vendor, then one of its filaments. Changing the vendor switches to that vendor's filament of the same type when one exists.
 - Colors chosen in Fluidd are saved the same way as on the touchscreen.
+- The Box card's Load, Unload, and Eject buttons and RFID read send the commands `01.01.07.01` uses, and Unload is available when the selected slot is loaded.
 
-Older supported firmware keeps Fluidd's original pickers. Reload Fluidd in the browser after installing; a hard refresh may be needed if the browser cached the old page.
+Older supported firmware keeps Fluidd's original pickers and commands. After installing, close every Fluidd tab, then open Fluidd again; browsers that already had Fluidd open load the updated page on the next visit.
 
 A Fluidd build the installer does not recognize is left unchanged. Uninstall can restore the original Fluidd through its system-restoration prompt; files modified after installation are preserved.
 
@@ -100,16 +101,122 @@ Set a QIDI Box heater target from the `Heater Box1`/`Heater Box2` rows in Fluidd
 
 Install and update turn on QIDI's **Enable Full Display** setting in Fluidd by default. It shows the bed mesh card on the Tune page and adds sensors without a target temperature, such as the chamber thermal protection and electronics sensors, to the temperature panel and chart. Turning it off in Fluidd's settings is remembered across updates.
 
+### QidiBox card in Fluidd (preview)
+
+Install and update add a **QidiBox** card to Fluidd's dashboard, a preview of a redesigned Box card. The existing Box card stays as it is, so you can compare them and use either. Existing dashboards get the card at the bottom of the first column; drag it wherever you like in Fluidd's layout mode.
+
+![QidiBox card in Fluidd showing two Boxes with auto-reload groups, the filament path, and the tool mapping](.github/images/fluidd-qidibox-card.png)
+
+- Every Box's slots and the external spool are shown at once. Each spool shows its color and the tools mapped to it above, and the slot label below has a green border when filament is at the slot's inlet. The loaded slot's tool label is highlighted.
+- Under each Box are its humidity, temperature, and heater target when heating.
+- The filament path shows how far the selected slot's filament reaches, following the slot inlet, hub, and toolhead sensors. The hub and toolhead only light up for the slot whose filament is actually there.
+- With **Automatic Reload** on in Box settings, slots that can stand in for each other when one runs out are outlined in their filament color and share a reload letter (↻ A, ↻ B, …) under their labels: Box slots with the same filament, vendor, and color, as the Box card's AUTO view groups them. The selected slot also lists its backups.
+- Click a slot to select it, then **Load**, **Unload**, **Eject**, **Read RFID**, or **Edit filament**. These do the same as the Box card's buttons and pickers and are unavailable while printing.
+- The tool mapping at the bottom shows which slot each tool loads, one diagram per Box. While the printer is idle, click a tool or **Edit** to change it; **Default** restores T0 → 1A, T1 → 1B, and so on. Fluidd's print dialog sets the mapping for the print it starts, and a normal print end restores the default.
+- **Box settings** opens the same settings as the Box card's **Config**, including load/unload motion.
+
+After installing, close every Fluidd tab and open Fluidd again. Feedback on the layout is welcome in GitHub issues.
+
+### Printer screen in Fluidd
+
+Install and update add a **Printer screen** card to Fluidd's dashboard that shows the printer's touchscreen live, so you can check or use it from another room. This applies even when optional OS optimizations are skipped. The card starts collapsed and the printer does no screen work until you expand it. It stops when you collapse it, leave the dashboard, or switch to another tab. Existing dashboards get the card at the bottom of the first column; drag it wherever you like in Fluidd's layout mode.
+
+![Printer screen card in Fluidd showing the touchscreen's home page](.github/images/fluidd-printer-screen-view-only.png)
+
+- The screen opens **view only**: clicking or tapping the image does nothing on the printer.
+- Choose **View only** in the card's header and confirm to turn on control. Clicks, taps, and drags on the image then press the real touchscreen, including during a print. Collapsing the card turns control back off.
+- **Full screen** fills your browser or phone screen with it.
+
+![Confirmation shown before Fluidd can press the touchscreen](.github/images/fluidd-printer-screen-control-confirm.png)
+
+The screen is only available to devices that can already use Fluidd: the printer checks every connection with Moonraker, and the screen service itself only listens on the printer. After installing, close every Fluidd tab and open Fluidd again to load the new card.
+
+Behind the card, the installer adds a small `tltg-remote-screen` service, and a `/tltg-screen/` route to QIDI's Fluidd web server configuration. The service sends a new image only when the screen changes. An nginx configuration the installer does not recognize is left unchanged, and the card then says the screen is unavailable. Uninstall can remove the service and restore the original web server configuration through its system-restoration prompt; files modified after installation are preserved.
+
+### Klipper shutdown reasons
+
+When Klipper stops on an error, such as a heater or fan fault or a lost Box connection, QIDI's print status module could crash Klipper during the shutdown, so the screen, Fluidd, and slicers showed only `MCU shutdown`. Install and update patch QIDI's `print_stats_manager.py` so the original reason stays on screen; `FIRMWARE_RESTART` recovers as usual. This applies even when optional OS optimizations are skipped, and Klipper restarts once when the patch is applied. Unrecognized source is preserved and reported. Uninstall can restore the original file through its system-restoration prompt; files modified after installation are preserved.
+
+### Box MCU link monitoring
+
+A Box that drops off its USB link shows up as `Lost communication with MCU 'mcu_boxN'` with no shutdown reason, so the cause is not recorded anywhere by default. The installer adds a monitor that is **off by default**. Enable it from Fluidd's console:
+
+```gcode
+SAVE_VARIABLE VARIABLE=tltg_box_link_monitor VALUE=1
+```
+
+While it is enabled, it writes `printer_data/logs/tltg_box_link.log`, separate from `klippy.log` so it survives log rotation. It records Box MCU serial counters and any change to them, box heater and print context, the reset reason each Box MCU reports at connect, and the first `Got EOF when reading from device`, `Timeout with MCU`, or `shutdown:` line that appears in `klippy.log`. Kernel USB lines are captured at that point too.
+
+Set the variable back to `0` to stop recording; it takes effect without a restart. The log is capped at 2 MB and rotates once to `tltg_box_link.log.1`.
+
+When reporting a Box MCU disconnect, include this file alongside the end of `klippy.log`.
+
+### QIDI Box load and unload speed
+
+You can tune how the Box pushes filament to the toolhead and pulls it back. A load pushes fast for most of the way, then approaches slowly until the toolhead filament sensor trips. Installing or updating saves the package defaults below unless you've already saved any of these settings, in which case all of yours are kept. Set them in Fluidd's Box card under **Config** → **Load/unload motion**, or with `TLTG_BOX_MOTION` in the console. Run `TLTG_BOX_MOTION` with no parameters to see the current settings and each slot's profile. After installing, close every Fluidd tab and open Fluidd again to load the new Box card.
+
+| Parameter | What it sets | Package default | QIDI value | Allowed |
+|---|---|---|---|---|
+| `FAST_LENGTH` | How far the fast push goes, in mm | 950 | 930 | 100–2000 |
+| `FAST_SPEED_1` | Speed of the first fast stage, in mm/s | 120 | 85 | 10–150 |
+| `FAST_SPEED_2` | Speed of the second fast stage, in mm/s | 100 | 65 | 10–150 |
+| `APPROACH_SPEED` | Speed for the rest of the way to the toolhead sensor, in mm/s | 15 | 10 | 2–40, below both fast speeds |
+| `LOAD_ACCEL` | Load acceleration | QIDI's | 100 | 20–400 |
+| `UNLOAD_SPEED_1`, `UNLOAD_SPEED_2` | Speeds of the two unload stages, in mm/s | 115, 120 | 65, 85 | 10–150, must differ |
+| `UNLOAD_ACCEL` | Unload acceleration | QIDI's | 100 | 20–400 |
+| `UNLOAD_EXTRUDER_LENGTH` | How far the extruder pulls filament back before the Box takes over, in mm. All slots only. | 50 | 120 | 20–300 |
+
+```gcode
+TLTG_BOX_MOTION FAST_SPEED_1=100 FAST_SPEED_2=100 APPROACH_SPEED=20
+```
+
+The command refuses a combination the Box can't run and says why. Settings take effect on the next load or unload, without a restart. Use `PARAM=vendor` to put one setting back to QIDI's value, or `TLTG_BOX_MOTION RESET=1` to go back to QIDI's motion everywhere, including slot settings. Updates don't reapply the package defaults after that.
+
+Any setting can also be set for a single slot, which takes priority over the setting for all slots. For example, to load slot 2 more gently:
+
+```gcode
+TLTG_BOX_MOTION SLOT=2 FAST_SPEED_1=60 FAST_SPEED_2=60 APPROACH_SPEED=8
+```
+
+Slots are numbered from 0 the same way as `LOAD_FILAMENT_CONTROL SLOT=`, so the Box card's 1A is slot 0 and 2A is slot 4. Use `SLOT=2 FAST_SPEED_1=global` to make slot 2 follow the all-slots setting again, or `SLOT=2 RESET=1` to clear all of slot 2's settings.
+
+`FAST_LENGTH` is used exactly as set. On the test printer, filament reached the toolhead sensor 1001–1016 mm into the push, so QIDI's 930 mm leaves about 70–85 mm for the slow approach. Set it past the sensor and the filament reaches the toolhead at full fast speed.
+
+An unload starts with the extruder pulling the cut filament back 30 mm, then `UNLOAD_EXTRUDER_LENGTH` more at 10 mm/s, before the Box retracts at your unload speeds. On the test printer the filament left the toolhead sensor 34 mm into the unload, only about 4 mm into this second retract, so most of QIDI's 120 mm is the Box pulling free filament at 10 mm/s. The sensor sits above the extruder gears, so once it clears, the filament is out of the gears. A value of 20–30 mm keeps a margin past the sensor and saves about 9 seconds per unload.
+
+If you saved one of the settings with an invalid value using `SAVE_VARIABLE`, the affected load or unload goes back to QIDI's motion and the console says why. If a QIDI firmware update changes how the Box moves filament in a way the settings don't recognize, the Box keeps QIDI's motion and the console says so.
+
+### QIDI Box eject
+
+QIDI's eject parks the toolhead over the waste chute before and after the Box pulls the filament back, so an eject homes X and Y on a printer that isn't homed. When the eject only needs the Box to pull filament back, the toolhead now stays where it is. That's when nothing is fed past the Box hub, or when another slot's filament is the one loaded. An eject that first has to heat and unload filament from the path to the toolhead still parks the way QIDI does. Either way the eject turns the hotend off and disables the extruder motor afterwards.
+
 ### Helpful Klipper tools
 
 After install and Klipper restart, the optimized macro set includes:
 
 ```gcode
+TLTG_TEST_PROBE CONFIRM=1
 TLTG_PROBE_ACCURACY_CENTER
 TLTG_CORNER_BED_SCREW_CHECK
 SCREWS_TILT_CALCULATE
 TLTG_RESET_TOOL_MAPPINGS
 ```
+
+`TLTG_TEST_PROBE CONFIRM=1` checks that the nozzle load cell responds to light pressure. It does not move, home, heat, or change calibration. In Fluidd's macro controls, enter `1` in the `CONFIRM` field. The printer must be idle with all heaters off and the nozzle and bed below 40 °C. Make sure you can reach the nozzle and it is clear of the bed; **do not home to prepare for this test**.
+
+Follow the console prompts. The test takes about 40 seconds:
+
+1. Leave the nozzle alone through `DO NOT TOUCH` and `Measuring...`.
+2. At `GET READY TO PRESS`, get ready. At `PRESS`, press lightly upward on the nozzle and hold.
+3. When told to stop pressing, let go and leave the nozzle alone through `DO NOT TOUCH` and `Measuring...`.
+
+The result is one of:
+
+- `RESPONSE_DETECTED`: the readings look correct.
+- `NO_RELIABLE_RESPONSE`: the sensor did not respond as expected.
+- `INCONCLUSIVE`: there was not enough difference between pressing and not pressing to tell, or the test stopped early.
+
+**A detected response does not verify the homing trigger or certify safe homing.** For any other result, do not press harder, and do not home or probe until the cause is understood. `QUERY_PROBE` cannot check this sensor. `TLTG_PROBE_ACCURACY_CENTER` and the screw check below both home, so they are not safe tests for a suspected failed sensor.
 
 `TLTG_PROBE_ACCURACY_CENTER [SAMPLES=20]` homes, moves to `X195 Y195 Z10`, and runs Klipper `PROBE_ACCURACY`.
 

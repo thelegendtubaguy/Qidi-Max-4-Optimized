@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 from functools import lru_cache
+from pathlib import Path
 
 from .errors import InstallerError
 
 
 OPERATION = "fluidd_box_filament_ids"
+SERVICE_WORKER_OPERATION = "fluidd_service_worker"
 PATCH_MARKER = "/*tltg-optimized:fluidd-box-filament-ids*/"
 
 # QIDI firmware 01.01.07.01 filament-0.4.json: ID, name, type, nozzle min/max, box min/max, vendor.
@@ -237,7 +241,47 @@ HEATER_TARGET_PATCHED = (
     HEATER_TARGET_STOCK.removesuffix('}') + ',disabled:s.key.includes("heater_box")&&s.targetMaxTemp===0&&!s.target}'
 )
 
-FULL_DISPLAY_DEFAULT_STOCK = 'enableDiagnostics:!1,enableFullDisplay:!1,thumbnailSize:32'
+# 01.01.07.01 replaced E_BOX/E_LOAD/E_UNLOAD and RFID_READ with the multi_color_controller commands qidiclient sends.
+BUTTON_COMMANDS_STOCK = 'const n=["E_BOX","E_LOAD","E_UNLOAD"];I.printerGcodeScript(`${n[t-1]} slot=${s}`)'
+BUTTON_COMMANDS_PATCHED = (
+    'const c=this.$store.state.printer.printer.multi_color_controller,'
+    'n=c?["EJECT_FILAMENT_CONTROL","LOAD_FILAMENT_CONTROL","UNLOAD_FILAMENT_CONTROL"]:["E_BOX","E_LOAD","E_UNLOAD"];'
+    'I.printerGcodeScript(`${n[t-1]} ${c?"SLOT":"slot"}=${s}`)'
+)
+RFID_COMMAND_STOCK = 'handleRfidClick(t){I.printerGcodeScript(`RFID_READ SLOT=slot${t}`)'
+RFID_COMMAND_PATCHED = (
+    'handleRfidClick(t){I.printerGcodeScript(this.$store.state.printer.printer.multi_color_controller'
+    '?`READ_RFID SLOT=${t}`:`RFID_READ SLOT=slot${t}`)'
+)
+BUTTON_STATUS_STOCK = (
+    'get buttonStatus(){const t=new Array(3).fill(!0);return this.selectIndex>=16||('
+    'this.$store.state.printer.printer["box_stepper slot"+this.selectIndex].runout_button===0?t[0]=!1:t[0]=!0,'
+    'this.$store.state.printer.printer["box_stepper slot"+this.selectIndex].runout_button===0'
+    '?this.$store.state.printer.printer.box_extras.b_endstop_state===0&&this.variables.lastLoadSlot===this.selectIndex'
+    '?t[1]=!0:t[1]=!1:t[1]=!0,'
+    'this.$store.state.printer.printer["box_stepper slot"+this.selectIndex].runout_button===0'
+    '&&this.$store.state.printer.printer.box_extras.b_endstop_state===0&&this.variables.lastLoadSlot===this.selectIndex'
+    '?t[2]=!1:t[2]=!0),t}'
+)
+# 01.01.07.01 publishes the Box path sensor only as multi_color_controller.box.b_endstop_state, so Unload stayed disabled.
+BUTTON_STATUS_PATCHED = (
+    'get tltgBEndstop(){const p=this.$store.state.printer.printer,e=p.box_extras,m=p.multi_color_controller;'
+    'return e&&e.b_endstop_state!=null?e.b_endstop_state:m&&m.box&&m.box.b_endstop_state}'
+    + BUTTON_STATUS_STOCK.replace('this.$store.state.printer.printer.box_extras.b_endstop_state', 'this.tltgBEndstop')
+)
+
+PRINT_SLOT_CHANGE_STOCK = (
+    'onValueChange(t){this.selectedValueSlot=this.selectedValueSlot.map((s,n)=>n===t?s:'
+    'JSON.stringify(s)===JSON.stringify(this.selectedValueSlot[t])?this.oldSelectedValueSlot[t]:s),'
+    'this.oldSelectedValueSlot=JSON.parse(JSON.stringify(this.selectedValueSlot))}'
+)
+# The print dialog swapped a slot chosen for a second filament away from the first, so a file with more
+# filaments of a type than loaded slots of it could never be printed. Several filaments may share a slot.
+PRINT_SLOT_CHANGE_PATCHED = (
+    'onValueChange(t){this.oldSelectedValueSlot=JSON.parse(JSON.stringify(this.selectedValueSlot))}'
+)
+
+FULL_DISPLAY_DEFAULT_STOCK ='enableDiagnostics:!1,enableFullDisplay:!1,thumbnailSize:32'
 # QIDI's "Enable Full Display" setting defaults on; a value saved in Moonraker's database still overrides it.
 FULL_DISPLAY_DEFAULT_PATCHED = 'enableDiagnostics:!1,enableFullDisplay:!0,thumbnailSize:32'
 
@@ -246,7 +290,91 @@ class FluiddBundleError(InstallerError):
     pass
 
 
-def _steps() -> tuple[tuple[str, str, tuple[str, ...]], ...]:
+# The Box Config view ends with its auto-reload switch; a package-owned motion section follows it.
+BOX_MOTION_DEFINE_HEAD = "If=J9([L],If);"
+BOX_MOTION_DEFINE_TAIL = "var Nle=function(){"
+BOX_MOTION_DEFINE_STOCK = BOX_MOTION_DEFINE_HEAD + BOX_MOTION_DEFINE_TAIL
+BOX_MOTION_RENDER_STOCK = 'expression:"autoReloadDetect"}})],1)],1)],1)],1)],1)},zle=[]'
+BOX_MOTION_RENDER_PATCHED = 'expression:"autoReloadDetect"}})],1)],1)],1)],1),t(TltgBoxMotion)],1)},zle=[]'
+BOX_MOTION_START = "/*tltg-optimized:fluidd-box-motion*/"
+BOX_MOTION_END = "/*/tltg-optimized:fluidd-box-motion*/"
+BOX_MOTION_SOURCE = Path(__file__).with_name("fluidd_box_motion.js")
+# Any earlier package version of the section sits between the same markers and is replaced in place.
+BOX_MOTION_DEFINE_PREVIOUS = re.compile(
+    re.escape(BOX_MOTION_DEFINE_HEAD + BOX_MOTION_START) + ".*?" + re.escape(BOX_MOTION_END + BOX_MOTION_DEFINE_TAIL),
+    re.DOTALL,
+)
+
+
+def _section_define(source_path: Path, head: str, start: str, end: str, tail: str, name: str) -> str:
+    try:
+        source = source_path.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise FluiddBundleError(f"Fluidd {name} is missing from the package: {exc}") from exc
+    if start in source or end in source:
+        raise FluiddBundleError(f"Fluidd {name} contains its own patch markers.")
+    return head + start + "\n" + source + "\n" + end + tail
+
+
+@lru_cache(maxsize=1)
+def _box_motion_define_patched() -> str:
+    return _section_define(
+        BOX_MOTION_SOURCE, BOX_MOTION_DEFINE_HEAD, BOX_MOTION_START, BOX_MOTION_END, BOX_MOTION_DEFINE_TAIL, "Box motion section"
+    )
+
+
+# The Printer screen card joins the default dashboard collapsed, after the camera card. Fluidd appends new default
+# cards to saved layouts and drops cards it does not know, so a restored stock bundle forgets it.
+SCREEN_LAYOUT_STOCK = '{id:"camera-card",enabled:!0,collapsed:!1},'
+SCREEN_LAYOUT_PATCHED = SCREEN_LAYOUT_STOCK + '{id:"tltg-screen-card",enabled:!0,collapsed:!0},'
+SCREEN_COMPONENT_STOCK = "CameraCard:wre,"
+SCREEN_COMPONENT_PATCHED = SCREEN_COMPONENT_STOCK + "TltgScreenCard:TltgScreenCard,"
+# The card is defined between the Dashboard class and its decoration, which registers it.
+SCREEN_DEFINE_HEAD = "!t.enabled}};"
+SCREEN_DEFINE_TAIL = 'L2([Ee("columnCount")],Yu.prototype,"onColumnCount",1);'
+SCREEN_DEFINE_STOCK = SCREEN_DEFINE_HEAD + SCREEN_DEFINE_TAIL
+SCREEN_START = "/*tltg-optimized:fluidd-remote-screen*/"
+SCREEN_END = "/*/tltg-optimized:fluidd-remote-screen*/"
+SCREEN_SOURCE = Path(__file__).with_name("fluidd_remote_screen.js")
+SCREEN_DEFINE_PREVIOUS = re.compile(
+    re.escape(SCREEN_DEFINE_HEAD + SCREEN_START) + ".*?" + re.escape(SCREEN_END + SCREEN_DEFINE_TAIL),
+    re.DOTALL,
+)
+
+
+@lru_cache(maxsize=1)
+def _screen_define_patched() -> str:
+    return _section_define(SCREEN_SOURCE, SCREEN_DEFINE_HEAD, SCREEN_START, SCREEN_END, SCREEN_DEFINE_TAIL, "printer screen card")
+
+
+# The QidiBox card joins the default dashboard expanded, after the stock Box card, and hides with it when no Box
+# is configured. It is defined right after the stock Box card so it can reuse that card's views.
+QIDIBOX_LAYOUT_STOCK = '{id:"box-card",enabled:!0,collapsed:!1},'
+QIDIBOX_LAYOUT_PATCHED = QIDIBOX_LAYOUT_STOCK + '{id:"tltg-qidi-box-card",enabled:!0,collapsed:!1},'
+QIDIBOX_COMPONENT_STOCK = "BoxCard:wce,"
+QIDIBOX_COMPONENT_PATCHED = QIDIBOX_COMPONENT_STOCK + "TltgQidiBoxCard:TltgQidiBoxCard,"
+QIDIBOX_HIDDEN_STOCK = 't.id==="box-card"&&!this.hasBox'
+QIDIBOX_HIDDEN_PATCHED = '(t.id==="box-card"||t.id==="tltg-qidi-box-card")&&!this.hasBox'
+QIDIBOX_DEFINE_HEAD = "const wce=Sce.exports;"
+QIDIBOX_DEFINE_TAIL = "var xce=Object.defineProperty,"
+QIDIBOX_DEFINE_STOCK = QIDIBOX_DEFINE_HEAD + QIDIBOX_DEFINE_TAIL
+QIDIBOX_START = "/*tltg-optimized:fluidd-qidibox-card*/"
+QIDIBOX_END = "/*/tltg-optimized:fluidd-qidibox-card*/"
+QIDIBOX_SOURCE = Path(__file__).with_name("fluidd_qidibox_card.js")
+QIDIBOX_DEFINE_PREVIOUS = re.compile(
+    re.escape(QIDIBOX_DEFINE_HEAD + QIDIBOX_START) + ".*?" + re.escape(QIDIBOX_END + QIDIBOX_DEFINE_TAIL),
+    re.DOTALL,
+)
+
+
+@lru_cache(maxsize=1)
+def _qidibox_define_patched() -> str:
+    return _section_define(
+        QIDIBOX_SOURCE, QIDIBOX_DEFINE_HEAD, QIDIBOX_START, QIDIBOX_END, QIDIBOX_DEFINE_TAIL, "QidiBox card"
+    )
+
+
+def _steps() -> tuple[tuple[str, str, tuple[str | re.Pattern[str], ...]], ...]:
     # (stock, current patch, superseded patches this release replaces)
     return (
         (SLOT_PARSE_STOCK, SLOT_PARSE_PATCHED, ()),
@@ -260,7 +388,20 @@ def _steps() -> tuple[tuple[str, str, tuple[str, ...]], ...]:
         (SELECTED_COLOR_STOCK, SELECTED_COLOR_PATCHED, ()),
         (BOX_TEMP_LIMIT_STOCK, BOX_TEMP_LIMIT_PATCHED, ()),
         (HEATER_TARGET_STOCK, HEATER_TARGET_PATCHED, ()),
+        (PRINT_SLOT_CHANGE_STOCK, PRINT_SLOT_CHANGE_PATCHED, ()),
         (FULL_DISPLAY_DEFAULT_STOCK, FULL_DISPLAY_DEFAULT_PATCHED, ()),
+        (BUTTON_COMMANDS_STOCK, BUTTON_COMMANDS_PATCHED, ()),
+        (RFID_COMMAND_STOCK, RFID_COMMAND_PATCHED, ()),
+        (BUTTON_STATUS_STOCK, BUTTON_STATUS_PATCHED, ()),
+        (BOX_MOTION_DEFINE_STOCK, _box_motion_define_patched(), (BOX_MOTION_DEFINE_PREVIOUS,)),
+        (BOX_MOTION_RENDER_STOCK, BOX_MOTION_RENDER_PATCHED, ()),
+        (SCREEN_LAYOUT_STOCK, SCREEN_LAYOUT_PATCHED, ()),
+        (SCREEN_COMPONENT_STOCK, SCREEN_COMPONENT_PATCHED, ()),
+        (SCREEN_DEFINE_STOCK, _screen_define_patched(), (SCREEN_DEFINE_PREVIOUS,)),
+        (QIDIBOX_LAYOUT_STOCK, QIDIBOX_LAYOUT_PATCHED, ()),
+        (QIDIBOX_COMPONENT_STOCK, QIDIBOX_COMPONENT_PATCHED, ()),
+        (QIDIBOX_HIDDEN_STOCK, QIDIBOX_HIDDEN_PATCHED, ()),
+        (QIDIBOX_DEFINE_STOCK, _qidibox_define_patched(), (QIDIBOX_DEFINE_PREVIOUS,)),
     )
 
 
@@ -269,8 +410,12 @@ def patch_fluidd_bundle(text: str) -> str:
     edits = []
     for stock, patched, superseded in _steps():
         current = text.count(patched)
+        # A superseded pattern stands for every earlier form it matches other than the current patch.
+        olds = [stock]
+        for old in superseded:
+            olds.extend(sorted({m for m in old.findall(text) if m != patched}) if isinstance(old, re.Pattern) else (old,))
         # Some patches keep their stock span as a suffix; those matches are not unpatched source.
-        counts = {old: text.count(old) - (current if old in patched else 0) for old in (stock, *superseded)}
+        counts = {old: text.count(old) - (current if old in patched else 0) for old in olds}
         present = [old for old, count in counts.items() if count]
         if current == 1 and not present:
             continue
@@ -281,3 +426,19 @@ def patch_fluidd_bundle(text: str) -> str:
     for old, patched in edits:
         text = text.replace(old, patched, 1)
     return text
+
+
+# Workbox serves its precached bundle until sw.js changes, so browsers that opened Fluidd before the patch
+# kept running the stock bundle. A revision derived from the bundle patch makes them fetch every new version.
+SERVICE_WORKER_BUNDLE_ENTRY = re.compile(r'\{"revision":(?:null|"tltg-optimized-[0-9a-f]{16}"),"url":"assets/index-DlFvHGAh\.js"\}')
+
+
+def _service_worker_bundle_entry() -> str:
+    digest = hashlib.sha256("".join(patched for _, patched, _ in _steps()).encode("utf-8")).hexdigest()[:16]
+    return '{"revision":"tltg-optimized-' + digest + '","url":"assets/index-DlFvHGAh.js"}'
+
+
+def patch_fluidd_service_worker(text: str) -> str:
+    if len(SERVICE_WORKER_BUNDLE_ENTRY.findall(text)) != 1:
+        raise FluiddBundleError("Fluidd service worker does not match the reviewed QIDI source; preserving it.")
+    return SERVICE_WORKER_BUNDLE_ENTRY.sub(lambda _: _service_worker_bundle_entry(), text)

@@ -93,6 +93,21 @@ The installer SHALL deploy firmware-scoped Klipper source only from validated pr
 - **AND** every installer entrypoint resolves pending activation before further release work
 - **AND** a post-activation saved-variable mismatch retains its exact authorized expectations and blocks later install or automatic-update work until an exact live Moonraker verification succeeds; dry-run verification preserves the marker, and terminal uninstall removes it only after successful postflight while rollback preserves it
 
+### Requirement: Managed probe diagnostic helper
+Normal install and update SHALL install the bundled Klipper probe diagnostic helper independently of optional OS optimization policy, retaining ownership evidence without replacing unrecognized or operator-modified helper files.
+
+#### Scenario: Helper is installed and activated
+- **WHEN** the helper destination is absent
+- **THEN** the installer records its absence, creates the bundled helper without overwriting a concurrent file, verifies its contents, and restarts Klipper
+- **AND** an unchanged current helper is left alone, while a missing owned helper can be repaired
+- **AND** installation does not report successful activation with a missing or modified required helper
+
+#### Scenario: Helper restoration respects ownership
+- **WHEN** accepted system restoration during uninstall or host-transaction recovery processes the helper
+- **THEN** an unchanged installed helper is removed if it was originally absent, or restored to its retained preimage
+- **AND** a modified helper is preserved and reported
+- **AND** an incomplete restoration or required service restart retains a recovery blocker
+
 ### Requirement: Non-owning QIDI Box reconciliation
 The installer SHALL keep an available QIDI Box usable without claiming ownership of vendor saved variables or silently replacing existing non-empty tool mappings. Box availability SHALL be recognized for every supported firmware's Box transport, including the legacy USB Box configuration and the RS-485 Box stack.
 
@@ -208,9 +223,20 @@ Normal install and update SHALL patch the recognized QIDI Fluidd bundle so its Q
 - **AND** choosing a filament saves its `QF` ID as a string, choosing a vendor saves that vendor's filament of the current type or its first filament, and choosing a color saves a one-element RGB list
 - **AND** `vendor_slotN` is not written
 
+#### Scenario: Box buttons use the firmware's Box commands
+- **WHEN** Fluidd is connected to firmware that exposes `multi_color_controller`
+- **THEN** the Box card's Eject, Load, Unload, and RFID controls send `EJECT_FILAMENT_CONTROL`, `LOAD_FILAMENT_CONTROL`, `UNLOAD_FILAMENT_CONTROL`, and `READ_RFID` with the selected slot number
+- **AND** Load and Unload availability follows the Box path sensor from `box_extras` or, when `box_extras` omits it, from `multi_color_controller`
+
 #### Scenario: Earlier firmware keeps stock pickers
 - **WHEN** Fluidd is connected to firmware without `box485`
 - **THEN** slots display through `officiall_filas_list.cfg` and the stock pickers save numeric IDs as before
+- **AND** without `multi_color_controller`, the Box controls send the stock commands
+
+#### Scenario: Browsers load the patched bundle
+- **WHEN** a browser that previously cached Fluidd through its service worker opens Fluidd after the bundle patch changes
+- **THEN** the service worker updates and fetches the patched bundle instead of serving the cached one
+- **AND** the recognized service worker's bundle precache revision is set from the bundle patch, with the same recognition, preservation, and restoration as the bundle
 
 #### Scenario: Unrecognized Fluidd bundles are preserved
 - **WHEN** the configured bundle is missing or does not match the reviewed stock source or an earlier package patch of it
@@ -246,6 +272,32 @@ Normal install and update SHALL patch recognized QIDI Klipper `box_config.py` an
 - **THEN** the installer backs up the original bytes, preserves line endings, replaces the file atomically, and restarts the Klipper service
 - **AND** accepted uninstall restoration reverts only the unchanged installed file and restarts the Klipper service; concurrent changes and operator drift are preserved
 - **AND** a missing or unrecognized `box_config.py` is left unchanged and the outcome is recorded without failing other host patches
+
+### Requirement: Klipper shutdown reasons remain visible
+Normal install and update SHALL patch recognized QIDI Klipper `print_stats_manager.py` so a Klipper shutdown keeps its original reason instead of ending in a host crash, independently of optional OS optimization policy, retaining the original file and preserving unrecognized or operator-modified files.
+
+#### Scenario: Shutdown during a print keeps its reason
+- **WHEN** Klipper shuts down while the QIDI main status is `printing` and later commands are refused
+- **THEN** the command-error status reset is skipped, no G-code is issued from it, and Klipper remains running in the shutdown state with the original reason
+
+#### Scenario: Status reset does not re-enter itself
+- **WHEN** Klipper is not shut down and a command run by the command-error status reset is itself refused
+- **THEN** the nested reset is skipped and the refusal is reported once
+- **AND** a later command error while ready resets the status to `ready` and restores the Z drivers' stealthChop threshold as QIDI's module does
+
+#### Scenario: Shutdown-reason deployment remains reversible
+- **WHEN** a recognized `print_stats_manager.py` requires the patch
+- **THEN** the installer backs up the original bytes, preserves line endings, replaces the file atomically, and restarts the Klipper service
+- **AND** accepted uninstall restoration reverts only the unchanged installed file and restarts the Klipper service; concurrent changes and operator drift are preserved
+- **AND** a missing or unrecognized `print_stats_manager.py` is left unchanged and the outcome is recorded without failing other host patches
+
+### Requirement: Fluidd Box print slots can be shared
+Normal install and update SHALL patch the recognized QIDI Fluidd bundle so its Box print dialog lets several file filaments use the same Box slot, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the QIDI Box filament display patch.
+
+#### Scenario: A slot is chosen for a second filament
+- **WHEN** an operator starts a Box print from Fluidd and chooses a slot already chosen for another filament of the file
+- **THEN** both filaments keep that slot, the other filament's choice is unchanged, and the print can start once every filament has a slot
+- **AND** each filament's tool is mapped to its chosen slot when the print starts
 
 ### Requirement: Fluidd full display by default
 Normal install and update SHALL patch the recognized QIDI Fluidd bundle so QIDI's "Enable Full Display" setting defaults on, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the QIDI Box filament display patch.
@@ -345,3 +397,111 @@ The optional operation SHALL require supported firmware, idle ready state, zero 
 - **THEN** no unknown image is programmed and verified configuration installation is preserved
 - **AND** potentially changed or unverified firmware retains recovery evidence, stopped serial-owning services, and a durable blocker against later installer operations
 - **AND** configuration restore and uninstall never claim to revert MCU firmware
+
+### Requirement: Package-owned Klipper extra modules
+Install and update SHALL place each bundled package-owned Klipper extra module, together with the optimized configuration section that loads it, and uninstall SHALL remove the module only when it still matches the bundled payload.
+
+#### Scenario: Install places and verifies the module
+- **WHEN** install or update runs
+- **THEN** each bundled extra module is written atomically to its `klippy/extras/tltg_*.py` destination and verified against the bundled payload
+- **AND** an identical installed module is left unchanged
+
+#### Scenario: Uninstall respects modified modules
+- **WHEN** uninstall runs
+- **THEN** an installed extra module that matches the bundled payload is removed along with the optimized configuration that loads it
+- **AND** a modified module is left in place
+
+### Requirement: QIDI Box motion settings in Fluidd
+Normal install and update SHALL extend the recognized QIDI Fluidd bundle's Box Config view with a load and unload motion section that shows the feed-motion status and edits settings only through `TLTG_BOX_MOTION`, with the same recognition, preservation, service-worker revision, and restoration as the other Fluidd Box patches.
+
+#### Scenario: Motion settings are shown per slot
+- **WHEN** the feed-motion printer object is active
+- **THEN** the Box Config view shows the global settings with vendor values for unset fields, and each slot's effective load and unload profile, its overrides, and the reason when a profile falls back to vendor motion
+
+#### Scenario: Motion settings are edited through the command
+- **WHEN** an operator applies global or slot settings, or resets them from the section
+- **THEN** Fluidd sends the matching `TLTG_BOX_MOTION` command
+- **AND** a refused command's reason is shown in the section
+
+#### Scenario: Editing is unavailable while busy or inactive
+- **WHEN** a print is running or paused, or the feed-motion object is absent or inactive
+- **THEN** the section offers no editing controls, and an absent or inactive object shows its status instead of a profile
+
+### Requirement: QidiBox card in Fluidd
+Normal install and update SHALL add a QidiBox dashboard card beside the stock Box card in the recognized QIDI Fluidd bundle, with the same recognition, preservation, service-worker revision, and restoration as the other Fluidd Box patches.
+
+#### Scenario: Every slot is shown at once
+- **WHEN** Fluidd is connected to a printer with a configured Box
+- **THEN** the QidiBox card shows every Box's slots and the external spool together, each with the filament and color the Box card resolves for it, whether filament is at the slot inlet, the tools mapped to it, and which slot feeds the extruder
+- **AND** each Box shows its humidity, temperature, and active heater target, and the card shows the tool-to-slot mapping
+
+#### Scenario: The filament path follows the sensors
+- **WHEN** the operator selects a slot
+- **THEN** the card draws that slot's filament to the slot inlet, past the hub, or into the toolhead as the slot inlet, hub, and toolhead sensors report it
+- **AND** the shared hub and toolhead sensors are shown as detecting filament only for the slot whose filament they detect: the hub for the loaded slot, or the last-loaded slot when none is loaded, and the toolhead for the loaded slot
+
+#### Scenario: Slot controls match the Box card
+- **WHEN** the operator selects a slot and uses Load, Unload, Eject, Read RFID, or edits its filament
+- **THEN** the card sends the same commands and saves the same values, under the same availability, as the Box card
+- **AND** the controls are unavailable while printing, while the Box runs an operation, or while Klipper is not ready
+- **AND** Box settings opens the Box card's configuration view
+
+#### Scenario: Auto-reload groups are shown
+- **WHEN** automatic reload is on
+- **THEN** loaded Box slots with the same color, filament, and vendor, the slots the Box card's AUTO view groups for reload, carry the same group marker
+- **AND** the selected slot lists the other slots it can reload from, or that it has none
+- **AND** when automatic reload is off, no group markers are shown and the selected slot says automatic reload is off
+
+#### Scenario: Tool mappings are edited while idle
+- **WHEN** the printer is idle and the operator edits the tool mapping from the card
+- **THEN** the card saves each changed tool's slot to `value_tN` in the format Fluidd's print dialog uses and leaves unchanged tools alone
+- **AND** Default proposes the identity mapping for every active Box slot
+- **AND** editing is unavailable while a print is running or paused, while the Box runs an operation, or while Klipper is not ready
+
+#### Scenario: Printers without a Box hide the card
+- **WHEN** no Box is configured
+- **THEN** the QidiBox card is hidden like the Box card
+
+### Requirement: QIDI Box motion release defaults
+The installer SHALL save the release Box motion profile only when no Box motion setting exists in Klipper saved variables.
+
+#### Scenario: Printers without motion settings receive the release profile
+- **WHEN** install, update, or idle automatic-update repair finds none of the Box motion settings
+- **THEN** it saves the release profile through Moonraker after Klipper is ready and verifies the live values
+
+#### Scenario: Operator motion settings are preserved
+- **WHEN** any Box motion setting exists, including one saved as `None` to use the vendor value
+- **THEN** no motion setting is written
+- **AND** uninstall does not remove or reset the settings
+
+### Requirement: Printer screen in Fluidd
+Normal install and update SHALL provide a Fluidd dashboard card that shows the live touchscreen and can operate it, served by a package-owned screen service and a Fluidd nginx route, independently of optional OS optimization policy, with the same recognition, preservation, service-worker revision, and restoration as the other guarded host patches.
+
+#### Scenario: The card is idle until expanded
+- **WHEN** Fluidd opens a dashboard that has not shown the card before
+- **THEN** a collapsed Printer screen card is present, and the screen is neither captured nor transferred until the card is expanded in a visible tab
+
+#### Scenario: The screen is shown view-only by default
+- **WHEN** the operator expands the card
+- **THEN** it shows the touchscreen, updating when the screen changes, and clicks or taps on it do not reach the printer
+- **AND** collapsing the card, leaving the dashboard, or hiding the tab disconnects it
+
+#### Scenario: Control requires confirmation
+- **WHEN** the operator enables control and confirms
+- **THEN** clicks, taps, and drags on the image press the touchscreen at the matching position until control is turned off or the card disconnects
+- **AND** a press in progress is released when the connection ends
+
+#### Scenario: Access follows Moonraker authorization
+- **WHEN** a client requests the screen
+- **THEN** it is served only if Moonraker authorizes that client, by trusted address or by a one-shot token from the client's Fluidd session
+- **AND** the service listens only on the printer's loopback address and refuses connections from other web origins
+
+#### Scenario: Unavailable screens are reported
+- **WHEN** the screen service, its route, the framebuffer, the touchscreen device, or the image encoder is unavailable
+- **THEN** the expanded card says the screen is unavailable and why, and Fluidd otherwise works normally
+
+#### Scenario: Screen deployment remains reversible
+- **WHEN** install or update applies the service, its unit, or the nginx route
+- **THEN** absent package files are created and enabled, files from earlier package versions are replaced, and a recognized nginx site is backed up and patched once
+- **AND** unrecognized or operator-modified files are preserved and recorded without failing other host patches
+- **AND** accepted uninstall restoration stops and disables the service, removes unchanged package files, and restores the unchanged nginx site

@@ -12,9 +12,12 @@ from unittest import mock
 
 from installer.runtime import system_optimizations
 from installer.runtime import fluidd_box_filaments as fluidd_patch
+from installer.runtime import remote_screen
 from installer.runtime.fluidd_box_filaments import OPERATION as FLUIDD_BOX_OPERATION, PATCH_MARKER
 from installer.runtime.fluidd_filament_config import OPERATION as FILAMENT_CONFIG_OPERATION
 from installer.runtime.klipper_box_config import OPERATION as KLIPPER_BOX_OPERATION
+from installer.runtime.klipper_print_stats_manager import OPERATION as KLIPPER_PRINT_STATS_OPERATION
+from installer.runtime.klipper_probe_test import FILE as PROBE_TEST_FILE, OPERATION as PROBE_TEST_OPERATION, PAYLOAD as PROBE_TEST_PAYLOAD
 from installer.runtime.cli import resolve_runtime_paths
 from installer.runtime.compatibility import load_supported_upgrade_sources
 from installer.runtime.errors import InstalledPackageValidationError
@@ -36,6 +39,7 @@ from installer.runtime.system_optimizations import (
 )
 from installer.runtime.uninstall import run_uninstall
 from installer.tests.helpers import (
+    FIXTURES_ROOT,
     REPO_ROOT,
     build_env,
     copy_base_runtime,
@@ -50,7 +54,12 @@ class SystemOptimizationFlowTests(unittest.TestCase):
     def test_system_optimization_dry_run_install_and_uninstall_lifecycle(self):
         printer_root = copy_base_runtime()
         system_root = fake_system_root(
-            include_moonraker_cache=True, include_fluidd_bundle=True, include_filament_config=True, include_klipper_box_config=True
+            include_moonraker_cache=True,
+            include_fluidd_bundle=True,
+            include_filament_config=True,
+            include_klipper_box_config=True,
+            include_klipper_print_stats_manager=True,
+            include_nginx_site=True,
         )
         host_run = fake_host_run(system_root)
         moonraker = system_root / "home/qidi/moonraker/moonraker/components/file_manager/file_manager.py"
@@ -59,8 +68,18 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         moonraker.chmod(0o640)
         fluidd = system_root / "home/qidi/fluidd/assets/index-DlFvHGAh.js"
         fluidd_before = fluidd.read_bytes()
+        service_worker = system_root / "home/qidi/fluidd/sw.js"
+        service_worker_before = service_worker.read_bytes()
         box_config = system_root / "home/qidi/klipper/klippy/extras/box_config.py"
         box_config_before = box_config.read_bytes()
+        stats_manager = system_root / "home/qidi/klipper/klippy/extras/print_stats_manager.py"
+        stats_manager_before = stats_manager.read_bytes()
+        probe_helper = system_root / PROBE_TEST_FILE.lstrip("/")
+        nginx_site = system_root / remote_screen.NGINX_SITE.lstrip("/")
+        nginx_site_before = nginx_site.read_bytes()
+        screen_unit = system_root / remote_screen.UNIT_FILE.lstrip("/")
+        screen_server = system_root / remote_screen.SERVER_FILE.lstrip("/")
+        screen_state = system_root / "systemd" / f"{remote_screen.UNIT}.json"
         before = snapshot_tree(system_root)
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
         env[SYSTEM_ROOT_ENV] = str(system_root)
@@ -125,6 +144,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertTrue(paths.host_reboot_marker_path.exists())
         state = load_installed_state(printer_root / manifest.state_file)
         self.assertIn("rockchip_root_sync", state.system_ledger["restore_preimages"])
+        self.assertEqual(probe_helper.read_bytes(), PROBE_TEST_PAYLOAD.read_bytes())
+        self.assertFalse(state.system_ledger["restore_preimages"][PROBE_TEST_OPERATION]["exists"])
         self.assertEqual(state.system_ledger["schema_version"], 2)
         self.assertNotIn("actions", state.system_ledger)
         self.assertIn("rockchip_root_sync", state.system_ledger["committed_transactions"])
@@ -137,32 +158,80 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertIn(PATCH_MARKER.encode(), fluidd.read_bytes())
         self.assertIn(b"Math.floor(u/4)===t-1", fluidd.read_bytes())
         self.assertIn(b"enableFullDisplay:!0", fluidd.read_bytes())
+        self.assertIn(b"LOAD_FILAMENT_CONTROL", fluidd.read_bytes())
+        self.assertIn(fluidd_patch.PRINT_SLOT_CHANGE_PATCHED.encode(), fluidd.read_bytes())
+        self.assertIn(fluidd_patch.BOX_MOTION_START.encode(), fluidd.read_bytes())
+        self.assertIn(b"t(TltgBoxMotion)", fluidd.read_bytes())
+        self.assertIn(fluidd_patch.SERVICE_WORKER_OPERATION, state.system_ledger["restore_preimages"])
+        self.assertIn(b'{"revision":"tltg-optimized-', service_worker.read_bytes())
         self.assertIn(KLIPPER_BOX_OPERATION, state.system_ledger["restore_preimages"])
         self.assertIn(b"config.access_tracking if module == 'heater_generic'", box_config.read_bytes())
         self.assertNotIn(b"\n", box_config.read_bytes().replace(b"\r\n", b""))
+        self.assertIn(KLIPPER_PRINT_STATS_OPERATION, state.system_ledger["restore_preimages"])
+        self.assertIn(b"if self.printer.is_shutdown() or getattr(self, '_tltg_resetting', False):", stats_manager.read_bytes())
+        self.assertNotIn(b"\n", stats_manager.read_bytes().replace(b"\r\n", b""))
         filament_config = manifest.system_optimizations.fluidd_filament_config
         filament_link = printer_root / filament_config.link
         self.assertEqual(os.readlink(filament_link), filament_config.target)
         self.assertIn(FILAMENT_CONFIG_OPERATION, state.system_ledger["restore_preimages"])
+        self.assertIn(b"TltgScreenCard:TltgScreenCard", fluidd.read_bytes())
+        self.assertIn(b'{id:"tltg-screen-card",enabled:!0,collapsed:!0}', fluidd.read_bytes())
+        self.assertIn(fluidd_patch.QIDIBOX_START.encode(), fluidd.read_bytes())
+        self.assertIn(fluidd_patch.QIDIBOX_HIDDEN_PATCHED.encode(), fluidd.read_bytes())
+        self.assertIn(b'{id:"tltg-qidi-box-card",enabled:!0,collapsed:!1}', fluidd.read_bytes())
+        self.assertEqual(screen_unit.read_text(encoding="utf-8"), remote_screen.UNIT_CONTENT)
+        self.assertEqual(screen_server.read_bytes(), remote_screen.SERVER_PAYLOAD.read_bytes())
+        self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "enabled")
+        self.assertIn(b"location /tltg-screen/ {\r\n", nginx_site.read_bytes())
+        self.assertNotIn(b"\n", nginx_site.read_bytes().replace(b"\r\n", b""))
         fluidd_current = fluidd.read_bytes()
-        # Package 26.10.20.1 left an earlier owned Fluidd patch that updates must replace in place.
+        # Earlier package versions left owned Fluidd patches, including an older Box motion section, that updates must replace in place.
         fluidd_previous = fluidd_before.decode().replace(fluidd_patch.SLOT_PARSE_STOCK, fluidd_patch.SLOT_PARSE_PATCHED).replace(
             fluidd_patch.FILAS_LIST_STOCK, fluidd_patch._filas_list_patched_v1()
-        ).encode()
+        ).replace(
+            fluidd_patch.BOX_MOTION_DEFINE_STOCK,
+            fluidd_patch.BOX_MOTION_DEFINE_HEAD + fluidd_patch.BOX_MOTION_START + "const TltgBoxMotion={render:h=>h()};"
+            + fluidd_patch.BOX_MOTION_END + fluidd_patch.BOX_MOTION_DEFINE_TAIL,
+        ).replace(fluidd_patch.BOX_MOTION_RENDER_STOCK, fluidd_patch.BOX_MOTION_RENDER_PATCHED).encode()
         fluidd.write_bytes(fluidd_previous)
         prior_preimage = state.system_ledger["restore_preimages"][cache_id]
         fluidd_preimage = state.system_ledger["restore_preimages"][FLUIDD_BOX_OPERATION]
         cache_policy = copy.deepcopy({**state.system_ledger, "policy": {"system_optimizations": "disabled", "ai_detection": "unset"}})
         cache_policy["outcomes"][FLUIDD_BOX_OPERATION]["postflight"]["sha256"] = __import__("hashlib").sha256(fluidd_previous).hexdigest()
+        probe_helper.unlink()
         reconciled = apply_system_optimizations(
             paths=paths, spec=manifest.system_optimizations, ledger=cache_policy,
             reporter=PlainReporter(io.StringIO()), input_stream=None, environ=env,
             source="auto_update_reconcile", run=host_run,
         )
         self.assertEqual(reconciled["restore_preimages"][cache_id], prior_preimage)
+        self.assertEqual(probe_helper.read_bytes(), PROBE_TEST_PAYLOAD.read_bytes())
+        self.assertFalse(reconciled["restore_preimages"][PROBE_TEST_OPERATION]["exists"])
         self.assertEqual(fluidd.read_bytes(), fluidd_current)
         self.assertEqual(reconciled["restore_preimages"][FLUIDD_BOX_OPERATION], fluidd_preimage)
         self.assertEqual(os.readlink(filament_link), filament_config.target)
+        # Updates replace an unchanged helper from an earlier pre-release build.
+        prior_helper = (FIXTURES_ROOT / "tltg_probe_test_prerelease.py").read_bytes()
+        probe_helper.write_bytes(prior_helper)
+        reconciled["outcomes"][PROBE_TEST_OPERATION]["postflight"]["sha256"] = __import__("hashlib").sha256(prior_helper).hexdigest()
+        reconciled = apply_system_optimizations(
+            paths=paths, spec=manifest.system_optimizations, ledger=reconciled,
+            reporter=PlainReporter(io.StringIO()), input_stream=None, environ=env,
+            source="auto_update_reconcile", run=host_run,
+        )
+        self.assertEqual(probe_helper.read_bytes(), PROBE_TEST_PAYLOAD.read_bytes())
+        self.assertFalse(reconciled["restore_preimages"][PROBE_TEST_OPERATION]["exists"])
+        # Updates replace the screen service from an earlier package version.
+        prior_server = remote_screen.SERVER_MARKER.encode() + b"print('earlier screen service')\n"
+        screen_server.write_bytes(prior_server)
+        reconciled["outcomes"][remote_screen.SERVER_OPERATION]["postflight"]["sha256"] = __import__("hashlib").sha256(prior_server).hexdigest()
+        reconciled = apply_system_optimizations(
+            paths=paths, spec=manifest.system_optimizations, ledger=reconciled,
+            reporter=PlainReporter(io.StringIO()), input_stream=None, environ=env,
+            source="auto_update_reconcile", run=host_run,
+        )
+        self.assertEqual(screen_server.read_bytes(), remote_screen.SERVER_PAYLOAD.read_bytes())
+        self.assertFalse(reconciled["restore_preimages"][remote_screen.SERVER_OPERATION]["exists"])
         write_installed_state(printer_root / manifest.state_file, _replace_system_ledger(state, reconciled))
 
         run_uninstall(
@@ -189,8 +258,15 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(moonraker.read_bytes(), moonraker_before)
         self.assertEqual(moonraker.stat().st_mode & 0o777, 0o640)
         self.assertEqual(fluidd.read_bytes(), fluidd_before)
+        self.assertEqual(service_worker.read_bytes(), service_worker_before)
         self.assertEqual(box_config.read_bytes(), box_config_before)
+        self.assertEqual(stats_manager.read_bytes(), stats_manager_before)
+        self.assertFalse(probe_helper.exists())
         self.assertFalse(filament_link.is_symlink())
+        self.assertEqual(nginx_site.read_bytes(), nginx_site_before)
+        self.assertFalse(screen_unit.exists())
+        self.assertFalse(screen_server.exists())
+        self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "disabled")
 
     def test_unreviewed_fluidd_bundle_is_preserved_without_blocking_other_patches(self):
         printer_root = copy_base_runtime()
@@ -268,7 +344,54 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                     self.assertEqual(target.read_bytes(), drifted)
                 else:
                     self.assertEqual(target.read_bytes(), original)
+                    self.assertFalse((root / PROBE_TEST_FILE.lstrip("/")).exists())
                     self.assertFalse(_journal_path(paths).exists())
+                self.assertEqual(target.is_symlink(), fault == "symlink")
+
+    def test_probe_helper_preserves_conflicting_and_concurrently_created_files(self):
+        for fault in ("unknown", "symlink", "concurrent", "restart"):
+            with self.subTest(fault=fault):
+                printer_root = copy_base_runtime()
+                root = fake_system_root()
+                env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
+                env[SYSTEM_ROOT_ENV] = str(root)
+                paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
+                manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
+                target = root / PROBE_TEST_FILE.lstrip("/")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                operator_content = b"# operator-owned helper\n"
+                if fault == "unknown":
+                    target.write_bytes(operator_content)
+                elif fault == "symlink":
+                    other = target.with_name("operator.py")
+                    other.write_bytes(operator_content)
+                    target.symlink_to(other)
+                host_run = fake_host_run(root)
+                failed = False
+                def run(command, **kwargs):
+                    nonlocal failed
+                    if fault == "restart" and not failed and list(command)[-3:] == ["systemctl", "restart", "klipper.service"]:
+                        failed = True
+                        return CompletedProcess(command, 1, stdout="", stderr="restart failed")
+                    return host_run(command, **kwargs)
+                original_link = os.link
+                def link(source, destination):
+                    if fault == "concurrent":
+                        target.write_bytes(operator_content)
+                    return original_link(source, destination)
+                error = SystemOptimizationRecoveryError if fault == "concurrent" else SystemOptimizationApplyError
+                with mock.patch.object(system_optimizations.os, "link", side_effect=link):
+                    with self.assertRaises(error):
+                        apply_system_optimizations(
+                            paths=paths, spec=manifest.system_optimizations,
+                            ledger={"policy": {"system_optimizations": "disabled", "ai_detection": "unset"}},
+                            reporter=PlainReporter(io.StringIO()), input_stream=None,
+                            environ=env, source="yes_install", run=run,
+                        )
+                if fault == "restart":
+                    self.assertFalse(target.exists())
+                else:
+                    self.assertEqual(target.read_bytes(), operator_content)
                 self.assertEqual(target.is_symlink(), fault == "symlink")
 
     def test_forged_host_preimages_fail_closed_before_uninstall(self):
@@ -391,6 +514,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(os.readlink(filament_link), "/home/qidi/operator_filaments")
         write_installed_state(printer_root / manifest.state_file, _replace_system_ledger(state, reconciled))
         (system_root / "etc/apt/sources.list").write_text("operator apt\n", encoding="utf-8")
+        probe_helper = system_root / PROBE_TEST_FILE.lstrip("/")
+        probe_modified = probe_helper.read_bytes() + b"\n# operator modification\n"
+        probe_helper.write_bytes(probe_modified)
         report = io.StringIO()
         run_uninstall(
             paths, manifest, compatibility, PlainReporter(report), input_stream=io.StringIO("yes\nyes\nno\n"),
@@ -400,6 +526,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual((system_root / "etc/apt/sources.list").read_text(encoding="utf-8"), "operator apt\n")
         self.assertEqual(moonraker.read_bytes(), drifted)
         self.assertEqual(os.readlink(filament_link), "/home/qidi/operator_filaments")
+        self.assertEqual(probe_helper.read_bytes(), probe_modified)
 
     def test_legacy_host_preimages_migrate_and_restore(self):
         printer_root = copy_base_runtime()

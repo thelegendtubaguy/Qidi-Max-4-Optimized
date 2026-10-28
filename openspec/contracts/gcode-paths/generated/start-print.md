@@ -257,6 +257,7 @@ Source: `installer/klipper/tltg-optimized-macros/filament.cfg:323-354`
 Direct visible macro calls in branch slice:
 
 - `_TLTG_ENSURE_TOOL_MAPPINGS`
+- `SAVE_VARIABLE`
 
 Ordered invariants:
 
@@ -278,6 +279,7 @@ Source: `installer/klipper/tltg-optimized-macros/filament.cfg:355-391`
 
 Direct visible macro calls in branch slice:
 
+- `SAVE_VARIABLE`
 - `m104`
 - `m140`
 - `m141`
@@ -325,6 +327,7 @@ Source: `installer/klipper/tltg-optimized-macros/filament.cfg:392-433`
 
 Direct visible macro calls in branch slice:
 
+- `SAVE_VARIABLE`
 - `OPTIMIZED_EXTRUSION_AND_FLUSH`
 - `OPTIMIZED_MOVE_TO_TRASH`
 - `m104`
@@ -376,6 +379,7 @@ Source: `installer/klipper/tltg-optimized-macros/filament.cfg:434-468`
 
 Direct visible macro calls in branch slice:
 
+- `SAVE_VARIABLE`
 - `m140`
 - `m141`
 - `OPTIMIZED_WIPE_AND_SCRAPE_NOZZLE`
@@ -443,6 +447,7 @@ Direct visible macro calls in branch slice:
 - `G31`
 - `_OPTIMIZED_G29_HOME_Z_OR_FULL`
 - `BED_MESH_CALIBRATE`
+- `SAVE_VARIABLE`
 
 Ordered invariants:
 
