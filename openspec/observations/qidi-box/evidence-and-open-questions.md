@@ -20,6 +20,7 @@ Box MCU firmware identity, command surface, watchdog, and shutdown reasons are r
 | 2026-10-22 klippy.log capture of a live box link failure | Failure ordering, per-MCU serial counters, heater and sensor state at failure | The kernel USB record for that window no longer exists, and the EOF line carries no MCU name. |
 | 2026-10-24 instrumented `box_config.py` position trace of a vendor slot 2 load and unload | Slot and extruder motion segments, motion-queue attachment, embedded G-code timing | 50 ms position polling; speeds are approximate and one slot was captured. |
 | 2026-10-26 cold feed runs on slot 2 with a development feeder test, plus klippy.log | Park-to-toolhead-switch distance, hub and limit-input transitions, slot motion-queue ownership after auto-load | Repository-driven motion, not vendor flows; two runs on one slot, 2 mm resolution. |
+| 2026-10-28 `.07.01` `multi_color_controller` import and fake-object eject harness, plus live empty-toolhead ejects of slots 2 and 4 | Flow map, eject flow selection, eject and completion scripts, adapter creation timing | Only flow `4` ran live; the slot 4 eject had a package module dropping the park. |
 
 Captured extension modules were aarch64 Cython shared objects with debug-info markers but no useful Cython line/variable DWARF. Static function address/size inventories are intentionally not retained because readable harness/runtime behavior supersedes them.
 

@@ -108,6 +108,7 @@ install:
       - "temperatures.cfg"
       - "box_link_monitor.cfg"
       - "box_feed_motion.cfg"
+      - "box_eject.cfg"
 
   ensure_lines:
     - id: include_optimized_macros
@@ -122,6 +123,9 @@ install:
     - id: box_feed_motion
       source: "klipper/tltg/box_feed_motion.py"
       destination: "klippy/extras/tltg_box_feed_motion.py"
+    - id: box_eject
+      source: "klipper/tltg/box_eject.py"
+      destination: "klippy/extras/tltg_box_eject.py"
 
   source_patches:
     - id: qidi_homing

@@ -190,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
         module_targets = {
             plain_printer_root / f"klipper/klippy/extras/tltg_{name}.py":
                 REPO_ROOT / f"installer/klipper/tltg/{name}.py"
-            for name in ("box_link_monitor", "box_feed_motion")
+            for name in ("box_link_monitor", "box_feed_motion", "box_eject")
         }
         for module_target, module_source in module_targets.items():
             if not module_target.is_file():

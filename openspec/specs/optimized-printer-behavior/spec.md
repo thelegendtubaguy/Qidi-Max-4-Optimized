@@ -400,3 +400,19 @@ The feed-motion integration SHALL publish its effective per-slot motion as Klipp
 #### Scenario: Effective motion is published
 - **WHEN** a client queries the feed-motion printer object
 - **THEN** it reports whether the integration is active, the global settings, their bounds, and for each slot its overrides, the load and unload profile its next operation would use, and why a profile falls back to vendor motion
+
+### Requirement: QIDI Box eject without an unneeded toolhead park
+Optimized configuration SHALL keep the toolhead still during a QIDI Box eject that the vendor runs as its eject step alone, and SHALL leave the rest of that eject and every other vendor Box flow unchanged.
+
+#### Scenario: A Box-only eject leaves the toolhead alone
+- **WHEN** the vendor runs an eject as its eject step alone, such as with the Box hub clear
+- **THEN** the toolhead neither homes nor parks
+- **AND** the slot retract, hotend-off, extruder-disable, and flow completion are unchanged
+
+#### Scenario: An eject that unloads first keeps the vendor park
+- **WHEN** the vendor heats or unloads before ejecting
+- **THEN** the eject parks over the waste chute as the vendor eject does
+
+#### Scenario: Other flows and unrecognized controllers are unchanged
+- **WHEN** a Box load, unload, or other vendor flow runs, or QIDI's Box controller lacks the traced flow structure
+- **THEN** its G-code runs unchanged
