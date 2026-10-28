@@ -265,6 +265,7 @@ class SystemOptimizationsSpec:
     moonraker_file_manager: SystemMoonrakerMetadata3mfSpec
     fluidd_box_filament_ids: SystemFluiddBundleSpec
     klipper_box_config: SystemMoonrakerMetadata3mfSpec
+    klipper_print_stats_manager: SystemMoonrakerMetadata3mfSpec
     fluidd_filament_config: SystemFluiddFilamentConfigSpec
     rockchip_root_sync: SystemRockchipRootSyncSpec
 

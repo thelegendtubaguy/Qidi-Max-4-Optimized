@@ -15,6 +15,7 @@ from installer.runtime import fluidd_box_filaments as fluidd_patch
 from installer.runtime.fluidd_box_filaments import OPERATION as FLUIDD_BOX_OPERATION, PATCH_MARKER
 from installer.runtime.fluidd_filament_config import OPERATION as FILAMENT_CONFIG_OPERATION
 from installer.runtime.klipper_box_config import OPERATION as KLIPPER_BOX_OPERATION
+from installer.runtime.klipper_print_stats_manager import OPERATION as KLIPPER_PRINT_STATS_OPERATION
 from installer.runtime.klipper_probe_test import FILE as PROBE_TEST_FILE, OPERATION as PROBE_TEST_OPERATION, PAYLOAD as PROBE_TEST_PAYLOAD
 from installer.runtime.cli import resolve_runtime_paths
 from installer.runtime.compatibility import load_supported_upgrade_sources
@@ -52,7 +53,11 @@ class SystemOptimizationFlowTests(unittest.TestCase):
     def test_system_optimization_dry_run_install_and_uninstall_lifecycle(self):
         printer_root = copy_base_runtime()
         system_root = fake_system_root(
-            include_moonraker_cache=True, include_fluidd_bundle=True, include_filament_config=True, include_klipper_box_config=True
+            include_moonraker_cache=True,
+            include_fluidd_bundle=True,
+            include_filament_config=True,
+            include_klipper_box_config=True,
+            include_klipper_print_stats_manager=True,
         )
         host_run = fake_host_run(system_root)
         moonraker = system_root / "home/qidi/moonraker/moonraker/components/file_manager/file_manager.py"
@@ -65,6 +70,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         service_worker_before = service_worker.read_bytes()
         box_config = system_root / "home/qidi/klipper/klippy/extras/box_config.py"
         box_config_before = box_config.read_bytes()
+        stats_manager = system_root / "home/qidi/klipper/klippy/extras/print_stats_manager.py"
+        stats_manager_before = stats_manager.read_bytes()
         probe_helper = system_root / PROBE_TEST_FILE.lstrip("/")
         before = snapshot_tree(system_root)
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
@@ -152,6 +159,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertIn(KLIPPER_BOX_OPERATION, state.system_ledger["restore_preimages"])
         self.assertIn(b"config.access_tracking if module == 'heater_generic'", box_config.read_bytes())
         self.assertNotIn(b"\n", box_config.read_bytes().replace(b"\r\n", b""))
+        self.assertIn(KLIPPER_PRINT_STATS_OPERATION, state.system_ledger["restore_preimages"])
+        self.assertIn(b"if self.printer.is_shutdown() or getattr(self, '_tltg_resetting', False):", stats_manager.read_bytes())
+        self.assertNotIn(b"\n", stats_manager.read_bytes().replace(b"\r\n", b""))
         filament_config = manifest.system_optimizations.fluidd_filament_config
         filament_link = printer_root / filament_config.link
         self.assertEqual(os.readlink(filament_link), filament_config.target)
@@ -221,6 +231,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(fluidd.read_bytes(), fluidd_before)
         self.assertEqual(service_worker.read_bytes(), service_worker_before)
         self.assertEqual(box_config.read_bytes(), box_config_before)
+        self.assertEqual(stats_manager.read_bytes(), stats_manager_before)
         self.assertFalse(probe_helper.exists())
         self.assertFalse(filament_link.is_symlink())
 

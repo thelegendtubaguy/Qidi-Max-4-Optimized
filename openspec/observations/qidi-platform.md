@@ -53,6 +53,13 @@
 - **Config-confirmed:** the SOC payload ships Fluidd `v1.30.5` with active bundle `/home/qidi/fluidd/assets/index-DlFvHGAh.js`, SHA-256 `178b2e076d3a75716819ee13f9ea1f0c92e536546c8b2adafde8632f6723710c`, byte-identical to the `01.01.06.05` SOC payload. Its QIDI Box card still parses saved slot values with `parseInt` and resolves them through `officiall_filas_list.cfg`; see [material metadata](qidi-box/material-metadata.md).
 - **Runtime-confirmed:** Fluidd is served by nginx over plain HTTP with `ETag` and `Last-Modified` but no explicit expiry for `/assets/`; `index.html` is `no-store`. Browsers do not register its Workbox service worker over a plain-HTTP LAN address.
 
+## Klipper shutdown reporting
+
+- **Config-confirmed:** `klipper/klippy/extras/print_stats_manager.py` is byte-identical in the captured `01.01.06.04` and `01.01.07.01` defaults (LF-normalized SHA-256 `8fc2f3150c1b5da407bd3175d5c38e830ec73a349cb419110a32e449f5fc8858`; the live `01.01.07.01` file uses CRLF, SHA-256 `f5d5f58d17dc6dbbae359a955535d4eec0de2085863d25167dbd14c312abef6d`). It handles every `gcode:command_error` by setting main status `ready`. Leaving `printing` runs `SET_TMC_FIELD ... tpwmthrs VELOCITY=9999999999` for `stepper_z` and `stepper_z1` through `run_script_from_command` before the status changes.
+- **Config-confirmed:** after a shutdown, QIDI's `gcode.py` dispatches only commands registered for the not-ready state, so `SET_TMC_FIELD` is refused. Its dispatcher sends `gcode:command_error` for the refusal and re-raises it, so the reset re-enters itself while the status is still `printing`.
+- **Runtime-confirmed:** on one Max 4 running `01.01.07.01`, `Lost communication with MCU 'mcu_box2'` during a print was followed within two seconds by 136 reset log lines (`检查到！！错误，恢复默认状态！！`, "error detected, restoring default state"), each after a `Printer is shutdown` refusal. A logged traceback shows the refusals nested inside one another in `gcode.py` `_process_commands`, ending in a `BlockingIOError` from the G-code response pipe. Klippy then stopped without a final error and started again 12 seconds later.
+- **Unresolved:** the screen and Moonraker state text after that restart was not captured.
+
 ## Nozzle load-cell diagnostics
 
 - **Config-confirmed:** the `01.01.07.01` defaults use `[probe_air]` with `sensor_type: c_sensor`; `probe_air.py` constructs `air.PrinterAirProbe`. The ordinary `probe.py` command helper reports `QUERY_PROBE` from the supplied `query_endstop` callback.

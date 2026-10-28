@@ -23,6 +23,7 @@ from .fluidd_box_filaments import (
     patch_fluidd_service_worker,
 )
 from .klipper_box_config import OPERATION as KLIPPER_BOX_OPERATION, patch_box_config
+from .klipper_print_stats_manager import OPERATION as KLIPPER_PRINT_STATS_OPERATION, patch_print_stats_manager
 from .klipper_probe_test import OPERATION as PROBE_TEST_OPERATION, FILE as PROBE_TEST_FILE, patch_probe_test
 from .fluidd_filament_config import OPERATION as FILAMENT_CONFIG_OPERATION
 from .moonraker_file_manager import OPERATION as MOONRAKER_CACHE_OPERATION, patch_file_manager
@@ -127,6 +128,14 @@ GUARDED_FILE_PATCHES = {
         label="Klipper box_config.py",
         file=lambda spec: spec.klipper_box_config.file,
         patch=patch_box_config,
+        restart_service="klipper.service",
+        missing_message=None,
+        skip_unrecognized=True,
+    ),
+    KLIPPER_PRINT_STATS_OPERATION: _GuardedFilePatch(
+        label="Klipper print_stats_manager.py",
+        file=lambda spec: spec.klipper_print_stats_manager.file,
+        patch=patch_print_stats_manager,
         restart_service="klipper.service",
         missing_message=None,
         skip_unrecognized=True,
@@ -2108,6 +2117,7 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         FLUIDD_BOX_OPERATION,
         FLUIDD_SERVICE_WORKER_OPERATION,
         KLIPPER_BOX_OPERATION,
+        KLIPPER_PRINT_STATS_OPERATION,
         FILAMENT_CONFIG_OPERATION,
     ]
     if policy.get("system_optimizations") != "enabled":
@@ -2161,6 +2171,8 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
         return {"path": spec.fluidd_box_filament_ids.service_worker}
     if operation_id == KLIPPER_BOX_OPERATION:
         return {"path": spec.klipper_box_config.file, "restart_service": spec.klipper_box_config.restart_service}
+    if operation_id == KLIPPER_PRINT_STATS_OPERATION:
+        return {"path": spec.klipper_print_stats_manager.file, "restart_service": spec.klipper_print_stats_manager.restart_service}
     if operation_id == FILAMENT_CONFIG_OPERATION:
         return {"path": spec.fluidd_filament_config.link, "target": spec.fluidd_filament_config.target}
     if operation_id == MOONRAKER_METADATA_OPERATION:
@@ -2614,6 +2626,7 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             FLUIDD_BOX_OPERATION,
             FLUIDD_SERVICE_WORKER_OPERATION,
             KLIPPER_BOX_OPERATION,
+            KLIPPER_PRINT_STATS_OPERATION,
             PROBE_TEST_OPERATION,
             FILAMENT_CONFIG_OPERATION,
             ROCKCHIP_ROOT_SYNC_OPERATION,

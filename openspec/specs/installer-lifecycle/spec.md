@@ -273,6 +273,24 @@ Normal install and update SHALL patch recognized QIDI Klipper `box_config.py` an
 - **AND** accepted uninstall restoration reverts only the unchanged installed file and restarts the Klipper service; concurrent changes and operator drift are preserved
 - **AND** a missing or unrecognized `box_config.py` is left unchanged and the outcome is recorded without failing other host patches
 
+### Requirement: Klipper shutdown reasons remain visible
+Normal install and update SHALL patch recognized QIDI Klipper `print_stats_manager.py` so a Klipper shutdown keeps its original reason instead of ending in a host crash, independently of optional OS optimization policy, retaining the original file and preserving unrecognized or operator-modified files.
+
+#### Scenario: Shutdown during a print keeps its reason
+- **WHEN** Klipper shuts down while the QIDI main status is `printing` and later commands are refused
+- **THEN** the command-error status reset is skipped, no G-code is issued from it, and Klipper remains running in the shutdown state with the original reason
+
+#### Scenario: Status reset does not re-enter itself
+- **WHEN** Klipper is not shut down and a command run by the command-error status reset is itself refused
+- **THEN** the nested reset is skipped and the refusal is reported once
+- **AND** a later command error while ready resets the status to `ready` and restores the Z drivers' stealthChop threshold as QIDI's module does
+
+#### Scenario: Shutdown-reason deployment remains reversible
+- **WHEN** a recognized `print_stats_manager.py` requires the patch
+- **THEN** the installer backs up the original bytes, preserves line endings, replaces the file atomically, and restarts the Klipper service
+- **AND** accepted uninstall restoration reverts only the unchanged installed file and restarts the Klipper service; concurrent changes and operator drift are preserved
+- **AND** a missing or unrecognized `print_stats_manager.py` is left unchanged and the outcome is recorded without failing other host patches
+
 ### Requirement: Fluidd full display by default
 Normal install and update SHALL patch the recognized QIDI Fluidd bundle so QIDI's "Enable Full Display" setting defaults on, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the QIDI Box filament display patch.
 
