@@ -347,6 +347,33 @@ def _screen_define_patched() -> str:
     return _section_define(SCREEN_SOURCE, SCREEN_DEFINE_HEAD, SCREEN_START, SCREEN_END, SCREEN_DEFINE_TAIL, "printer screen card")
 
 
+# The QidiBox card joins the default dashboard expanded, after the stock Box card, and hides with it when no Box
+# is configured. It is defined right after the stock Box card so it can reuse that card's views.
+QIDIBOX_LAYOUT_STOCK = '{id:"box-card",enabled:!0,collapsed:!1},'
+QIDIBOX_LAYOUT_PATCHED = QIDIBOX_LAYOUT_STOCK + '{id:"tltg-qidi-box-card",enabled:!0,collapsed:!1},'
+QIDIBOX_COMPONENT_STOCK = "BoxCard:wce,"
+QIDIBOX_COMPONENT_PATCHED = QIDIBOX_COMPONENT_STOCK + "TltgQidiBoxCard:TltgQidiBoxCard,"
+QIDIBOX_HIDDEN_STOCK = 't.id==="box-card"&&!this.hasBox'
+QIDIBOX_HIDDEN_PATCHED = '(t.id==="box-card"||t.id==="tltg-qidi-box-card")&&!this.hasBox'
+QIDIBOX_DEFINE_HEAD = "const wce=Sce.exports;"
+QIDIBOX_DEFINE_TAIL = "var xce=Object.defineProperty,"
+QIDIBOX_DEFINE_STOCK = QIDIBOX_DEFINE_HEAD + QIDIBOX_DEFINE_TAIL
+QIDIBOX_START = "/*tltg-optimized:fluidd-qidibox-card*/"
+QIDIBOX_END = "/*/tltg-optimized:fluidd-qidibox-card*/"
+QIDIBOX_SOURCE = Path(__file__).with_name("fluidd_qidibox_card.js")
+QIDIBOX_DEFINE_PREVIOUS = re.compile(
+    re.escape(QIDIBOX_DEFINE_HEAD + QIDIBOX_START) + ".*?" + re.escape(QIDIBOX_END + QIDIBOX_DEFINE_TAIL),
+    re.DOTALL,
+)
+
+
+@lru_cache(maxsize=1)
+def _qidibox_define_patched() -> str:
+    return _section_define(
+        QIDIBOX_SOURCE, QIDIBOX_DEFINE_HEAD, QIDIBOX_START, QIDIBOX_END, QIDIBOX_DEFINE_TAIL, "QidiBox card"
+    )
+
+
 def _steps() -> tuple[tuple[str, str, tuple[str | re.Pattern[str], ...]], ...]:
     # (stock, current patch, superseded patches this release replaces)
     return (
@@ -371,6 +398,10 @@ def _steps() -> tuple[tuple[str, str, tuple[str | re.Pattern[str], ...]], ...]:
         (SCREEN_LAYOUT_STOCK, SCREEN_LAYOUT_PATCHED, ()),
         (SCREEN_COMPONENT_STOCK, SCREEN_COMPONENT_PATCHED, ()),
         (SCREEN_DEFINE_STOCK, _screen_define_patched(), (SCREEN_DEFINE_PREVIOUS,)),
+        (QIDIBOX_LAYOUT_STOCK, QIDIBOX_LAYOUT_PATCHED, ()),
+        (QIDIBOX_COMPONENT_STOCK, QIDIBOX_COMPONENT_PATCHED, ()),
+        (QIDIBOX_HIDDEN_STOCK, QIDIBOX_HIDDEN_PATCHED, ()),
+        (QIDIBOX_DEFINE_STOCK, _qidibox_define_patched(), (QIDIBOX_DEFINE_PREVIOUS,)),
     )
 
 
