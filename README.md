@@ -101,6 +101,22 @@ Set a QIDI Box heater target from the `Heater Box1`/`Heater Box2` rows in Fluidd
 
 Install and update turn on QIDI's **Enable Full Display** setting in Fluidd by default. It shows the bed mesh card on the Tune page and adds sensors without a target temperature, such as the chamber thermal protection and electronics sensors, to the temperature panel and chart. Turning it off in Fluidd's settings is remembered across updates.
 
+### Printer screen in Fluidd
+
+Install and update add a **Printer screen** card to Fluidd's dashboard that shows the printer's touchscreen live, so you can check or use it from another room. This applies even when optional OS optimizations are skipped. The card starts collapsed and the printer does no screen work until you expand it. It stops when you collapse it, leave the dashboard, or switch to another tab. Existing dashboards get the card at the bottom of the first column; drag it wherever you like in Fluidd's layout mode.
+
+![Printer screen card in Fluidd showing the touchscreen's home page](.github/images/fluidd-printer-screen-view-only.png)
+
+- The screen opens **view only**: clicking or tapping the image does nothing on the printer.
+- Choose **View only** in the card's header and confirm to turn on control. Clicks, taps, and drags on the image then press the real touchscreen, including during a print. Collapsing the card turns control back off.
+- **Full screen** fills your browser or phone screen with it.
+
+![Confirmation shown before Fluidd can press the touchscreen](.github/images/fluidd-printer-screen-control-confirm.png)
+
+The screen is only available to devices that can already use Fluidd: the printer checks every connection with Moonraker, and the screen service itself only listens on the printer. After installing, close every Fluidd tab and open Fluidd again to load the new card.
+
+Behind the card, the installer adds a small `tltg-remote-screen` service, and a `/tltg-screen/` route to QIDI's Fluidd web server configuration. The service sends a new image only when the screen changes. An nginx configuration the installer does not recognize is left unchanged, and the card then says the screen is unavailable. Uninstall can remove the service and restore the original web server configuration through its system-restoration prompt; files modified after installation are preserved.
+
 ### Klipper shutdown reasons
 
 When Klipper stops on an error, such as a heater or fan fault or a lost Box connection, QIDI's print status module could crash Klipper during the shutdown, so the screen, Fluidd, and slicers showed only `MCU shutdown`. Install and update patch QIDI's `print_stats_manager.py` so the original reason stays on screen; `FIRMWARE_RESTART` recovers as usual. This applies even when optional OS optimizations are skipped, and Klipper restarts once when the patch is applied. Unrecognized source is preserved and reported. Uninstall can restore the original file through its system-restoration prompt; files modified after installation are preserved.

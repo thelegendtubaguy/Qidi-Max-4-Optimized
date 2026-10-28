@@ -306,15 +306,45 @@ BOX_MOTION_DEFINE_PREVIOUS = re.compile(
 )
 
 
+def _section_define(source_path: Path, head: str, start: str, end: str, tail: str, name: str) -> str:
+    try:
+        source = source_path.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise FluiddBundleError(f"Fluidd {name} is missing from the package: {exc}") from exc
+    if start in source or end in source:
+        raise FluiddBundleError(f"Fluidd {name} contains its own patch markers.")
+    return head + start + "\n" + source + "\n" + end + tail
+
+
 @lru_cache(maxsize=1)
 def _box_motion_define_patched() -> str:
-    try:
-        source = BOX_MOTION_SOURCE.read_text(encoding="utf-8").strip()
-    except OSError as exc:
-        raise FluiddBundleError(f"Fluidd Box motion section is missing from the package: {exc}") from exc
-    if BOX_MOTION_START in source or BOX_MOTION_END in source:
-        raise FluiddBundleError("Fluidd Box motion section contains its own patch markers.")
-    return BOX_MOTION_DEFINE_HEAD + BOX_MOTION_START + "\n" + source + "\n" + BOX_MOTION_END + BOX_MOTION_DEFINE_TAIL
+    return _section_define(
+        BOX_MOTION_SOURCE, BOX_MOTION_DEFINE_HEAD, BOX_MOTION_START, BOX_MOTION_END, BOX_MOTION_DEFINE_TAIL, "Box motion section"
+    )
+
+
+# The Printer screen card joins the default dashboard collapsed, after the camera card. Fluidd appends new default
+# cards to saved layouts and drops cards it does not know, so a restored stock bundle forgets it.
+SCREEN_LAYOUT_STOCK = '{id:"camera-card",enabled:!0,collapsed:!1},'
+SCREEN_LAYOUT_PATCHED = SCREEN_LAYOUT_STOCK + '{id:"tltg-screen-card",enabled:!0,collapsed:!0},'
+SCREEN_COMPONENT_STOCK = "CameraCard:wre,"
+SCREEN_COMPONENT_PATCHED = SCREEN_COMPONENT_STOCK + "TltgScreenCard:TltgScreenCard,"
+# The card is defined between the Dashboard class and its decoration, which registers it.
+SCREEN_DEFINE_HEAD = "!t.enabled}};"
+SCREEN_DEFINE_TAIL = 'L2([Ee("columnCount")],Yu.prototype,"onColumnCount",1);'
+SCREEN_DEFINE_STOCK = SCREEN_DEFINE_HEAD + SCREEN_DEFINE_TAIL
+SCREEN_START = "/*tltg-optimized:fluidd-remote-screen*/"
+SCREEN_END = "/*/tltg-optimized:fluidd-remote-screen*/"
+SCREEN_SOURCE = Path(__file__).with_name("fluidd_remote_screen.js")
+SCREEN_DEFINE_PREVIOUS = re.compile(
+    re.escape(SCREEN_DEFINE_HEAD + SCREEN_START) + ".*?" + re.escape(SCREEN_END + SCREEN_DEFINE_TAIL),
+    re.DOTALL,
+)
+
+
+@lru_cache(maxsize=1)
+def _screen_define_patched() -> str:
+    return _section_define(SCREEN_SOURCE, SCREEN_DEFINE_HEAD, SCREEN_START, SCREEN_END, SCREEN_DEFINE_TAIL, "printer screen card")
 
 
 def _steps() -> tuple[tuple[str, str, tuple[str | re.Pattern[str], ...]], ...]:
@@ -338,6 +368,9 @@ def _steps() -> tuple[tuple[str, str, tuple[str | re.Pattern[str], ...]], ...]:
         (BUTTON_STATUS_STOCK, BUTTON_STATUS_PATCHED, ()),
         (BOX_MOTION_DEFINE_STOCK, _box_motion_define_patched(), (BOX_MOTION_DEFINE_PREVIOUS,)),
         (BOX_MOTION_RENDER_STOCK, BOX_MOTION_RENDER_PATCHED, ()),
+        (SCREEN_LAYOUT_STOCK, SCREEN_LAYOUT_PATCHED, ()),
+        (SCREEN_COMPONENT_STOCK, SCREEN_COMPONENT_PATCHED, ()),
+        (SCREEN_DEFINE_STOCK, _screen_define_patched(), (SCREEN_DEFINE_PREVIOUS,)),
     )
 
 

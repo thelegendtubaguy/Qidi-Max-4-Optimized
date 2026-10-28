@@ -27,6 +27,7 @@ from .klipper_print_stats_manager import OPERATION as KLIPPER_PRINT_STATS_OPERAT
 from .klipper_probe_test import OPERATION as PROBE_TEST_OPERATION, FILE as PROBE_TEST_FILE, patch_probe_test
 from .fluidd_filament_config import OPERATION as FILAMENT_CONFIG_OPERATION
 from .moonraker_file_manager import OPERATION as MOONRAKER_CACHE_OPERATION, patch_file_manager
+from . import remote_screen
 from .auto_update import current_auto_update_checksum
 from .errors import InstallerError
 from .fs_atomic import atomic_delete, atomic_write_text
@@ -87,6 +88,10 @@ class _GuardedFilePatch:
     # Unreviewed sources fail the transaction unless the patch is optional for that vendor file.
     skip_unrecognized: bool
     create_if_missing: bool = False
+    # Drift fails the install instead of being preserved.
+    required: bool = False
+    # The file is this systemd unit: apply enables it, restore disables it before removal.
+    service_unit: str | None = None
 
 
 # Patches admit only reviewed vendor sources; patch(text) returns text unchanged once applied.
@@ -99,6 +104,7 @@ GUARDED_FILE_PATCHES = {
         missing_message=None,
         skip_unrecognized=False,
         create_if_missing=True,
+        required=True,
     ),
     MOONRAKER_CACHE_OPERATION: _GuardedFilePatch(
         label="Moonraker file_manager.py",
@@ -137,6 +143,34 @@ GUARDED_FILE_PATCHES = {
         file=lambda spec: spec.klipper_print_stats_manager.file,
         patch=patch_print_stats_manager,
         restart_service="klipper.service",
+        missing_message=None,
+        skip_unrecognized=True,
+    ),
+    # Unit before server: restore removes the server first, so its restart stops the service.
+    remote_screen.UNIT_OPERATION: _GuardedFilePatch(
+        label="Printer screen service unit",
+        file=lambda spec: remote_screen.UNIT_FILE,
+        patch=remote_screen.patch_unit,
+        restart_service=remote_screen.UNIT,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+        service_unit=remote_screen.UNIT,
+    ),
+    remote_screen.SERVER_OPERATION: _GuardedFilePatch(
+        label="Printer screen service",
+        file=lambda spec: remote_screen.SERVER_FILE,
+        patch=remote_screen.patch_server,
+        restart_service=remote_screen.UNIT,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+    ),
+    remote_screen.NGINX_OPERATION: _GuardedFilePatch(
+        label="Fluidd nginx site",
+        file=lambda spec: remote_screen.NGINX_SITE,
+        patch=remote_screen.patch_nginx_site,
+        restart_service="nginx.service",
         missing_message=None,
         skip_unrecognized=True,
     ),
@@ -351,7 +385,12 @@ def maybe_emit_system_dry_run(
                 if _guarded_file_has_drift(operation_id, spec, root, prior.get("restore_preimages", {}), prior.get("outcomes", {})):
                     reporter.line(f"  - would preserve modified {guarded.label}")
                 elif _operation_needs_apply(operation_id, spec=spec, root=root, run=run):
-                    restart = {"moonraker.service": " and restart Moonraker", "klipper.service": " and restart Klipper"}.get(guarded.restart_service or "", "")
+                    restart = {
+                        "moonraker.service": " and restart Moonraker",
+                        "klipper.service": " and restart Klipper",
+                        "nginx.service": " and restart nginx",
+                        remote_screen.UNIT: " and restart the printer screen service",
+                    }.get(guarded.restart_service or "", "")
                     reporter.line(f"  - would apply {operation_id}{restart}")
                 else:
                     target = _map_path(root, guarded.file(spec))
@@ -557,9 +596,7 @@ def restore_system_optimizations(
         elif operation_id == FILAMENT_CONFIG_OPERATION:
             _restore_filament_config_link(paths, manifest.system_optimizations)
         elif guarded is not None:
-            _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
-            if guarded.restart_service:
-                _restart_service(guarded.restart_service, root=root, sudo_password=sudo_password, run=run, required=True)
+            _restore_guarded_file(guarded, preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
         elif operation_id == ROCKCHIP_ROOT_SYNC_OPERATION:
             restored = _restore_rockchip(
                 preimage,
@@ -659,7 +696,7 @@ def apply_system_optimizations(
             started_at = _now()
             guarded = GUARDED_FILE_PATCHES.get(operation_id)
             if guarded is not None and _guarded_file_has_drift(operation_id, spec, root, restore_preimages, ledger.get("outcomes", {})):
-                if guarded.create_if_missing:
+                if guarded.required:
                     raise SystemOptimizationError(f"Required {guarded.label} was modified and was preserved.")
                 reporter.line(f"{guarded.label} was modified after install and was preserved.")
                 continue
@@ -1241,6 +1278,9 @@ def _apply_guarded_file_patch(operation_id: str, *, spec: SystemOptimizationsSpe
             staged.unlink(missing_ok=True)
         else:
             run_sudo_ignore_failure(["rm", "-f", staged_path], run=run, password=sudo_password or "")
+    if guarded.service_unit:
+        run_sudo_or_raise(["systemctl", "daemon-reload"], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
+        run_sudo_or_raise(["systemctl", "enable", guarded.service_unit], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
     if guarded.restart_service:
         _restart_service(guarded.restart_service, root=root, sudo_password=sudo_password, run=run, required=True)
 
@@ -1419,8 +1459,16 @@ def _restore_guarded_file_preimage(operation_id: str, preimage: dict[str, Any], 
     expected = guarded.patch((original or b"").decode("utf-8")).encode("utf-8")
     if not target.is_file() or target.read_bytes() not in (original, expected):
         raise SystemOptimizationRecoveryError(f"{guarded.label} changed during the transaction; preserving it for recovery.")
+    _restore_guarded_file(guarded, preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
+
+
+def _restore_guarded_file(guarded: _GuardedFilePatch, preimage: dict[str, Any], *, paths: RuntimePaths, root: Path, sudo_password: str | None, run) -> None:
+    if guarded.service_unit:
+        run_sudo_ignore_failure(["systemctl", "disable", "--now", guarded.service_unit], run=run, password=sudo_password or "")
     _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
-    if guarded.restart_service:
+    if guarded.service_unit:
+        run_sudo_ignore_failure(["systemctl", "daemon-reload"], run=run, password=sudo_password or "")
+    elif guarded.restart_service:
         _restart_service(guarded.restart_service, root=root, sudo_password=sudo_password, run=run, required=True)
 
 
@@ -2119,6 +2167,9 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         KLIPPER_BOX_OPERATION,
         KLIPPER_PRINT_STATS_OPERATION,
         FILAMENT_CONFIG_OPERATION,
+        remote_screen.UNIT_OPERATION,
+        remote_screen.SERVER_OPERATION,
+        remote_screen.NGINX_OPERATION,
     ]
     if policy.get("system_optimizations") != "enabled":
         return tuple(ids)
@@ -2175,6 +2226,9 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
         return {"path": spec.klipper_print_stats_manager.file, "restart_service": spec.klipper_print_stats_manager.restart_service}
     if operation_id == FILAMENT_CONFIG_OPERATION:
         return {"path": spec.fluidd_filament_config.link, "target": spec.fluidd_filament_config.target}
+    if operation_id in (remote_screen.UNIT_OPERATION, remote_screen.SERVER_OPERATION, remote_screen.NGINX_OPERATION):
+        guarded = GUARDED_FILE_PATCHES[operation_id]
+        return {"path": guarded.file(spec), "restart_service": guarded.restart_service}
     if operation_id == MOONRAKER_METADATA_OPERATION:
         return {"path": spec.moonraker_metadata_3mf.file, "restart_service": spec.moonraker_metadata_3mf.restart_service}
     if operation_id == ROCKCHIP_ROOT_SYNC_OPERATION:
@@ -2629,6 +2683,9 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             KLIPPER_PRINT_STATS_OPERATION,
             PROBE_TEST_OPERATION,
             FILAMENT_CONFIG_OPERATION,
+            remote_screen.UNIT_OPERATION,
+            remote_screen.SERVER_OPERATION,
+            remote_screen.NGINX_OPERATION,
             ROCKCHIP_ROOT_SYNC_OPERATION,
             *(f"service_{service}" for service in spec.services.disable),
             *(f"service_{item.service}" for item in spec.services.optional_disable),
