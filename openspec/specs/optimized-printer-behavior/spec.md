@@ -32,6 +32,11 @@ Optimized configuration SHALL reduce homing, probing, mesh, and filament-transit
 - **AND** the captured value is reapplied after mesh preparation
 - **AND** saved fallback is used only when the session has no capture
 
+#### Scenario: Print ends before the offset is reapplied
+- **WHEN** a print is cancelled or ends after start G-code clears the runtime Z offset but before the captured value is reapplied
+- **THEN** end-of-print handling leaves the saved `z_offset` unchanged and reports that it was not saved
+- **AND** a print that ends after reapplication saves the runtime offset, including touchscreen adjustments, as before
+
 ### Requirement: Motion-free nozzle load-cell signal check
 Optimized configuration SHALL provide an operator-invoked load-cell response check with console prompts and an automatic signal assessment, without homing, movement, heating, calibration changes, or homing-safety certification.
 

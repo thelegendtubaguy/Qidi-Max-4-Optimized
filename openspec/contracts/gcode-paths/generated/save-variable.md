@@ -11,7 +11,7 @@ Contract: `openspec/contracts/gcode-paths/save-variable.path.json`
 
 Condition: `all variable saves; warn only for a numeric zero z_offset request`
 
-Source: `installer/klipper/tltg-optimized-macros/offset.cfg:31-42`
+Source: `installer/klipper/tltg-optimized-macros/offset.cfg:38-49`
 
 Direct visible macro calls in branch slice:
 

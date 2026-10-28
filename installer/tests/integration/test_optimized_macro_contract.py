@@ -128,6 +128,16 @@ class OptimizedMacroContractTests(unittest.TestCase):
             "SET_GCODE_OFFSET Z=0 MOVE=0",
             "{% elif params.SET|default(0)|int %}",
             "SET_GCODE_OFFSET Z={z} MOVE=0",
+            "VARIABLE=print_offset_applied VALUE=1",
+            "{% elif params.SAVE|default(0)|int %}",
+            "{% if not print_offset_applied|int %}",
+            "{% elif printer.gcode_move.homing_origin.z < 0.5 %}",
+            "SAVE_VARIABLE VARIABLE=z_offset",
+        )
+        self.assert_ordered(
+            gcode,
+            "VARIABLE=print_offset_applied VALUE=0",
+            "SET_GCODE_OFFSET Z=0 MOVE=0",
         )
 
     def test_filament_sensor_policy_preserves_events_and_box_recovery(self):
