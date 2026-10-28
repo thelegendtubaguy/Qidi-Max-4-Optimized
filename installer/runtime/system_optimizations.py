@@ -24,7 +24,6 @@ from .fluidd_box_filaments import (
 )
 from .klipper_box_config import OPERATION as KLIPPER_BOX_OPERATION, patch_box_config
 from .klipper_print_stats_manager import OPERATION as KLIPPER_PRINT_STATS_OPERATION, patch_print_stats_manager
-from .klipper_probe_test import OPERATION as PROBE_TEST_OPERATION, FILE as PROBE_TEST_FILE, patch_probe_test
 from .fluidd_filament_config import OPERATION as FILAMENT_CONFIG_OPERATION
 from .moonraker_file_manager import OPERATION as MOONRAKER_CACHE_OPERATION, patch_file_manager
 from . import remote_screen
@@ -96,16 +95,6 @@ class _GuardedFilePatch:
 
 # Patches admit only reviewed vendor sources; patch(text) returns text unchanged once applied.
 GUARDED_FILE_PATCHES = {
-    PROBE_TEST_OPERATION: _GuardedFilePatch(
-        label="Klipper probe signal helper",
-        file=lambda spec: PROBE_TEST_FILE,
-        patch=patch_probe_test,
-        restart_service="klipper.service",
-        missing_message=None,
-        skip_unrecognized=False,
-        create_if_missing=True,
-        required=True,
-    ),
     MOONRAKER_CACHE_OPERATION: _GuardedFilePatch(
         label="Moonraker file_manager.py",
         file=lambda spec: spec.moonraker_file_manager.file,
@@ -249,10 +238,6 @@ def maybe_apply_system_optimizations(
     updated = _replace_system_ledger(state, ledger)
     write_installed_state(state_path, updated)
     _clear_committed_rockchip_journal(paths, ledger)
-    target = _map_path(_system_root(environ), PROBE_TEST_FILE)
-    _reject_symlink_path(target, root=_system_root(environ))
-    if not target.is_file() or target.read_text(encoding="utf-8") != patch_probe_test(""):
-        raise SystemOptimizationError("Required probe signal helper is unavailable or modified; installation cannot complete.")
     return updated
 
 
@@ -2159,7 +2144,6 @@ def _path_has_symlink_component(path: Path, *, root: Path) -> bool:
 
 def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any]) -> tuple[str, ...]:
     ids = [
-        PROBE_TEST_OPERATION,
         MOONRAKER_METADATA_OPERATION,
         MOONRAKER_CACHE_OPERATION,
         FLUIDD_BOX_OPERATION,
@@ -2206,8 +2190,6 @@ def _service_for_operation(operation_id: str, spec: SystemOptimizationsSpec) -> 
 
 
 def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]:
-    if operation_id == PROBE_TEST_OPERATION:
-        return {"path": PROBE_TEST_FILE, "restart_service": "klipper.service"}
     if operation_id == "dns":
         return {"resolv_conf": spec.dns.target_symlink, "fallback_nameservers": list(spec.dns.fallback_nameservers)}
     if operation_id == "apt_sources":
@@ -2681,7 +2663,6 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             FLUIDD_SERVICE_WORKER_OPERATION,
             KLIPPER_BOX_OPERATION,
             KLIPPER_PRINT_STATS_OPERATION,
-            PROBE_TEST_OPERATION,
             FILAMENT_CONFIG_OPERATION,
             remote_screen.UNIT_OPERATION,
             remote_screen.SERVER_OPERATION,

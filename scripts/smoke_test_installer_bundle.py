@@ -88,13 +88,6 @@ def main(argv: list[str] | None = None) -> int:
     ).read_text(encoding="utf-8")
     if "T_MANAGER T=15" not in firmware_0701_filament:
         raise SystemExit("bundle 07.01 stock filament.cfg is missing T_MANAGER tool macros")
-    probe_helper = bundle_root / "installer/klipper/qidi/tltg_probe_test.py"
-    if not probe_helper.is_file() or probe_helper.is_symlink():
-        raise SystemExit("bundle smoke test is missing the Klipper probe diagnostic helper")
-    try:
-        compile(probe_helper.read_bytes(), str(probe_helper), "exec")
-    except SyntaxError as exc:
-        raise SystemExit(f"bundle probe diagnostic helper does not compile: {exc}") from exc
     package_manifest = load_manifest(bundle_root / "installer/package.yaml")
     for patch in package_manifest.install.source_patches:
         for variant in patch.variants:
@@ -190,7 +183,7 @@ def main(argv: list[str] | None = None) -> int:
         module_targets = {
             plain_printer_root / f"klipper/klippy/extras/tltg_{name}.py":
                 REPO_ROOT / f"installer/klipper/tltg/{name}.py"
-            for name in ("box_link_monitor", "box_feed_motion", "box_eject")
+            for name in ("box_link_monitor", "box_feed_motion", "box_eject", "probe_test")
         }
         for module_target, module_source in module_targets.items():
             if not module_target.is_file():
