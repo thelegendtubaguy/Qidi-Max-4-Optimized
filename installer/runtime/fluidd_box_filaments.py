@@ -270,7 +270,18 @@ BUTTON_STATUS_PATCHED = (
     + BUTTON_STATUS_STOCK.replace('this.$store.state.printer.printer.box_extras.b_endstop_state', 'this.tltgBEndstop')
 )
 
-FULL_DISPLAY_DEFAULT_STOCK = 'enableDiagnostics:!1,enableFullDisplay:!1,thumbnailSize:32'
+PRINT_SLOT_CHANGE_STOCK = (
+    'onValueChange(t){this.selectedValueSlot=this.selectedValueSlot.map((s,n)=>n===t?s:'
+    'JSON.stringify(s)===JSON.stringify(this.selectedValueSlot[t])?this.oldSelectedValueSlot[t]:s),'
+    'this.oldSelectedValueSlot=JSON.parse(JSON.stringify(this.selectedValueSlot))}'
+)
+# The print dialog swapped a slot chosen for a second filament away from the first, so a file with more
+# filaments of a type than loaded slots of it could never be printed. Several filaments may share a slot.
+PRINT_SLOT_CHANGE_PATCHED = (
+    'onValueChange(t){this.oldSelectedValueSlot=JSON.parse(JSON.stringify(this.selectedValueSlot))}'
+)
+
+FULL_DISPLAY_DEFAULT_STOCK ='enableDiagnostics:!1,enableFullDisplay:!1,thumbnailSize:32'
 # QIDI's "Enable Full Display" setting defaults on; a value saved in Moonraker's database still overrides it.
 FULL_DISPLAY_DEFAULT_PATCHED = 'enableDiagnostics:!1,enableFullDisplay:!0,thumbnailSize:32'
 
@@ -320,6 +331,7 @@ def _steps() -> tuple[tuple[str, str, tuple[str | re.Pattern[str], ...]], ...]:
         (SELECTED_COLOR_STOCK, SELECTED_COLOR_PATCHED, ()),
         (BOX_TEMP_LIMIT_STOCK, BOX_TEMP_LIMIT_PATCHED, ()),
         (HEATER_TARGET_STOCK, HEATER_TARGET_PATCHED, ()),
+        (PRINT_SLOT_CHANGE_STOCK, PRINT_SLOT_CHANGE_PATCHED, ()),
         (FULL_DISPLAY_DEFAULT_STOCK, FULL_DISPLAY_DEFAULT_PATCHED, ()),
         (BUTTON_COMMANDS_STOCK, BUTTON_COMMANDS_PATCHED, ()),
         (RFID_COMMAND_STOCK, RFID_COMMAND_PATCHED, ()),
