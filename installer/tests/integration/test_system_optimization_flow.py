@@ -17,7 +17,6 @@ from installer.runtime.fluidd_box_filaments import OPERATION as FLUIDD_BOX_OPERA
 from installer.runtime.fluidd_filament_config import OPERATION as FILAMENT_CONFIG_OPERATION
 from installer.runtime.klipper_box_config import OPERATION as KLIPPER_BOX_OPERATION
 from installer.runtime.klipper_print_stats_manager import OPERATION as KLIPPER_PRINT_STATS_OPERATION
-from installer.runtime.klipper_probe_test import FILE as PROBE_TEST_FILE, OPERATION as PROBE_TEST_OPERATION, PAYLOAD as PROBE_TEST_PAYLOAD
 from installer.runtime.cli import resolve_runtime_paths
 from installer.runtime.compatibility import load_supported_upgrade_sources
 from installer.runtime.errors import InstalledPackageValidationError
@@ -74,7 +73,6 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         box_config_before = box_config.read_bytes()
         stats_manager = system_root / "home/qidi/klipper/klippy/extras/print_stats_manager.py"
         stats_manager_before = stats_manager.read_bytes()
-        probe_helper = system_root / PROBE_TEST_FILE.lstrip("/")
         nginx_site = system_root / remote_screen.NGINX_SITE.lstrip("/")
         nginx_site_before = nginx_site.read_bytes()
         screen_unit = system_root / remote_screen.UNIT_FILE.lstrip("/")
@@ -144,8 +142,16 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertTrue(paths.host_reboot_marker_path.exists())
         state = load_installed_state(printer_root / manifest.state_file)
         self.assertIn("rockchip_root_sync", state.system_ledger["restore_preimages"])
-        self.assertEqual(probe_helper.read_bytes(), PROBE_TEST_PAYLOAD.read_bytes())
-        self.assertFalse(state.system_ledger["restore_preimages"][PROBE_TEST_OPERATION]["exists"])
+        probe_helper = paths.managed_klipper_root / "klippy/extras/tltg_probe_test.py"
+        self.assertEqual(probe_helper.read_bytes(), (REPO_ROOT / "installer/klipper/tltg/probe_test.py").read_bytes())
+        # Earlier builds recorded the probe helper as a host operation; loading the state drops it.
+        retired = copy.deepcopy(state.system_ledger)
+        retired["restore_preimages"]["klipper_probe_signal_test"] = {"path": "/home/qidi/klipper/klippy/extras/tltg_probe_test.py", "exists": False}
+        retired["outcomes"]["klipper_probe_signal_test"] = {"status": "applied", "source": "yes_install"}
+        write_installed_state(printer_root / manifest.state_file, _replace_system_ledger(state, retired))
+        state = load_installed_state(printer_root / manifest.state_file)
+        self.assertNotIn("klipper_probe_signal_test", state.system_ledger["restore_preimages"])
+        self.assertNotIn("klipper_probe_signal_test", state.system_ledger["outcomes"])
         self.assertEqual(state.system_ledger["schema_version"], 2)
         self.assertNotIn("actions", state.system_ledger)
         self.assertIn("rockchip_root_sync", state.system_ledger["committed_transactions"])
@@ -198,29 +204,15 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         fluidd_preimage = state.system_ledger["restore_preimages"][FLUIDD_BOX_OPERATION]
         cache_policy = copy.deepcopy({**state.system_ledger, "policy": {"system_optimizations": "disabled", "ai_detection": "unset"}})
         cache_policy["outcomes"][FLUIDD_BOX_OPERATION]["postflight"]["sha256"] = __import__("hashlib").sha256(fluidd_previous).hexdigest()
-        probe_helper.unlink()
         reconciled = apply_system_optimizations(
             paths=paths, spec=manifest.system_optimizations, ledger=cache_policy,
             reporter=PlainReporter(io.StringIO()), input_stream=None, environ=env,
             source="auto_update_reconcile", run=host_run,
         )
         self.assertEqual(reconciled["restore_preimages"][cache_id], prior_preimage)
-        self.assertEqual(probe_helper.read_bytes(), PROBE_TEST_PAYLOAD.read_bytes())
-        self.assertFalse(reconciled["restore_preimages"][PROBE_TEST_OPERATION]["exists"])
         self.assertEqual(fluidd.read_bytes(), fluidd_current)
         self.assertEqual(reconciled["restore_preimages"][FLUIDD_BOX_OPERATION], fluidd_preimage)
         self.assertEqual(os.readlink(filament_link), filament_config.target)
-        # Updates replace an unchanged helper from an earlier pre-release build.
-        prior_helper = (FIXTURES_ROOT / "tltg_probe_test_prerelease.py").read_bytes()
-        probe_helper.write_bytes(prior_helper)
-        reconciled["outcomes"][PROBE_TEST_OPERATION]["postflight"]["sha256"] = __import__("hashlib").sha256(prior_helper).hexdigest()
-        reconciled = apply_system_optimizations(
-            paths=paths, spec=manifest.system_optimizations, ledger=reconciled,
-            reporter=PlainReporter(io.StringIO()), input_stream=None, environ=env,
-            source="auto_update_reconcile", run=host_run,
-        )
-        self.assertEqual(probe_helper.read_bytes(), PROBE_TEST_PAYLOAD.read_bytes())
-        self.assertFalse(reconciled["restore_preimages"][PROBE_TEST_OPERATION]["exists"])
         # Updates replace the screen service from an earlier package version.
         prior_server = remote_screen.SERVER_MARKER.encode() + b"print('earlier screen service')\n"
         screen_server.write_bytes(prior_server)
@@ -344,54 +336,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                     self.assertEqual(target.read_bytes(), drifted)
                 else:
                     self.assertEqual(target.read_bytes(), original)
-                    self.assertFalse((root / PROBE_TEST_FILE.lstrip("/")).exists())
                     self.assertFalse(_journal_path(paths).exists())
-                self.assertEqual(target.is_symlink(), fault == "symlink")
-
-    def test_probe_helper_preserves_conflicting_and_concurrently_created_files(self):
-        for fault in ("unknown", "symlink", "concurrent", "restart"):
-            with self.subTest(fault=fault):
-                printer_root = copy_base_runtime()
-                root = fake_system_root()
-                env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
-                env[SYSTEM_ROOT_ENV] = str(root)
-                paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
-                manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
-                target = root / PROBE_TEST_FILE.lstrip("/")
-                target.parent.mkdir(parents=True, exist_ok=True)
-                operator_content = b"# operator-owned helper\n"
-                if fault == "unknown":
-                    target.write_bytes(operator_content)
-                elif fault == "symlink":
-                    other = target.with_name("operator.py")
-                    other.write_bytes(operator_content)
-                    target.symlink_to(other)
-                host_run = fake_host_run(root)
-                failed = False
-                def run(command, **kwargs):
-                    nonlocal failed
-                    if fault == "restart" and not failed and list(command)[-3:] == ["systemctl", "restart", "klipper.service"]:
-                        failed = True
-                        return CompletedProcess(command, 1, stdout="", stderr="restart failed")
-                    return host_run(command, **kwargs)
-                original_link = os.link
-                def link(source, destination):
-                    if fault == "concurrent":
-                        target.write_bytes(operator_content)
-                    return original_link(source, destination)
-                error = SystemOptimizationRecoveryError if fault == "concurrent" else SystemOptimizationApplyError
-                with mock.patch.object(system_optimizations.os, "link", side_effect=link):
-                    with self.assertRaises(error):
-                        apply_system_optimizations(
-                            paths=paths, spec=manifest.system_optimizations,
-                            ledger={"policy": {"system_optimizations": "disabled", "ai_detection": "unset"}},
-                            reporter=PlainReporter(io.StringIO()), input_stream=None,
-                            environ=env, source="yes_install", run=run,
-                        )
-                if fault == "restart":
-                    self.assertFalse(target.exists())
-                else:
-                    self.assertEqual(target.read_bytes(), operator_content)
                 self.assertEqual(target.is_symlink(), fault == "symlink")
 
     def test_forged_host_preimages_fail_closed_before_uninstall(self):
@@ -514,7 +459,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(os.readlink(filament_link), "/home/qidi/operator_filaments")
         write_installed_state(printer_root / manifest.state_file, _replace_system_ledger(state, reconciled))
         (system_root / "etc/apt/sources.list").write_text("operator apt\n", encoding="utf-8")
-        probe_helper = system_root / PROBE_TEST_FILE.lstrip("/")
+        probe_helper = paths.managed_klipper_root / "klippy/extras/tltg_probe_test.py"
         probe_modified = probe_helper.read_bytes() + b"\n# operator modification\n"
         probe_helper.write_bytes(probe_modified)
         report = io.StringIO()

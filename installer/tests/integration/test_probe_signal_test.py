@@ -8,7 +8,7 @@ from installer.tests.helpers import REPO_ROOT
 
 
 spec = importlib.util.spec_from_file_location(
-    "tltg_probe_test", REPO_ROOT / "installer/klipper/qidi/tltg_probe_test.py"
+    "tltg_probe_test", REPO_ROOT / "installer/klipper/tltg/probe_test.py"
 )
 probe_test = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(probe_test)

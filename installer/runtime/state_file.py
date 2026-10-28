@@ -22,6 +22,14 @@ class StateValidationError(ValueError):
     pass
 
 
+# Host operations whose files moved to package-owned management. Their old
+# ledger records are dropped so restoration never acts on those files.
+RETIRED_SYSTEM_OPERATIONS = frozenset({
+    # The probe signal helper is now a package-owned Klipper extra module.
+    "klipper_probe_signal_test",
+})
+
+
 def load_installed_state(path: Path) -> InstalledState:
     try:
         with path.open("r", encoding="utf-8") as handle:
@@ -64,6 +72,8 @@ def parse_installed_state(raw: Any) -> InstalledState:
     system_ledger = raw.get("system_ledger")
     if system_ledger is not None and not isinstance(system_ledger, dict):
         raise StateValidationError("system_ledger must be a mapping when present.")
+    if system_ledger is not None:
+        system_ledger = _without_retired_operations(system_ledger)
     return InstalledState(
         schema_version=1, package_id=_require_str(package, "id"), package_version=_require_str(package, "version"),
         runtime_firmware=_require_str(runtime, "firmware"), backup_label=_require_str(backup, "label"),
@@ -71,6 +81,24 @@ def parse_installed_state(raw: Any) -> InstalledState:
         managed_tree=ManagedTreeState(root=_validate_config_path(_require_str(managed_tree, "root")), files=tree_files),
         patch_ledger=tuple(patch_ledger), source_patches=source_patches, system_ledger=system_ledger,
     )
+
+
+def _without_retired_operations(ledger: dict[str, Any]) -> dict[str, Any]:
+    result = dict(ledger)
+    for field in ("restore_preimages", "outcomes", "committed_transactions"):
+        records = result.get(field)
+        if isinstance(records, dict):
+            result[field] = {
+                key: value for key, value in records.items()
+                if key not in RETIRED_SYSTEM_OPERATIONS
+            }
+    actions = result.get("actions")
+    if isinstance(actions, list):
+        result["actions"] = [
+            action for action in actions
+            if not (isinstance(action, dict) and action.get("id") in RETIRED_SYSTEM_OPERATIONS)
+        ]
+    return result
 
 
 def _parse_source_patches(raw: Any) -> tuple[SourcePatchState, ...]:

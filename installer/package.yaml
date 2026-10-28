@@ -6,7 +6,7 @@ package:
   id: qidi-max4-optimized
   display_name: QIDI Max 4 Optimized
   printer_model: qidi-max4
-  version: "26.10.23.2"
+  version: "26.10.28.1"
   known_versions:
     - "26.04.21.1"
     - "26.04.27.1"
@@ -49,6 +49,7 @@ package:
     - "26.10.22.1"
     - "26.10.23.1"
     - "26.10.23.2"
+    - "26.10.28.1"
 
 firmware:
   supported:
@@ -126,6 +127,9 @@ install:
     - id: box_eject
       source: "klipper/tltg/box_eject.py"
       destination: "klippy/extras/tltg_box_eject.py"
+    - id: probe_test
+      source: "klipper/tltg/probe_test.py"
+      destination: "klippy/extras/tltg_probe_test.py"
 
   source_patches:
     - id: qidi_homing
