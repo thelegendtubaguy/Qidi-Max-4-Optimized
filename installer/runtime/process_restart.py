@@ -154,6 +154,32 @@ def restart_pending(
     if current[1] == "ready" and current[0] != pre_restart_pid:
         atomic_delete(paths.restart_marker_path)
         return True
+    _restart_service_until_ready(
+        paths, pre_restart_pid=pre_restart_pid, urlopen=urlopen, sleep=sleep, attempts=attempts
+    )
+    atomic_delete(paths.restart_marker_path)
+    return True
+
+
+def restart_klipper_service(
+    paths,
+    *,
+    urlopen=urllib.request.urlopen,
+    sleep=time.sleep,
+    attempts: int = DEFAULT_RESTART_ATTEMPTS,
+) -> None:
+    """Restart the Klipper service and wait until a new process is ready."""
+    if attempts <= 0:
+        raise ValueError("attempts must be positive")
+    pre_restart_pid, _ = _read_printer_info_with_retry(
+        paths.moonraker_url, urlopen=urlopen, sleep=sleep, attempts=attempts
+    )
+    _restart_service_until_ready(
+        paths, pre_restart_pid=pre_restart_pid, urlopen=urlopen, sleep=sleep, attempts=attempts
+    )
+
+
+def _restart_service_until_ready(paths, *, pre_restart_pid: int, urlopen, sleep, attempts: int) -> None:
     request = urllib.request.Request(
         service_restart_url(paths.moonraker_url),
         data=b'{"service":"klipper"}',
@@ -172,8 +198,7 @@ def restart_pending(
             pass
         else:
             if state == "ready" and pid != pre_restart_pid:
-                atomic_delete(paths.restart_marker_path)
-                return True
+                return
         if attempt + 1 < attempts:
             sleep(1)
     raise ProcessRestartError("Klipper did not return ready under a new process identity. Restart Klipper service manually, then retry the installer.")

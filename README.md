@@ -331,6 +331,8 @@ You can also run uninstall by fetching the latest script directly from the web:
 
 Read the installer output first. The installer stops before writing when firmware detection, preflight, printer state, or free-space checks fail.
 
+If Klipper is stopped with an error, such as `... is not a valid config section`, you can still run the installer. It installs its files first, restarts Klipper, and then updates saved settings. If Klipper still doesn't start, the installer says so; fix the error shown in Fluidd and run the installer again.
+
 Installer-created backup `.zip` files are stored under `/home/qidi/printer_data/` with `tltg-optimized-macros-before-optimize-...zip` and `tltg-optimized-macros-before-uninstall-...zip` labels.
 
 You can restore interactively when SSH'd into the printer.

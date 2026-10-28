@@ -92,6 +92,21 @@ The installer SHALL deploy firmware-scoped Klipper source only from validated pr
 - **AND** active, unknown, failed, or drifted activation remains pending and blocks unsafe continuation
 - **AND** every installer entrypoint resolves pending activation before further release work
 - **AND** a post-activation saved-variable mismatch retains its exact authorized expectations and blocks later install or automatic-update work until an exact live Moonraker verification succeeds; dry-run verification preserves the marker, and terminal uninstall removes it only after successful postflight while rollback preserves it
+- **AND** while Klipper is halted on an error, install retains the expectations and verifies them after it restarts Klipper
+
+### Requirement: Install repairs a halted Klipper
+Install and update SHALL be able to repair a printer whose Klipper is halted on an error, such as a configuration error, by writing files before anything that requires a running Klipper.
+
+#### Scenario: Files first, then restart, then saved variables
+- **WHEN** install or update starts while Moonraker reports Klipper halted on an error
+- **THEN** the printer counts as idle for the install, because a halted Klipper cannot be printing
+- **AND** no saved variable is read or written before the files, extra modules, and state are committed
+- **AND** the install then restarts the Klipper service without asking and, once Klipper is ready under a new process, verifies pending saved-variable expectations and initializes, enables, and maps saved variables as a normal install would
+
+#### Scenario: Klipper still does not start
+- **WHEN** Klipper is not ready under a new process after that restart
+- **THEN** the installed files and state remain committed
+- **AND** no saved variable is written, pending expectations and source activation remain pending, and the operator is told to fix the reported error and run the installer again
 
 ### Requirement: Non-owning QIDI Box reconciliation
 The installer SHALL keep an available QIDI Box usable without claiming ownership of vendor saved variables or silently replacing existing non-empty tool mappings. Box availability SHALL be recognized for every supported firmware's Box transport, including the legacy USB Box configuration and the RS-485 Box stack.

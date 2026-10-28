@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import hashlib
 import io
 import json
@@ -10,7 +11,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from installer.runtime import box_enablement, klipper_cfg
+from installer.runtime import box_enablement, klipper_cfg, process_restart
 from installer.runtime.box_enablement import (
     SavedVariablePersistenceError,
     detect_box_enablement_opportunity,
@@ -449,6 +450,65 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         with self.assertRaises(SavedVariablePersistenceError):
             self._run_install_with_urlopen(paths, failing_urlopen)
         self.assertEqual(saved_variables_path.read_bytes(), before)
+
+    def test_install_repairs_klipper_halted_on_a_config_error(self):
+        # Klipper halts on a config error, so it has no print state or saved variables until it restarts.
+        for starts in (True, False):
+            with self.subTest(starts_after_restart=starts):
+                printer_root, paths, _ = self._fixture("01.01.06.03")
+                saved_variables_path = printer_root / "config/saved_variables.cfg"
+                saved_variables_path.write_text(
+                    saved_variables_path.read_text(encoding="utf-8")
+                    + "tltg_keep_loaded_between_prints = 1\n",
+                    encoding="utf-8",
+                )
+                box_enablement.write_saved_variable_verify_marker(
+                    paths, {"tltg_keep_loaded_between_prints": "1"}
+                )
+                base_urlopen = self._fixture_urlopen(printer_root)
+                klipper = {"halted": True, "restarts": 0}
+
+                def urlopen(request, timeout=0):
+                    url = getattr(request, "full_url", str(request))
+                    if klipper["halted"]:
+                        if "/machine/services/restart" in url:
+                            klipper["restarts"] += 1
+                            klipper["halted"] = not starts
+                        elif "/printer/info" in url:
+                            return _JsonResponse({"result": {"state": "error", "process_id": 100 + klipper["restarts"]}})
+                        elif "save_variables" in url or "/printer/gcode/script" in url:
+                            raise AssertionError("saved variables used while Klipper is halted")
+                        elif "print_stats" in url:
+                            return _JsonResponse({"result": {"status": {"print_stats": {}}}})
+                    return base_urlopen(request, timeout=timeout)
+
+                with mock.patch(
+                    "installer.runtime.runner.restart_pending",
+                    functools.partial(process_restart.restart_pending, sleep=lambda _seconds: None),
+                ):
+                    self._run_install_with_urlopen(paths, urlopen)
+
+                self.assertTrue((printer_root / "config/tltg_optimized_state.yaml").exists())
+                self.assertTrue((paths.managed_klipper_root / "klippy/extras/tltg_probe_test.py").is_file())
+                self.assertEqual(klipper["restarts"], 1)
+                # Source activation stays pending until Klipper is ready under a new process.
+                self.assertEqual(paths.restart_marker_path.exists(), not starts)
+                saved_variables = saved_variables_path.read_text(encoding="utf-8")
+                self.assertEqual(saved_variable_verify_marker_path(paths).exists(), not starts)
+                for name, value in box_enablement.BOX_MOTION_DEFAULTS.items():
+                    if starts:
+                        self.assertEqual(
+                            klipper_cfg.resolve_unique_option(saved_variables, "Variables", name).value,
+                            value,
+                        )
+                    else:
+                        self.assertNotIn(f"{name} =", saved_variables)
+                if starts:
+                    # With source already current, the install restarts the Klipper service itself.
+                    klipper["halted"] = True
+                    self._run_install_with_urlopen(paths, urlopen)
+                    self.assertEqual(klipper["restarts"], 2)
+                    self.assertFalse(paths.restart_marker_path.exists())
 
     def _run_install_with_urlopen(self, paths, urlopen):
         return run_install(

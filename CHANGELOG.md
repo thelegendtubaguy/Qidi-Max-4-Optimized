@@ -1,5 +1,8 @@
 # Changelog
 
+## 26.10.28.2
+- The installer can now repair a printer whose Klipper is stopped with an error, such as `Section 'tltg_probe_test' is not a valid config section`. Before, it refused with `Klipper saved-variable runtime is not ready.`, because it saved settings through Klipper before installing any files, so the install that would fix Klipper could never run. When Klipper is stopped with an error, the installer now installs its files first, restarts Klipper, and then saves settings. If Klipper still doesn't start, the files stay installed and the installer tells you to fix the error shown in Fluidd and run it again.
+
 ## 26.10.28.1
 - Fixed Klipper failing to start with `Section 'tltg_probe_test' is not a valid config section` after some installs and updates. The optimized configuration always loads the helper behind `TLTG_TEST_PROBE`, but the helper itself was installed with the OS optimizations, after the configuration, so an update that skipped or stopped partway through those changes left Klipper without it. The helper is now installed with the optimized configuration on every install and update, and removed with it on uninstall. If your printer shows this error, run the installer again.
 
