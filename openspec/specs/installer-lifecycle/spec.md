@@ -291,6 +291,14 @@ Normal install and update SHALL patch recognized QIDI Klipper `print_stats_manag
 - **AND** accepted uninstall restoration reverts only the unchanged installed file and restarts the Klipper service; concurrent changes and operator drift are preserved
 - **AND** a missing or unrecognized `print_stats_manager.py` is left unchanged and the outcome is recorded without failing other host patches
 
+### Requirement: Fluidd Box print slots can be shared
+Normal install and update SHALL patch the recognized QIDI Fluidd bundle so its Box print dialog lets several file filaments use the same Box slot, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the QIDI Box filament display patch.
+
+#### Scenario: A slot is chosen for a second filament
+- **WHEN** an operator starts a Box print from Fluidd and chooses a slot already chosen for another filament of the file
+- **THEN** both filaments keep that slot, the other filament's choice is unchanged, and the print can start once every filament has a slot
+- **AND** each filament's tool is mapped to its chosen slot when the print starts
+
 ### Requirement: Fluidd full display by default
 Normal install and update SHALL patch the recognized QIDI Fluidd bundle so QIDI's "Enable Full Display" setting defaults on, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the QIDI Box filament display patch.
 

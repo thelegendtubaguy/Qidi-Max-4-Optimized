@@ -152,6 +152,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertIn(b"Math.floor(u/4)===t-1", fluidd.read_bytes())
         self.assertIn(b"enableFullDisplay:!0", fluidd.read_bytes())
         self.assertIn(b"LOAD_FILAMENT_CONTROL", fluidd.read_bytes())
+        self.assertIn(fluidd_patch.PRINT_SLOT_CHANGE_PATCHED.encode(), fluidd.read_bytes())
         self.assertIn(fluidd_patch.BOX_MOTION_START.encode(), fluidd.read_bytes())
         self.assertIn(b"t(TltgBoxMotion)", fluidd.read_bytes())
         self.assertIn(fluidd_patch.SERVICE_WORKER_OPERATION, state.system_ledger["restore_preimages"])
