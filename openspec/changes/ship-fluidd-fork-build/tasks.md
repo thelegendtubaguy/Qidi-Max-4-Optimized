@@ -2,7 +2,7 @@
 
 - [x] 1.1 Port the Max 4 Fluidd features to the fork and validate them against the test printer.
 - [x] 1.2 Release workflow publishes `fluidd.zip` for `vX.Y.Z-tltg-<hash>` tags without Docker images.
-- [ ] 1.3 Tag `v1.37.7-tltg-<hash>` and pin its URL and checksum in `installer/package.yaml`.
+- [x] 1.3 Tag `v1.37.7-tltg-d9bf862` and pin its URL and checksum in `installer/package.yaml`.
 
 ## 2. Implementation
 

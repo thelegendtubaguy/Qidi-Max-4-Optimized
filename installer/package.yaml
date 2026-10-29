@@ -525,10 +525,10 @@ system_optimizations:
     service_worker: /home/qidi/fluidd/sw.js
   # The project's Fluidd fork release; the bundle builder downloads and verifies it.
   fluidd_build:
-    version: v1.37.7-qidi.1
-    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-qidi.1/fluidd.zip
+    version: v1.37.7-tltg-d9bf862
+    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-d9bf862/fluidd.zip
     archive: system/fluidd.zip
-    sha256: e5aa2dca3d6f9b02063106772e205e747c7f4f2322e4fba02767b5131659ffc3
+    sha256: 14280c64397e5ee6d6b186be95c94abc6ca56a2bd5fe20995693cc1d62baff01
   klipper_box_config:
     file: /home/qidi/klipper/klippy/extras/box_config.py
     restart_service: klipper.service
