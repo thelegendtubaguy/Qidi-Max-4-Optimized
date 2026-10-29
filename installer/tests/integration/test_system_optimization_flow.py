@@ -170,6 +170,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertIn(b"t(TltgBoxMotion)", fluidd.read_bytes())
         self.assertIn(fluidd_patch.SERVICE_WORKER_OPERATION, state.system_ledger["restore_preimages"])
         self.assertIn(b'{"revision":"tltg-optimized-', service_worker.read_bytes())
+        self.assertIn(fluidd_patch.SERVICE_WORKER_TAKEOVER_PATCHED.encode(), service_worker.read_bytes())
         self.assertIn(KLIPPER_BOX_OPERATION, state.system_ledger["restore_preimages"])
         self.assertIn(b"config.access_tracking if module == 'heater_generic'", box_config.read_bytes())
         self.assertNotIn(b"\n", box_config.read_bytes().replace(b"\r\n", b""))

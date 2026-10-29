@@ -1,5 +1,8 @@
 # Changelog
 
+## 26.10.28.3
+- Fluidd now switches to the installed version by itself. Before, after an install or update, browsers kept showing the previous Fluidd, without new cards such as **QidiBox**, until you did a hard refresh, closed every Fluidd tab, or clicked **Reload** on Fluidd's update notice. A normal reload wasn't enough. Now, when you open or reload Fluidd after installing, it reloads itself once a moment later with the new version, and Fluidd tabs left open also reload once when the browser picks up the update. Unsaved changes in Fluidd's config editor are lost if that reload happens while you're editing. Printing isn't affected. Uninstall restores QIDI's original service worker, which goes back to the **Reload** notice.
+
 ## 26.10.28.2
 - The installer can now repair a printer whose Klipper is stopped with an error, such as `Section 'tltg_probe_test' is not a valid config section`. Before, it refused with `Klipper saved-variable runtime is not ready.`, because it saved settings through Klipper before installing any files, so the install that would fix Klipper could never run. When Klipper is stopped with an error, the installer now installs its files first, restarts Klipper, and then saves settings. If Klipper still doesn't start, the files stay installed and the installer tells you to fix the error shown in Fluidd and run it again.
 
