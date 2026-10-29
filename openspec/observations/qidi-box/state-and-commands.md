@@ -210,6 +210,13 @@ Firmware `.04` fake-manager `_decide_flow_id()` results:
 - **Runtime-confirmed (2026-10-28):** `box_adapter` and `task_queue_manager.operation_adapter` were still `None` when a package module's `klippy:ready` handler and a reactor callback it scheduled ran, and `MultiColorController is ready.` was logged after them. Later both held the same `BoxAdapterV1`, and `task_queue_manager` stayed the same object. During flow `4`, `task_queue_manager.current_task.queue` was `['BOX_EJECT']` both when the eject step and when the completion script sent G-code.
 - **Unresolved:** live eject flows `5` and `11` were not exercised.
 
+### `.07.01` filament IDs in Box flows
+
+- **Harness-recovered (2026-10-29, fake objects with a two-entry `filament-0.4.json`):** `BoxAdapterV1.flow_decision_func` reads the target slot's and the last-loaded slot's saved filament IDs through `get_save_vars_filament_id`, then compares them with `MaterialDatabaseJosn.get_max_temp_id`, which reads `nozzle_temperature` (`[min, max]`, default `[0, 240]`) from each ID's entry. `get_save_vars_filament_id` returns `QFA00` for a missing or non-string value and any string unchanged, including `'None'`, `''`, and `'7'`. `get_max_temp_id` raises `AttributeError` for a string ID missing from the database and `TypeError` for a non-string; `get_max_temp_by_single_id` falls back to `240` for an unknown string ID.
+- **Harness-recovered:** `LOAD_FILAMENT_CONTROL SLOT=16` with `filament_slot16 = 'None'` raised in `get_max_temp_id` for every harnessed toolhead-sensor and hub state. With `QFA00` substituted it selected flow `9` with filament at the toolhead and `last_load_slot` another slot, and flow `6` with the toolhead empty.
+- **Harness-recovered:** the controller's `fila_json` database exists from controller construction, and `ExternalAdapter` (`controller.extre`, also created then) and the `BoxAdapterV1` created at ready hold that same object as `material_db`.
+- **Runtime-confirmed (operator `klippy.log`, 2026-10-29, package `26.10.23.1`, one USB Box):** three `LOAD_FILAMENT_CONTROL SLOT=16` requests, with `filament_slot16 = 'None'` and `last_load_slot = 'slot16'` saved, each failed with `Internal error on command:"LOAD_FILAMENT_CONTROL"` from `MaterialDatabaseJosn.get_max_temp_id` (`AttributeError: 'NoneType' object has no attribute 'get'`) and shut Klipper down. The automatic restart that followed failed with `Can not update MCU 'mcu' config as it is shutdown`. The requests repeated one to four seconds apart after each shutdown; which client sent them was not recorded.
+
 ## Command risk boundary
 
 ### Runtime-confirmed query/idle-safe captures
