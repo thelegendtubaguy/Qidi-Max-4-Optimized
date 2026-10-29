@@ -1,5 +1,8 @@
 # Changelog
 
+## 26.10.28.4
+- Fixed the Box MCU link monitor never recording the Box's reset reason. It asked before Klipper had connected to the Box, so it logged `firmware has no reset_reason_get` for every MCU, and when it did ask, the Box's answer went to `klippy.log` instead of `tltg_box_link.log`. The monitor now asks once Klipper is connected and writes the answer as a `reset-reason mcu_boxN:` line. After a Box disconnect, the first such line when Klipper reconnects shows why the Box restarted. Turning the monitor on while Klipper is running now records the reset reason right away. `mcu` and `THR` still report `firmware has no reset_reason_get`, because their firmware doesn't have the command.
+
 ## 26.10.28.3
 - Fluidd now switches to the installed version by itself. Before, after an install or update, browsers kept showing the previous Fluidd, without new cards such as **QidiBox**, until you did a hard refresh, closed every Fluidd tab, or clicked **Reload** on Fluidd's update notice. A normal reload wasn't enough. Now, when you open or reload Fluidd after installing, it reloads itself once a moment later with the new version, and Fluidd tabs left open also reload once when the browser picks up the update. Unsaved changes in Fluidd's config editor are lost if that reload happens while you're editing. Printing isn't affected. Uninstall restores QIDI's original service worker, which goes back to the **Reload** notice.
 

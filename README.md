@@ -147,6 +147,8 @@ SAVE_VARIABLE VARIABLE=tltg_box_link_monitor VALUE=1
 
 While it is enabled, it writes `printer_data/logs/tltg_box_link.log`, separate from `klippy.log` so it survives log rotation. It records Box MCU serial counters and any change to them, box heater and print context, the reset reason each Box MCU reports at connect, and the first `Got EOF when reading from device`, `Timeout with MCU`, or `shutdown:` line that appears in `klippy.log`. Kernel USB lines are captured at that point too.
 
+After a disconnect, the first `reset-reason mcu_boxN` line written when Klipper reconnects records why that Box restarted, such as power loss or its watchdog. Turning the monitor on while Klipper is running records the reset reason right away.
+
 Set the variable back to `0` to stop recording; it takes effect without a restart. The log is capped at 2 MB and rotates once to `tltg_box_link.log.1`.
 
 When reporting a Box MCU disconnect, include this file alongside the end of `klippy.log`.
