@@ -113,6 +113,7 @@ install:
       - "box_link_monitor.cfg"
       - "box_feed_motion.cfg"
       - "box_eject.cfg"
+      - "box_filament_guard.cfg"
 
   ensure_lines:
     - id: include_optimized_macros
@@ -130,6 +131,9 @@ install:
     - id: box_eject
       source: "klipper/tltg/box_eject.py"
       destination: "klippy/extras/tltg_box_eject.py"
+    - id: box_filament_guard
+      source: "klipper/tltg/box_filament_guard.py"
+      destination: "klippy/extras/tltg_box_filament_guard.py"
     - id: probe_test
       source: "klipper/tltg/probe_test.py"
       destination: "klippy/extras/tltg_probe_test.py"

@@ -416,3 +416,28 @@ Optimized configuration SHALL keep the toolhead still during a QIDI Box eject th
 #### Scenario: Other flows and unrecognized controllers are unchanged
 - **WHEN** a Box load, unload, or other vendor flow runs, or QIDI's Box controller lacks the traced flow structure
 - **THEN** its G-code runs unchanged
+
+### Requirement: Unknown QIDI Box filament IDs do not shut Klipper down
+Optimized configuration SHALL let a QIDI Box load, unload, or swap proceed when a saved filament ID is missing from the vendor filament database, using QIDI PLA Basic (`QFA00`) temperatures for that ID as the vendor does for saved IDs that are not strings, and SHALL refuse an external-spool filament update whose filament and vendor the database does not know, as the vendor does for a Box slot.
+
+#### Scenario: A saved filament ID the database doesn't know
+- **WHEN** a Box operation compares the temperatures of a saved filament ID that is missing from the vendor filament database, such as `filament_slot16 = 'None'`
+- **THEN** the operation proceeds with QIDI PLA Basic temperatures for that ID instead of shutting Klipper down
+- **AND** the console names the ID and says to set the slot's filament
+
+#### Scenario: Known filament IDs are unchanged
+- **WHEN** both compared filament IDs are in the vendor filament database
+- **THEN** the vendor temperature comparison runs unchanged
+
+#### Scenario: An unknown external-spool filament is refused
+- **WHEN** the external spool's filament is set to a filament and vendor missing from the vendor filament database
+- **THEN** neither its filament nor its color is saved
+- **AND** the console says the external spool filament was not changed and names the filament
+
+#### Scenario: Known external-spool filaments and Box slots are unchanged
+- **WHEN** the external spool's filament is set to a known filament, or a Box slot's filament is set
+- **THEN** the vendor update runs unchanged
+
+#### Scenario: Unrecognized controllers are unchanged
+- **WHEN** QIDI's Box controller lacks the traced filament database or external spool adapter
+- **THEN** the corresponding vendor behavior is unchanged

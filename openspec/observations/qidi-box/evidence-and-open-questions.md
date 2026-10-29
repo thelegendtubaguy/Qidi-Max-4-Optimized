@@ -21,6 +21,7 @@ Box MCU firmware identity, command surface, watchdog, and shutdown reasons are r
 | 2026-10-24 instrumented `box_config.py` position trace of a vendor slot 2 load and unload | Slot and extruder motion segments, motion-queue attachment, embedded G-code timing | 50 ms position polling; speeds are approximate and one slot was captured. |
 | 2026-10-26 cold feed runs on slot 2 with a development feeder test, plus klippy.log | Park-to-toolhead-switch distance, hub and limit-input transitions, slot motion-queue ownership after auto-load | Repository-driven motion, not vendor flows; two runs on one slot, 2 mm resolution. |
 | 2026-10-28 `.07.01` `multi_color_controller` import and fake-object eject harness, plus live empty-toolhead ejects of slots 2 and 4 | Flow map, eject flow selection, eject and completion scripts, adapter creation timing | Only flow `4` ran live; the slot 4 eject had a package module dropping the park. |
+| 2026-10-29 operator `klippy.log` and `saved_variables.cfg` of repeated external-spool load shutdowns, plus a `.07.01` `multi_color_controller` harness with a two-entry filament database | Load flow filament-ID comparison, unknown-ID failures, external-spool filament updates, shared material database | The writer of the operator's `'None'` was not captured; harness filament entries are synthetic. |
 
 Captured extension modules were aarch64 Cython shared objects with debug-info markers but no useful Cython line/variable DWARF. Static function address/size inventories are intentionally not retained because readable harness/runtime behavior supersedes them.
 
@@ -76,6 +77,7 @@ A command returning `ok` proves acceptance in that captured state; it does not p
 - Successful `multi_color_controller.rfid.results` schema.
 - Reader order, four-slot-to-two-chip-select multiplexing, and slot-to-reader mapping.
 - Raw tag conversion into filament/color/vendor IDs.
+- Which client wrote the operator's `filament_slot16 = 'None'`, and whether qidiclient sends `UPDATE_FILAMENT_INFORMATION SLOT=16` with a filament name `get_fila_id` does not match or saves `filament_slotN` itself.
 - Whether `BOX_PRINT_START` initiates RFID reads directly.
 - Whether failed/no-result reads preserve prior metadata in every state; they did so in the observed loaded-slot capture.
 

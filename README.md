@@ -198,6 +198,12 @@ If you saved one of the settings with an invalid value using `SAVE_VARIABLE`, th
 
 QIDI's eject parks the toolhead over the waste chute before and after the Box pulls the filament back, so an eject homes X and Y on a printer that isn't homed. When the eject only needs the Box to pull filament back, the toolhead now stays where it is. That's when nothing is fed past the Box hub, or when another slot's filament is the one loaded. An eject that first has to heat and unload filament from the path to the toolhead still parks the way QIDI does. Either way the eject turns the hotend off and disables the extruder motor afterwards.
 
+### QIDI Box filaments missing from QIDI's list
+
+If a Box slot or the external spool has a saved filament that isn't in QIDI's filament list, such as `None`, QIDI's load fails with `Internal error on command:"LOAD_FILAMENT_CONTROL"` and shuts Klipper down. The load now uses QIDI PLA Basic temperatures for that filament, the way QIDI already does for some older saved values, and the console names the saved filament. Choose the slot's filament again to clear it.
+
+Setting the external spool's filament to one that isn't in QIDI's list is refused with `External spool filament not changed`, the way QIDI refuses it for a Box slot. Before, QIDI saved `None` as the external spool's filament.
+
 ### Helpful Klipper tools
 
 After install and Klipper restart, the optimized macro set includes:
