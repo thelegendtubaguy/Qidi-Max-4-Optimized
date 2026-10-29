@@ -37,7 +37,7 @@ The RS-485 stack is also loaded on a two-USB-Box machine: `box485_multicolor` po
 
 - The MCU did not report a shutdown. A firmware-initiated stop emits `MCU '<name>' shutdown: <reason>` with one of the 46 compiled reasons; no such line exists. The link simply stopped.
 - `Got EOF when reading from device` comes from `klippy/chelper/serialqueue.c`; it is raised when `read()` returns 0 on the MCU's serial descriptor, and it is followed by a poll-reactor exit. For a CDC-ACM device that means the device end-point went away, not that the MCU sent an error.
-- The link had already degraded before the timeout: `bytes_retransmit` went from 9 to 203, `receive_seq` fell six messages behind `send_seq`, and `rto` backed off from 25 ms to 400 ms. `upcoming_bytes=1487` shows unacknowledged data still queued.
+- By the timeout, the link counters had degraded: `bytes_retransmit` went from 9 to 203, `receive_seq` fell six messages behind `send_seq`, and `rto` backed off from 25 ms to 400 ms. `upcoming_bytes=1487` shows unacknowledged data still queued. The only earlier sample is the baseline `Stats` line 16 s before the EOF, so this capture cannot show whether the degradation started before the EOF or only after it. The 2026-10-28 capture below, sampled every second, shows it starting at the disconnect.
 - The heater load was at maximum at the time: `pwm=1.000` on `heater_box2` with both box NTCs above 75 °C.
 
 ### What this does not establish
@@ -45,6 +45,37 @@ The RS-485 stack is also loaded on a two-USB-Box machine: `box485_multicolor` po
 `mcu_box2` is the MCU the host *names* in the timeout, not necessarily the device that raised the EOF. The EOF line carries no MCU name, and once the reactor stops reading, any MCU with an outstanding request can time out. Attribution to `mcu_box2` rests on that MCU's counters being the only degraded set in the same window, which is consistent but not proven.
 
 The physical cause is also unresolved. A USB drop, a brown-out on the box's own supply, and a firmware hard fault that ends in an IWDG reset all look identical from the host, because a watchdog reset removes the CDC device from the bus.
+
+## Monitor capture with one USB Box
+
+**Runtime-confirmed (operator report, GitHub issue 159).** Firmware `01.01.07.01`, one USB Box on firmware `02.03.01.21` at USB path `2-1.4.2`, with the optional link monitor sampling once per second. A print start lost `mcu_box1` on 2026-10-28, about one minute into the adaptive mesh. The Box had cooled after the previous print, so `heater_box1` had been at `power=1.0` toward a 65 °C target for about ten minutes.
+
+| Time | Source | Event |
+|---|---|---|
+| 05:55:32 | monitor | `heater_box1.target=65.0 temperature=50.88 power=1.0`, `heater_temp_a_box1=82.74`, `heater_temp_b_box1=96.91` |
+| 05:59:32 | monitor | `mcu_box1` at baseline: `bytes_retransmit=9 rto=0.025 send_seq == receive_seq upcoming_bytes=0` |
+| 05:59:35 | monitor | sequence numbers advance normally, `send_seq == receive_seq` |
+| ≈05:59:35.5 | kernel | `usb 2-1.4.2: USB disconnect` |
+| ≈05:59:36.0 | kernel | `usb 2-1.4.2: new full-speed USB device` (0.46 s after the disconnect) |
+| 05:59:36 | monitor | `bytes_retransmit=44 rto=0.05`; `Got EOF when reading from device` |
+| 05:59:37 | monitor | `bytes_retransmit=225 rto=0.2 upcoming_bytes=73` |
+| ≈05:59:38.8 | kernel | second `USB disconnect` on `2-1.4.2` (3.3 s after the first) |
+| ≈05:59:39.0 | kernel | second `new full-speed USB device` |
+| 06:00:15 | klippy | `Timeout with MCU 'mcu_box1'`, `Lost communication with MCU 'mcu_box1'` |
+| 06:00:16 | monitor | `heater_box1 temperature=58.13 power=1.0`, `heater_temp_a_box1=89.17`, `heater_temp_b_box1=102.11` |
+
+The kernel times are dmesg monotonic seconds, aligned to wall-clock time through the timeout's `eventtime`.
+
+### What this establishes
+
+- The link went from baseline counters to lost within about one second. Retransmits started in the same second as the kernel disconnect, not before it.
+- The Box disconnected twice. The second disconnect came while Klipper had stopped reading the Box (after the EOF and before any restart), so the host's Klipper did not cause it.
+- `mcu` and `THR` stayed at baseline throughout.
+- The same operator reports the same double re-enumeration in earlier drops on 2026-10-25. Across five drops, the Box heater was at full power while ramping from about 38–43 °C in three, all heaters were switching off at print end in one, and the Box was holding 65 °C during a print start in one. A rerun of the same plate, started with the Box already holding 65 °C (about 36 % heater power), completed without a drop, including print end.
+
+### What this does not establish
+
+Whether the Box MCU reset, and why. A supply sag or noise event on the Box while its heater switches, and a firmware stall ending in an IWDG reset, both fit the timeline. The heater correlation comes from five events on one machine and is not a controlled test.
 
 ## Regression baseline
 
@@ -65,7 +96,8 @@ Any departure from that baseline on a box MCU is worth recording.
 
 - Kernel USB evidence is effectively unavailable after the fact. `/var/log/kern.log` is empty, `syslog` contains no `usb` lines at all, and the `dmesg` ring held only 390 lines, all from the most recent boot. The 2026-10-22 window was already gone.
 - `journalctl -k` needs root and the `qidi` user cannot read the journal.
-- `reset_reason_get` is implemented on the box MCU and the running firmware is `02.03.01.21` with the full 140-command dictionary, but the command is never issued by any vendor module, so the box's reset reason is unrecorded. `reset_reason` appears in no log, no vendor shared object, and no klipper Python file.
+- `reset_reason_get` is implemented on the box MCU and the running firmware is `02.03.01.21` with the full 140-command dictionary, but the command is never issued by any vendor module, so the box's reset reason is unrecorded by stock software. `reset_reason` appears in no log, no vendor shared object, and no klipper Python file. A value read from a Box has not yet been captured.
+- After a Box link loss, `FIRMWARE_RESTART` does not reset that Box. **Static-recovered** from QIDI's `klippy/mcu.py`: `_restart_via_command` skips the `reset` command when the MCU's clock sync is no longer active and logs `Unable to issue reset command on MCU '<name>'`. The first reset reason read after reconnecting therefore reflects the Box's own last reset, not a host-issued one. Whether the firmware clears the STM32 reset flags after reading them is **Unresolved**.
 - The `!!warnning:%s` MCU output has no matching handler in the retrieved vendor shared objects or `klippy` Python tree, so MCU-side I2C warnings are not known to be surfaced anywhere.
 - `box_stepper <slot>` status exposes only `runout_button` and `rfid_state`, so feeder motion parameters are not readable from the running printer.
 

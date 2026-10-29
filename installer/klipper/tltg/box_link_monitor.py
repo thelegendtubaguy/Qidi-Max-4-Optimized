@@ -107,6 +107,7 @@ class BoxLinkMonitor:
         self._reset_oid = {}
         self._reset_labels = {}
         self._reset_requested = set()
+        self._connected = False
         # MCU objects exist before any other section loads, so object ids must
         # be reserved here to be included in allocate_oids.
         for name, mcu in self._discover_mcus().items():
@@ -231,7 +232,7 @@ class BoxLinkMonitor:
         oid = self._reset_oid[name]
         try:
             mcu.register_response(self._handle_reset_reason,
-                                  "reset_reason_return oid=%c reason=%s", oid)
+                                  "reset_reason_return", oid)
             command.send([oid])
         except Exception as exc:
             self._write("reset-reason %s: query failed: %s"
@@ -342,6 +343,9 @@ class BoxLinkMonitor:
 
     # ---------------------------------------------------------------- events
     def _handle_connect(self):
+        # MCU command dictionaries are loaded only once identification is
+        # done, so the reset reason cannot be looked up before this event.
+        self._connected = True
         if self._enabled:
             self._write("connected %s" % self._context())
 
@@ -384,8 +388,9 @@ class BoxLinkMonitor:
                     self._close()
             if not enabled:
                 return eventtime + self.sample_interval
-            for name, mcu in self._mcu_objects().items():
-                self._request_reset_reason(name, mcu)
+            if self._connected:
+                for name, mcu in self._mcu_objects().items():
+                    self._request_reset_reason(name, mcu)
             self._snapshot()
             self._read_klippy_log()
             if (self.heartbeat_interval
