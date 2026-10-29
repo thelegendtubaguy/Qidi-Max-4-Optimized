@@ -106,8 +106,10 @@ On `01.01.07.01`, the touchscreen's Vendor and Filament lists come from QIDI's f
 
 - `filament-0.4.json` is the list for the 0.4 mm nozzle; the other files cover the other nozzle sizes. Right-click a file and choose Edit.
 - To add a filament, copy an entry of the same material and give it a new name, a new unused `filament_id`, and the vendor to list it under. A new vendor name adds that vendor to the pickers.
+- Keep the material letter of the copied entry's `filament_id`: the letter after `QF` is `A` for PLA, `B` for ABS and ASA, `C` for PC, `G` for PETG, `N` for PA, `U` for TPU, and so on. For example, a new PLA could use `QFA93` if no other entry has it.
 - The file must stay valid JSON; a missing comma or bracket can break the touchscreen's filament list. If Fluidd can't read any filaments from the file, the QIDI Box card says so instead of offering **Edit filament**.
-- Restart the printer after saving so the touchscreen, Box, and Fluidd pick up the change.
+- After saving, turn the printer off and on again, or choose **Reboot** in Fluidd's power menu, so the touchscreen picks up the change. Restarting Klipper from Fluidd updates the Box and Fluidd, but the touchscreen keeps showing its old list until the printer restarts.
+- If you change the `filament_id` of a filament a Box slot is set to, choose that filament for the slot again.
 
 Firmware updates replace these files, so keep a copy of any entries you add. Files in this folder are QIDI's own files, not copies: they are not part of the installer's configuration backups, and deleting one in Fluidd deletes it from the printer. If `qidi_filament_config` already exists, the installer leaves it alone. Uninstall removes the link but never your edits.
 
