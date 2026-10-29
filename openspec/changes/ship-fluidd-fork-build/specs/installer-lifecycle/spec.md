@@ -8,6 +8,7 @@ Normal install and update SHALL serve the package's pinned build of the project'
 - **THEN** the build is extracted beside QIDI's bundle, readable by nginx, verified against the pinned checksum, and marked as package-owned
 - **AND** only then is the nginx site switched to serve it, in the same guarded change that adds the printer-screen route
 - **AND** QIDI's bundled Fluidd files are not modified
+- **AND** a browser tab showing QIDI's Fluidd shows the build after one normal reload, including when QIDI's service worker had cached it
 
 #### Scenario: Serving the build retires the bundle patches
 - **WHEN** nginx serves the verified build
@@ -234,6 +235,7 @@ The installer SHALL apply host OS optimizations only under explicit persisted po
 - **AND** targets already at their retained preimages are left unchanged
 - **AND** user-modified files, symlinks, assets, or service states are preserved and reported
 - **AND** declined restoration or explicit keep policy leaves optional OS optimizations unchanged
+- **AND** before its idle check and pending Klipper restart, uninstall, like install, waits a bounded time for Moonraker to report printer state again, since restoring Moonraker source restarts it
 
 #### Scenario: Reconciliation retains bounded recovery state
 - **WHEN** repeated checks find host optimizations already current

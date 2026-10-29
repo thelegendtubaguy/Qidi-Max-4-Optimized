@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import unittest
+import urllib.error
 from pathlib import Path
 from subprocess import CompletedProcess
 from unittest import mock
@@ -290,17 +291,37 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         write_installed_state(printer_root / manifest.state_file, _replace_system_ledger(state, reconciled))
 
         # Declining the system-restoration prompt keeps only the optional OS optimizations; everything install makes
-        # regardless of policy is always undone.
-        run_uninstall(
-            paths,
-            manifest,
-            compatibility,
-            PlainReporter(io.StringIO()),
-            input_stream=io.StringIO("yes\nno\nno\n"),
-            urlopen=moonraker_urlopen(),
-            environ=env,
-            run=host_run,
-        )
+        # regardless of policy is always undone. Moonraker stays unreachable for a while after restoration restarts
+        # it, and the pending Klipper restart still runs once it answers again.
+        moonraker_down = 0
+
+        def uninstall_run(command, **kwargs):
+            nonlocal moonraker_down
+            if list(command)[-3:] == ["systemctl", "restart", "moonraker.service"]:
+                moonraker_down = 3
+            return host_run(command, **kwargs)
+
+        base_uninstall_urlopen = moonraker_urlopen()
+
+        def uninstall_urlopen(request, *args, **kwargs):
+            nonlocal moonraker_down
+            if moonraker_down:
+                moonraker_down -= 1
+                raise urllib.error.URLError("Moonraker is restarting")
+            return base_uninstall_urlopen(request, *args, **kwargs)
+
+        with mock.patch("installer.runtime.safety.time.sleep"):
+            run_uninstall(
+                paths,
+                manifest,
+                compatibility,
+                PlainReporter(io.StringIO()),
+                input_stream=io.StringIO("yes\nno\nno\n"),
+                urlopen=uninstall_urlopen,
+                environ=env,
+                run=uninstall_run,
+            )
+        self.assertFalse(paths.restart_marker_path.exists())
         self.assertFalse((printer_root / manifest.state_file).exists())
         self.assertNotEqual((system_root / "etc/apt/sources.list").read_text(encoding="utf-8"), "old apt\n")
         self.assertTrue(dropin.exists())
