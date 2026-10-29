@@ -19,6 +19,10 @@ Normal install and update SHALL serve the package's pinned build of the project'
 - **THEN** the new build is staged completely before a single rename replaces the installed one, so nginx never serves a partial build
 - **AND** a failure later in the same host transaction, or recovery of an interrupted one, puts the replaced build back; a completed transaction discards it
 
+#### Scenario: Open tabs switch to an updated build
+- **WHEN** update replaces the served build while a tab running the earlier package build stays open
+- **THEN** the tab reloads into the installed build within minutes, or when it is next shown, without a hard refresh, whether or not the browser runs Fluidd's service worker
+
 #### Scenario: QIDI's Fluidd stays in use when the build cannot be served
 - **WHEN** the package has no build, the build directory exists without the package marker, or the nginx site is unrecognized or operator-modified
 - **THEN** the existing directory and nginx site are left unchanged and the outcome is recorded without failing other host operations
@@ -58,6 +62,7 @@ Fluidd SHALL display and edit QIDI Box slots the way QIDI firmware `01.01.07.01`
 #### Scenario: Browsers load the patched bundle
 - **WHEN** a browser that previously cached Fluidd through its service worker opens Fluidd after the served Fluidd changes
 - **THEN** the service worker updates and fetches the current Fluidd instead of serving the cached one
+- **AND** the updated service worker takes over without waiting for Fluidd's update prompt and reloads open Fluidd tabs, so they run the current Fluidd without a hard refresh or closing every tab
 - **AND** while QIDI's bundle is served, the recognized service worker's bundle precache revision is set from the bundle patch, with the same recognition, preservation, and restoration as the bundle
 
 #### Scenario: Unrecognized Fluidd bundles are preserved
