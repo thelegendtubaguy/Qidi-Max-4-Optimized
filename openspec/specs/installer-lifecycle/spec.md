@@ -156,10 +156,12 @@ The installer SHALL apply host OS optimizations only under explicit persisted po
 
 #### Scenario: Uninstall follows the operator's host-state decision
 - **WHEN** uninstall finds host restore preimages
-- **THEN** accepted restoration reverts only unchanged installer-owned targets
+- **THEN** it reverts only unchanged installer-owned targets: always for host changes that normal install makes independently of optional OS optimization policy, and for optional OS optimizations only when the operator accepts restoration
+- **AND** the operator is asked only when optional OS optimizations have restore preimages
 - **AND** targets already at their retained preimages are left unchanged
 - **AND** user-modified files, symlinks, assets, or service states are preserved and reported
-- **AND** declined restoration or explicit keep policy leaves current host state unchanged
+- **AND** declined restoration or explicit keep policy leaves optional OS optimizations unchanged
+- **AND** before its idle check and pending Klipper restart, uninstall, like install, waits a bounded time for Moonraker to report printer state again, since restoring Moonraker source restarts it
 
 #### Scenario: Reconciliation retains bounded recovery state
 - **WHEN** repeated checks find host optimizations already current
@@ -181,6 +183,11 @@ Normal install and update SHALL apply recognized Moonraker metadata optimization
 - **WHEN** the optimized metadata extractor reads a `.gcode.3mf` archive
 - **THEN** G-code, metadata, and thumbnail selection use its valid selected plate index
 - **AND** missing or invalid plate metadata falls back to plate 1
+
+#### Scenario: 3MF prints start on the sliced plate
+- **WHEN** a print of a `.gcode.3mf` archive is started without a plate number, such as from Fluidd, a history reprint, or the job queue
+- **THEN** the plate selected in the archive's slice information is printed, the same plate its metadata describes
+- **AND** an explicit plate number from the request is used unchanged, and non-3MF files and archives without valid plate information use plate 1
 
 #### Scenario: Unchanged archives reuse persistent metadata
 - **WHEN** startup observation or upload handling encounters a 3MF with cached metadata matching its size, modification time, extractor stamp, and object-processing policy
@@ -207,14 +214,15 @@ Normal install and update SHALL apply recognized Moonraker metadata optimization
 - **THEN** the installer validates the reviewed metadata class and metascan handler before backup, preserves unrelated source and line endings, and replaces the file atomically
 - **AND** source changes require a successful Moonraker restart; restart failure compensates the file change or retains a recovery blocker
 - **AND** repeated reconciliation retains the first restore preimage without accumulating backups
-- **AND** accepted uninstall restoration reverts only the unchanged installed file; concurrent changes and operator drift are preserved
+- **AND** uninstall restoration reverts only the unchanged installed file; concurrent changes and operator drift are preserved
+- **AND** the print-start plate selection is deployed the same way to Moonraker's Klippy API source, which is left unchanged when unrecognized
 
 ### Requirement: Recoverable Fluidd QIDI Box filament display
-Normal install and update SHALL patch the recognized QIDI Fluidd bundle so its QIDI Box card displays and edits slots the way QIDI firmware `01.01.07.01` stores and resolves them, independently of optional OS optimization policy, retaining the original bundle and preserving unrecognized or operator-modified bundles.
+Fluidd SHALL display and edit QIDI Box slots the way QIDI firmware `01.01.07.01` stores and resolves them, independently of optional OS optimization policy. While QIDI's bundled Fluidd is served, normal install and update SHALL provide this by patching the recognized bundle, retaining the original bundle and preserving unrecognized or operator-modified bundles.
 
 #### Scenario: Box slots show the firmware's resolved filament
 - **WHEN** Fluidd is connected to firmware that exposes `box485` and `multi_color_controller` slot information
-- **THEN** each Box slot and the rack show the filament name, vendor, and color the firmware resolved for that slot, including for saved IDs such as `QFA90`, RGB colors such as `["228332"]`, and stale numeric IDs
+- **THEN** each Box slot shows the filament name, vendor, and color the firmware resolved for that slot, including for saved IDs such as `QFA90`, RGB colors such as `["228332"]`, and stale numeric IDs
 - **AND** an unknown filament ID displays as its ID
 
 #### Scenario: Box pickers save firmware filament IDs and RGB colors
@@ -225,32 +233,32 @@ Normal install and update SHALL patch the recognized QIDI Fluidd bundle so its Q
 
 #### Scenario: Box buttons use the firmware's Box commands
 - **WHEN** Fluidd is connected to firmware that exposes `multi_color_controller`
-- **THEN** the Box card's Eject, Load, Unload, and RFID controls send `EJECT_FILAMENT_CONTROL`, `LOAD_FILAMENT_CONTROL`, `UNLOAD_FILAMENT_CONTROL`, and `READ_RFID` with the selected slot number
+- **THEN** the Eject, Load, Unload, and RFID controls send `EJECT_FILAMENT_CONTROL`, `LOAD_FILAMENT_CONTROL`, `UNLOAD_FILAMENT_CONTROL`, and `READ_RFID` with the selected slot number
 - **AND** Load and Unload availability follows the Box path sensor from `box_extras` or, when `box_extras` omits it, from `multi_color_controller`
 
 #### Scenario: Earlier firmware keeps stock pickers
 - **WHEN** Fluidd is connected to firmware without `box485`
-- **THEN** slots display through `officiall_filas_list.cfg` and the stock pickers save numeric IDs as before
+- **THEN** slots display through `officiall_filas_list.cfg` and the pickers save numeric IDs as QIDI's Fluidd did
 - **AND** without `multi_color_controller`, the Box controls send the stock commands
 
 #### Scenario: Browsers load the patched bundle
-- **WHEN** a browser that previously cached Fluidd through its service worker opens Fluidd after the bundle patch changes
-- **THEN** the service worker updates and fetches the patched bundle instead of serving the cached one
-- **AND** the updated service worker takes over without waiting for Fluidd's update prompt and reloads open Fluidd tabs, so they run the patched bundle without a hard refresh or closing every tab
-- **AND** the recognized service worker's bundle precache revision is set from the bundle patch, with the same recognition, preservation, and restoration as the bundle
+- **WHEN** a browser that previously cached Fluidd through its service worker opens Fluidd after the served Fluidd changes
+- **THEN** the service worker updates and fetches the current Fluidd instead of serving the cached one
+- **AND** the updated service worker takes over without waiting for Fluidd's update prompt and reloads open Fluidd tabs, so they run the current Fluidd without a hard refresh or closing every tab
+- **AND** while QIDI's bundle is served, the recognized service worker's bundle precache revision is set from the bundle patch, with the same recognition, preservation, and restoration as the bundle
 
 #### Scenario: Unrecognized Fluidd bundles are preserved
-- **WHEN** the configured bundle is missing or does not match the reviewed stock source or an earlier package patch of it
+- **WHEN** QIDI's bundle is served and the configured bundle is missing or does not match the reviewed stock source or an earlier package patch of it
 - **THEN** the bundle is left unchanged and the outcome is recorded without failing other host patches
 
 #### Scenario: Fluidd deployment remains reversible
-- **WHEN** the recognized bundle requires the patch
+- **WHEN** QIDI's bundle is served and the recognized bundle requires the patch
 - **THEN** the installer backs up the original bytes and replaces the file atomically without restarting services
 - **AND** a bundle carrying an earlier package patch is updated in place while the first restore preimage is retained
-- **AND** accepted uninstall restoration reverts only the unchanged installed bundle; concurrent changes and operator drift are preserved
+- **AND** uninstall restoration reverts only the unchanged installed bundle; concurrent changes and operator drift are preserved
 
 ### Requirement: QIDI Box heater targets from Fluidd
-Normal install and update SHALL patch recognized QIDI Klipper `box_config.py` and the recognized QIDI Fluidd bundle so Fluidd's temperature panel sets QIDI Box heater targets within the Box heater and loaded-filament limits, independently of optional OS optimization policy, retaining original files and preserving unrecognized or operator-modified files.
+Normal install and update SHALL patch recognized QIDI Klipper `box_config.py`, and Fluidd SHALL let its temperature panel set QIDI Box heater targets within the Box heater and loaded-filament limits, independently of optional OS optimization policy. While QIDI's bundled Fluidd is served, the recognized bundle is patched to provide the panel behavior. Original files are retained and unrecognized or operator-modified files are preserved.
 
 #### Scenario: Box heater limits reach Fluidd
 - **WHEN** Klipper loads the patched `box_config.py`
@@ -271,7 +279,7 @@ Normal install and update SHALL patch recognized QIDI Klipper `box_config.py` an
 #### Scenario: Box heater deployment remains reversible
 - **WHEN** a recognized `box_config.py` requires the patch
 - **THEN** the installer backs up the original bytes, preserves line endings, replaces the file atomically, and restarts the Klipper service
-- **AND** accepted uninstall restoration reverts only the unchanged installed file and restarts the Klipper service; concurrent changes and operator drift are preserved
+- **AND** uninstall restoration reverts only the unchanged installed file and restarts the Klipper service; concurrent changes and operator drift are preserved
 - **AND** a missing or unrecognized `box_config.py` is left unchanged and the outcome is recorded without failing other host patches
 
 ### Requirement: Klipper shutdown reasons remain visible
@@ -289,11 +297,11 @@ Normal install and update SHALL patch recognized QIDI Klipper `print_stats_manag
 #### Scenario: Shutdown-reason deployment remains reversible
 - **WHEN** a recognized `print_stats_manager.py` requires the patch
 - **THEN** the installer backs up the original bytes, preserves line endings, replaces the file atomically, and restarts the Klipper service
-- **AND** accepted uninstall restoration reverts only the unchanged installed file and restarts the Klipper service; concurrent changes and operator drift are preserved
+- **AND** uninstall restoration reverts only the unchanged installed file and restarts the Klipper service; concurrent changes and operator drift are preserved
 - **AND** a missing or unrecognized `print_stats_manager.py` is left unchanged and the outcome is recorded without failing other host patches
 
 ### Requirement: Fluidd Box print slots can be shared
-Normal install and update SHALL patch the recognized QIDI Fluidd bundle so its Box print dialog lets several file filaments use the same Box slot, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the QIDI Box filament display patch.
+Fluidd's Box print dialog SHALL let several file filaments use the same Box slot, independently of optional OS optimization policy. While QIDI's bundled Fluidd is served, normal install and update SHALL provide this by patching the recognized bundle, with the same recognition, preservation, and restoration as the QIDI Box filament display patch.
 
 #### Scenario: A slot is chosen for a second filament
 - **WHEN** an operator starts a Box print from Fluidd and chooses a slot already chosen for another filament of the file
@@ -301,10 +309,14 @@ Normal install and update SHALL patch the recognized QIDI Fluidd bundle so its B
 - **AND** each filament's tool is mapped to its chosen slot when the print starts
 
 ### Requirement: Fluidd full display by default
-Normal install and update SHALL patch the recognized QIDI Fluidd bundle so QIDI's "Enable Full Display" setting defaults on, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the QIDI Box filament display patch.
+Fluidd SHALL show the bed mesh card on the Tune page and temperature sensors without a target unless the operator turned them off in QIDI's Fluidd, independently of optional OS optimization policy. While QIDI's bundled Fluidd is served, normal install and update SHALL patch the recognized bundle so QIDI's "Enable Full Display" setting defaults on, with the same recognition, preservation, and restoration as the QIDI Box filament display patch.
+
+#### Scenario: The package build shows everything
+- **WHEN** Fluidd is served from the package build
+- **THEN** the bed mesh card is on the Tune page and sensors without a target are in the temperature panel and chart, with no setting to hide them
 
 #### Scenario: Full display is on unless the operator turned it off
-- **WHEN** Fluidd loads settings that do not include a saved "Enable Full Display" value
+- **WHEN** QIDI's bundled Fluidd loads settings that do not include a saved "Enable Full Display" value
 - **THEN** full display is enabled, showing the bed mesh card on the Tune page and target-less temperature sensors in the temperature panel and chart
 - **AND** a value saved from Fluidd's settings, including off, still applies
 
@@ -325,7 +337,7 @@ Normal install and update SHALL expose QIDI's touchscreen filament database dire
 - **THEN** the link is neither followed nor archived, and a restore keeps an existing link
 
 #### Scenario: Restoration removes only the installer's link
-- **WHEN** accepted uninstall restoration or transaction recovery runs
+- **WHEN** uninstall or transaction recovery runs
 - **THEN** the link is removed only while it still points at the database directory; an operator-replaced entry is preserved
 
 ### Requirement: Safe unattended updates
@@ -418,11 +430,11 @@ Install and update SHALL place each bundled package-owned Klipper extra module, 
 - **AND** a modified module is left in place
 
 ### Requirement: QIDI Box motion settings in Fluidd
-Normal install and update SHALL extend the recognized QIDI Fluidd bundle's Box Config view with a load and unload motion section that shows the feed-motion status and edits settings only through `TLTG_BOX_MOTION`, with the same recognition, preservation, service-worker revision, and restoration as the other Fluidd Box patches.
+Fluidd's Box settings SHALL include a load and unload motion section that shows the feed-motion status and edits settings only through `TLTG_BOX_MOTION`. While QIDI's bundled Fluidd is served, normal install and update SHALL provide it by extending the recognized bundle's Box Config view, with the same recognition, preservation, service-worker revision, and restoration as the other Fluidd Box patches.
 
 #### Scenario: Motion settings are shown per slot
 - **WHEN** the feed-motion printer object is active
-- **THEN** the Box Config view shows the global settings with vendor values for unset fields, and each slot's effective load and unload profile, its overrides, and the reason when a profile falls back to vendor motion
+- **THEN** the Box settings show the global settings with vendor values for unset fields, and each slot's effective load and unload profile, its overrides, and the reason when a profile falls back to vendor motion
 
 #### Scenario: Motion settings are edited through the command
 - **WHEN** an operator applies global or slot settings, or resets them from the section
@@ -434,11 +446,11 @@ Normal install and update SHALL extend the recognized QIDI Fluidd bundle's Box C
 - **THEN** the section offers no editing controls, and an absent or inactive object shows its status instead of a profile
 
 ### Requirement: QidiBox card in Fluidd
-Normal install and update SHALL add a QidiBox dashboard card beside the stock Box card in the recognized QIDI Fluidd bundle, with the same recognition, preservation, service-worker revision, and restoration as the other Fluidd Box patches.
+Fluidd SHALL provide a dashboard card that shows every QIDI Box slot at once: the package build's QIDI Box card or, while QIDI's bundled Fluidd is served, a QidiBox card that normal install and update add beside the stock Box card in the recognized bundle, with the same recognition, preservation, service-worker revision, and restoration as the other Fluidd Box patches.
 
 #### Scenario: Every slot is shown at once
 - **WHEN** Fluidd is connected to a printer with a configured Box
-- **THEN** the QidiBox card shows every Box's slots and the external spool together, each with the filament and color the Box card resolves for it, whether filament is at the slot inlet, the tools mapped to it, and which slot feeds the extruder
+- **THEN** the card shows every Box's slots and the external spool together, each with the filament and color Fluidd resolves for it, whether filament is at the slot inlet, the tools mapped to it, and which slot feeds the extruder
 - **AND** each Box shows its humidity, temperature, and active heater target, and the card shows the tool-to-slot mapping
 
 #### Scenario: The filament path follows the sensors
@@ -448,13 +460,13 @@ Normal install and update SHALL add a QidiBox dashboard card beside the stock Bo
 
 #### Scenario: Slot controls match the Box card
 - **WHEN** the operator selects a slot and uses Load, Unload, Eject, Read RFID, or edits its filament
-- **THEN** the card sends the same commands and saves the same values, under the same availability, as the Box card
+- **THEN** the card sends the Box commands and saves the slot values required by the QIDI Box filament display requirement
 - **AND** the controls are unavailable while printing, while the Box runs an operation, or while Klipper is not ready
-- **AND** Box settings opens the Box card's configuration view
+- **AND** Box settings opens QIDI's Box detection and automatic-reload settings and the load and unload motion settings
 
 #### Scenario: Auto-reload groups are shown
 - **WHEN** automatic reload is on
-- **THEN** loaded Box slots with the same color, filament, and vendor, the slots the Box card's AUTO view groups for reload, carry the same group marker
+- **THEN** loaded Box slots with the same color, filament, and vendor, the slots QIDI's firmware can reload from each other, carry the same group marker
 - **AND** the selected slot lists the other slots it can reload from, or that it has none
 - **AND** when automatic reload is off, no group markers are shown and the selected slot says automatic reload is off
 
@@ -466,7 +478,7 @@ Normal install and update SHALL add a QidiBox dashboard card beside the stock Bo
 
 #### Scenario: Printers without a Box hide the card
 - **WHEN** no Box is configured
-- **THEN** the QidiBox card is hidden like the Box card
+- **THEN** the card is hidden
 
 ### Requirement: QIDI Box motion release defaults
 The installer SHALL save the release Box motion profile only when no Box motion setting exists in Klipper saved variables.
@@ -481,7 +493,7 @@ The installer SHALL save the release Box motion profile only when no Box motion 
 - **AND** uninstall does not remove or reset the settings
 
 ### Requirement: Printer screen in Fluidd
-Normal install and update SHALL provide a Fluidd dashboard card that shows the live touchscreen and can operate it, served by a package-owned screen service and a Fluidd nginx route, independently of optional OS optimization policy, with the same recognition, preservation, service-worker revision, and restoration as the other guarded host patches.
+Normal install and update SHALL provide a Fluidd dashboard card that shows and operates the live touchscreen, served by a package-owned screen service and a Fluidd nginx route, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches. The package build provides the card; while QIDI's bundled Fluidd is served, the recognized bundle is patched to add it.
 
 #### Scenario: The card is idle until expanded
 - **WHEN** Fluidd opens a dashboard that has not shown the card before
@@ -508,6 +520,53 @@ Normal install and update SHALL provide a Fluidd dashboard card that shows the l
 
 #### Scenario: Screen deployment remains reversible
 - **WHEN** install or update applies the service, its unit, or the nginx route
-- **THEN** absent package files are created and enabled, files from earlier package versions are replaced, and a recognized nginx site is backed up and patched once
+- **THEN** absent package files are created and enabled, files from earlier package versions are replaced, and a recognized nginx site is backed up and patched once, together with the switch to the package build
 - **AND** unrecognized or operator-modified files are preserved and recorded without failing other host patches
-- **AND** accepted uninstall restoration stops and disables the service, removes unchanged package files, and restores the unchanged nginx site
+- **AND** uninstall restoration stops and disables the service, removes unchanged package files, and restores the unchanged nginx site
+
+### Requirement: Package-built Fluidd
+Normal install and update SHALL serve the package's pinned build of the project's Fluidd fork from a package-owned directory in place of QIDI's bundled Fluidd, independently of optional OS optimization policy, leaving QIDI's bundled Fluidd in place as the rollback. Fluidd requirements in this specification apply to whichever Fluidd nginx serves; their bundle patches apply only while QIDI's bundled Fluidd is served.
+
+#### Scenario: The build is served instead of QIDI's bundle
+- **WHEN** install or update runs with the build in the package and a recognized Fluidd nginx site
+- **THEN** the build is extracted beside QIDI's bundle, readable by nginx, verified against the pinned checksum, and marked as package-owned
+- **AND** only then is the nginx site switched to serve it, in the same guarded change that adds the printer-screen route
+- **AND** QIDI's bundled Fluidd files are not modified
+- **AND** a browser tab showing QIDI's Fluidd shows the build after one normal reload, including when QIDI's service worker had cached it
+
+#### Scenario: Serving the build retires the bundle patches
+- **WHEN** nginx serves the verified build
+- **THEN** QIDI's bundle and service worker are not patched
+- **AND** a bundle file patched by an earlier package version is restored from its retained preimage when it still matches that patch, and its ownership is released either way
+
+#### Scenario: Updates replace the build as a unit
+- **WHEN** the installed package build differs from the pinned build
+- **THEN** the new build is staged completely before a single rename replaces the installed one, so nginx never serves a partial build
+- **AND** a failure later in the same host transaction, or recovery of an interrupted one, puts the replaced build back; a completed transaction discards it
+
+#### Scenario: Open tabs switch to an updated build
+- **WHEN** update replaces the served build while a tab running the earlier package build stays open
+- **THEN** the tab reloads into the installed build within minutes, or when it is next shown, without a hard refresh, whether or not the browser runs Fluidd's service worker
+
+#### Scenario: QIDI's Fluidd stays in use when the build cannot be served
+- **WHEN** the package has no build, the build directory exists without the package marker, or the nginx site is unrecognized or operator-modified
+- **THEN** the existing directory and nginx site are left unchanged and the outcome is recorded without failing other host operations
+- **AND** QIDI's bundle keeps receiving the Fluidd bundle patches
+
+#### Scenario: Restoration returns to QIDI's Fluidd
+- **WHEN** uninstall runs
+- **THEN** the unchanged nginx site is restored before the build is removed
+- **AND** the build is removed only while it carries the package marker and nginx no longer serves it; otherwise it is preserved and reported
+
+### Requirement: Touchscreen app control in Fluidd
+Normal install and update SHALL let Fluidd's service controls restart, stop, and start QIDI's touchscreen app by allowing it in Moonraker's allowed-services list, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches.
+
+#### Scenario: The touchscreen app is listed with Fluidd's services
+- **WHEN** install or update finds a recognized allowed-services list without the touchscreen app
+- **THEN** it backs up the list, adds the touchscreen app once, keeps the list's existing entries and line endings, and restarts Moonraker
+- **AND** a list that already allows the touchscreen app is left unchanged
+
+#### Scenario: Unrecognized or modified lists are preserved
+- **WHEN** the allowed-services list is missing, is not a plain list of service names, or was modified after installation
+- **THEN** it is left unchanged and recorded without failing other host patches
+- **AND** uninstall restores an unchanged list to its original content and restarts Moonraker
