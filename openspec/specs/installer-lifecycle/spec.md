@@ -236,6 +236,7 @@ Normal install and update SHALL patch the recognized QIDI Fluidd bundle so its Q
 #### Scenario: Browsers load the patched bundle
 - **WHEN** a browser that previously cached Fluidd through its service worker opens Fluidd after the bundle patch changes
 - **THEN** the service worker updates and fetches the patched bundle instead of serving the cached one
+- **AND** the updated service worker takes over without waiting for Fluidd's update prompt and reloads open Fluidd tabs, so they run the patched bundle without a hard refresh or closing every tab
 - **AND** the recognized service worker's bundle precache revision is set from the bundle patch, with the same recognition, preservation, and restoration as the bundle
 
 #### Scenario: Unrecognized Fluidd bundles are preserved
