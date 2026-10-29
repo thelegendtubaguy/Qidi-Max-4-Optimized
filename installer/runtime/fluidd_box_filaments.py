@@ -438,7 +438,27 @@ def _service_worker_bundle_entry() -> str:
     return '{"revision":"tltg-optimized-' + digest + '","url":"assets/index-DlFvHGAh.js"}'
 
 
+SERVICE_WORKER_SKIP_WAITING_STOCK = 'self.addEventListener("message",s=>{s.data&&s.data.type==="SKIP_WAITING"&&self.skipWaiting()});'
+# Stock Fluidd keeps a new worker waiting for its update prompt, so open and reloaded tabs kept the old bundle until
+# a hard refresh. The new worker takes over once installed and reloads the tabs it now controls. The reloads are not
+# held in waitUntil: their requests wait for activation to finish.
+SERVICE_WORKER_TAKEOVER = (
+    'self.addEventListener("install",()=>self.skipWaiting());'
+    'self.addEventListener("activate",()=>{self.clients.matchAll({type:"window"})'
+    '.then(c=>c.forEach(w=>w.navigate(w.url).catch(()=>{})))});'
+)
+SERVICE_WORKER_TAKEOVER_PATCHED = SERVICE_WORKER_TAKEOVER + SERVICE_WORKER_SKIP_WAITING_STOCK
+
+
 def patch_fluidd_service_worker(text: str) -> str:
-    if len(SERVICE_WORKER_BUNDLE_ENTRY.findall(text)) != 1:
+    takeover = text.count(SERVICE_WORKER_TAKEOVER)
+    if (
+        len(SERVICE_WORKER_BUNDLE_ENTRY.findall(text)) != 1
+        or text.count(SERVICE_WORKER_SKIP_WAITING_STOCK) != 1
+        or takeover != text.count(SERVICE_WORKER_TAKEOVER_PATCHED)
+    ):
         raise FluiddBundleError("Fluidd service worker does not match the reviewed QIDI source; preserving it.")
-    return SERVICE_WORKER_BUNDLE_ENTRY.sub(lambda _: _service_worker_bundle_entry(), text)
+    text = SERVICE_WORKER_BUNDLE_ENTRY.sub(lambda _: _service_worker_bundle_entry(), text)
+    if not takeover:
+        text = text.replace(SERVICE_WORKER_SKIP_WAITING_STOCK, SERVICE_WORKER_TAKEOVER_PATCHED, 1)
+    return text
