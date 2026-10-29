@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -53,14 +54,21 @@ def ensure_printer_idle(
     *,
     timeout: int = 5,
     urlopen: UrlOpenFn = urllib.request.urlopen,
+    wait_seconds: float = 0.0,
 ) -> str:
-    try:
-        state = query_printer_state(url, timeout=timeout, urlopen=urlopen)
-    except PrinterStateError:
-        # A Klipper halted on an error has no print state and cannot be printing.
-        if klipper_halted(url, urlopen=urlopen):
-            return "error"
-        raise
+    """Return the idle printer state; an unknown state is retried for wait_seconds, as while Moonraker restarts."""
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        try:
+            state = query_printer_state(url, timeout=timeout, urlopen=urlopen)
+            break
+        except PrinterStateError:
+            # A Klipper halted on an error has no print state and cannot be printing.
+            if klipper_halted(url, urlopen=urlopen):
+                return "error"
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(2.0)
     if state in {"printing", "paused"}:
         raise ActivePrintError()
     return state

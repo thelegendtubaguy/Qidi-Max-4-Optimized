@@ -4,6 +4,7 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
+from . import fluidd_build
 from .errors import InstallerError
 
 
@@ -14,7 +15,10 @@ NGINX_OPERATION = "remote_screen_nginx"
 UNIT = "tltg-remote-screen.service"
 UNIT_FILE = f"/etc/systemd/system/{UNIT}"
 SERVER_FILE = "/usr/local/lib/tltg_remote_screen.py"
+# The site operation also serves the package Fluidd build in place of QIDI's bundle; the operation keeps its original ID.
 NGINX_SITE = "/etc/nginx/sites-available/fluidd"
+NGINX_QIDI_ROOT = f"\n    root {fluidd_build.QIDI_ROOT};\n"
+NGINX_BUILD_ROOT = f"\n    root {fluidd_build.DESTINATION};\n"
 SERVER_PAYLOAD = Path(__file__).resolve().parents[1] / "system/tltg_remote_screen.py"
 # Package-created files start with a marker line so later package versions replace earlier ones.
 SERVER_MARKER = "# tltg-optimized:remote-screen-server\n"
@@ -104,10 +108,19 @@ def patch_unit(current: str) -> str:
     return _patch_created(current, UNIT_CONTENT, UNIT_MARKER, UNIT_FILE)
 
 
+def serves_fluidd_build(text: str) -> bool:
+    return any(NGINX_BUILD_ROOT.replace("\n", newline) in text for newline in ("\n", "\r\n"))
+
+
 def patch_nginx_site(text: str) -> str:
     # The route goes before QIDI's first webcam location and reuses its Moonraker upstream and upgrade map.
-    # QIDI ships the site with CRLF line endings; the route uses the file's own.
+    # QIDI ships the site with CRLF line endings; changes use the file's own.
     newline = "\r\n" if "\r\n" in text else "\n"
+    qidi_root = NGINX_QIDI_ROOT.replace("\n", newline)
+    build_root = NGINX_BUILD_ROOT.replace("\n", newline)
+    if text.count(qidi_root) + text.count(build_root) != 1:
+        raise InstallerError("Fluidd nginx site does not match the reviewed QIDI source; preserving it.")
+    text = text.replace(qidi_root, build_root, 1)
     block = NGINX_BLOCK.replace("\n", newline)
     previous = NGINX_PREVIOUS.findall(text)
     if len(previous) == 1:

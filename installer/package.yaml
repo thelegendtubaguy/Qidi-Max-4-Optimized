@@ -6,7 +6,7 @@ package:
   id: qidi-max4-optimized
   display_name: QIDI Max 4 Optimized
   printer_model: qidi-max4
-  version: "26.10.28.4"
+  version: "26.10.29.1"
   known_versions:
     - "26.04.21.1"
     - "26.04.27.1"
@@ -52,7 +52,7 @@ package:
     - "26.10.28.1"
     - "26.10.28.2"
     - "26.10.28.3"
-    - "26.10.28.4"
+    - "26.10.29.1"
 
 firmware:
   supported:
@@ -523,6 +523,12 @@ system_optimizations:
   fluidd_box_filament_ids:
     file: /home/qidi/fluidd/assets/index-DlFvHGAh.js
     service_worker: /home/qidi/fluidd/sw.js
+  # The project's Fluidd fork release; the bundle builder downloads and verifies it.
+  fluidd_build:
+    version: v1.37.7-tltg-d9ad446
+    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-d9ad446/fluidd.zip
+    archive: system/fluidd.zip
+    sha256: 6e4c4e29bc11be8fc2e46c930a83821c064bf99ec5afe8fde130709db1eb246d
   klipper_box_config:
     file: /home/qidi/klipper/klippy/extras/box_config.py
     restart_service: klipper.service

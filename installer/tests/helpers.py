@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import atexit
+import dataclasses
+import hashlib
 import json
 import shutil
 import tempfile
 import threading
+import zipfile
 from subprocess import CompletedProcess
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -87,6 +90,7 @@ def fake_system_root(
     include_klipper_box_config: bool = False,
     include_klipper_print_stats_manager: bool = False,
     include_nginx_site: bool = False,
+    include_moonraker_asvc: bool = False,
 ) -> Path:
     root = temp_path("system-optimization-flow-")
     (root / "etc/resolvconf/resolv.conf.d").mkdir(parents=True)
@@ -126,6 +130,15 @@ def fake_system_root(
         site = root / "etc/nginx/sites-available/fluidd"
         site.parent.mkdir(parents=True)
         site.write_bytes((REPO_ROOT / "installer/tests/fixtures/nginx_fluidd_site.conf").read_bytes())
+    if include_moonraker_asvc:
+        asvc = root / "home/qidi/printer_data/moonraker.asvc"
+        asvc.parent.mkdir(parents=True)
+        # QIDI's list, which has no final newline.
+        asvc.write_text(
+            "klipper_mcu\nwebcamd\nMoonCord\nKlipperScreen\nmoonraker-telegram-bot\n"
+            "moonraker-obico\nsonar\ncrowsnest\noctoeverywhere\nratos-configurator",
+            encoding="utf-8",
+        )
     if include_filament_config:
         filaments = root / "home/qidi/QIDI_Client/resource/filament_config/filament-0.4.json"
         filaments.parent.mkdir(parents=True)
@@ -147,9 +160,24 @@ def fake_system_root(
             (REPO_ROOT / "installer/tests/fixtures/moonraker_metadata_storage.py").read_text(),
             encoding="utf-8",
         )
+        klippy_apis = moonraker.parent.parent / "klippy_apis.py"
+        klippy_apis.write_bytes((REPO_ROOT / "installer/tests/fixtures/moonraker_klippy_apis.py").read_bytes().replace(b"\n", b"\r\n"))
     (root / "mounts").mkdir()
     (root / "mounts/root.options").write_text("rw,relatime,sync\n", encoding="utf-8")
     return root
+
+
+def with_fluidd_build(manifest):
+    """Pin the manifest's Fluidd build to a small archive; repository checkouts carry no release build."""
+    archive = temp_path("fluidd-build-") / "fluidd.zip"
+    with zipfile.ZipFile(archive, "w") as build:
+        build.writestr("index.html", "<!doctype html><title>Fluidd</title>\n")
+        build.writestr("sw.js", "self.skipWaiting()\n")
+        build.writestr("assets/", "")
+        build.writestr("assets/index.js", "console.log('fluidd')\n")
+    spec = manifest.system_optimizations
+    pinned = dataclasses.replace(spec.fluidd_build, archive=str(archive), sha256=hashlib.sha256(archive.read_bytes()).hexdigest())
+    return dataclasses.replace(manifest, system_optimizations=dataclasses.replace(spec, fluidd_build=pinned))
 
 
 def fake_host_run(root: Path):

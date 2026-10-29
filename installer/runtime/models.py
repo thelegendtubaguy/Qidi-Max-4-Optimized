@@ -233,6 +233,14 @@ class SystemFluiddBundleSpec:
 
 
 @dataclass(frozen=True)
+class SystemFluiddBuildSpec:
+    version: str
+    url: str
+    archive: str
+    sha256: str
+
+
+@dataclass(frozen=True)
 class SystemFluiddFilamentConfigSpec:
     link: str
     target: str
@@ -264,6 +272,7 @@ class SystemOptimizationsSpec:
     moonraker_metadata_3mf: SystemMoonrakerMetadata3mfSpec
     moonraker_file_manager: SystemMoonrakerMetadata3mfSpec
     fluidd_box_filament_ids: SystemFluiddBundleSpec
+    fluidd_build: SystemFluiddBuildSpec
     klipper_box_config: SystemMoonrakerMetadata3mfSpec
     klipper_print_stats_manager: SystemMoonrakerMetadata3mfSpec
     fluidd_filament_config: SystemFluiddFilamentConfigSpec
