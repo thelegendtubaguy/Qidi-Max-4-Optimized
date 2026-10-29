@@ -65,7 +65,7 @@ The first restart rebuilds existing 3MF metadata once. Later scans still enumera
 
 Manual 3MF metadata rescans use the archive extractor and keep existing QIDI thumbnail files. A rescan joins extraction already pending for the same archive rather than starting another copy; failures report an error and preserve prior metadata. Ordinary G-code rescans are unchanged.
 
-Unrecognized source is preserved and reported. Uninstall can restore the original source through its system-restoration prompt; files modified after installation are preserved.
+Unrecognized source is preserved and reported. Uninstall restores the original source; files modified after installation are preserved.
 
 ### Fluidd
 
@@ -78,7 +78,7 @@ QIDI no longer updates the Fluidd that ships with the Max 4, version 1.30.5. Ins
 
 After installing, close every Fluidd tab and open Fluidd again.
 
-To go back to QIDI's Fluidd, uninstall and accept the system-restoration prompt. It points the web server back at `~/fluidd` and removes `~/tltg-fluidd`. Cards that only QIDI's Fluidd has go back to their default places on the dashboard.
+Uninstall goes back to QIDI's Fluidd: it points the web server back at `~/fluidd` and removes `~/tltg-fluidd`. Cards that only QIDI's Fluidd has go back to their default places on the dashboard.
 
 If the installer doesn't recognize QIDI's web server configuration for Fluidd, it leaves it alone, and QIDI's Fluidd stays in use with the fixes earlier versions made to its Box card.
 
@@ -109,7 +109,7 @@ On `01.01.07.01`, the touchscreen's Vendor and Filament lists come from QIDI's f
 - The file must stay valid JSON; a missing comma or bracket can break the touchscreen's filament list.
 - Restart the printer after saving so the touchscreen and Box pick up the change, then reload Fluidd.
 
-Firmware updates replace these files, so keep a copy of any entries you add. Files in this folder are QIDI's own files, not copies: they are not part of the installer's configuration backups, and deleting one in Fluidd deletes it from the printer. If `qidi_filament_config` already exists, the installer leaves it alone. Uninstall's system-restoration prompt removes the link but never your edits.
+Firmware updates replace these files, so keep a copy of any entries you add. Files in this folder are QIDI's own files, not copies: they are not part of the installer's configuration backups, and deleting one in Fluidd deletes it from the printer. If `qidi_filament_config` already exists, the installer leaves it alone. Uninstall removes the link but never your edits.
 
 ### QIDI Box temperature from Fluidd
 
@@ -129,11 +129,11 @@ Install and update add a **Printer screen** card to Fluidd's dashboard that show
 
 The screen is only available to devices that can already use Fluidd: the printer checks every connection with Moonraker, and the screen service itself only listens on the printer. After installing, close every Fluidd tab and open Fluidd again to load the new card.
 
-Behind the card, the installer adds a small `tltg-remote-screen` service, and a `/tltg-screen/` route to the printer's Fluidd web server configuration. The service sends a new image only when the screen changes. An nginx configuration the installer does not recognize is left unchanged, and the card then says the screen is unavailable. Uninstall can remove the service and restore the original web server configuration through its system-restoration prompt; files modified after installation are preserved.
+Behind the card, the installer adds a small `tltg-remote-screen` service, and a `/tltg-screen/` route to the printer's Fluidd web server configuration. The service sends a new image only when the screen changes. An nginx configuration the installer does not recognize is left unchanged, and the card then says the screen is unavailable. Uninstall removes the service and restores the original web server configuration; files modified after installation are preserved.
 
 ### Klipper shutdown reasons
 
-When Klipper stops on an error, such as a heater or fan fault or a lost Box connection, QIDI's print status module could crash Klipper during the shutdown, so the screen, Fluidd, and slicers showed only `MCU shutdown`. Install and update patch QIDI's `print_stats_manager.py` so the original reason stays on screen; `FIRMWARE_RESTART` recovers as usual. This applies even when optional OS optimizations are skipped, and Klipper restarts once when the patch is applied. Unrecognized source is preserved and reported. Uninstall can restore the original file through its system-restoration prompt; files modified after installation are preserved.
+When Klipper stops on an error, such as a heater or fan fault or a lost Box connection, QIDI's print status module could crash Klipper during the shutdown, so the screen, Fluidd, and slicers showed only `MCU shutdown`. Install and update patch QIDI's `print_stats_manager.py` so the original reason stays on screen; `FIRMWARE_RESTART` recovers as usual. This applies even when optional OS optimizations are skipped, and Klipper restarts once when the patch is applied. Unrecognized source is preserved and reported. Uninstall restores the original file; files modified after installation are preserved.
 
 ### Box MCU link monitoring
 
@@ -326,6 +326,8 @@ You can also run uninstall by fetching the latest script directly from the web:
 ```bash
 /bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/install-latest.sh)" -- --uninstall
 ```
+
+Uninstall always undoes the changes every install makes to QIDI's own files: Fluidd goes back to QIDI's Fluidd, the Printer screen service and web server route are removed, and the Moonraker and Klipper source fixes and the filament configuration link are restored. It then asks whether to also restore the optional OS optimizations: DNS, APT sources, disabled services, Rockchip root sync, and the QIDIClient GIFs. `--keep-system-optimizations` keeps those without asking. Files modified after installation are preserved and reported.
 
 ## If something goes wrong
 

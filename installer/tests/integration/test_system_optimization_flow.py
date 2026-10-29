@@ -281,27 +281,21 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertFalse(previous_build.exists())
         write_installed_state(printer_root / manifest.state_file, _replace_system_ledger(state, reconciled))
 
+        # Declining the system-restoration prompt keeps only the optional OS optimizations; everything install makes
+        # regardless of policy is always undone.
         run_uninstall(
             paths,
             manifest,
             compatibility,
             PlainReporter(io.StringIO()),
-            input_stream=io.StringIO("yes\nyes\nno\n"),
+            input_stream=io.StringIO("yes\nno\nno\n"),
             urlopen=moonraker_urlopen(),
             environ=env,
             run=host_run,
         )
         self.assertFalse((printer_root / manifest.state_file).exists())
-        self.assertFalse((system_root / "etc/resolv.conf").is_symlink())
-        self.assertEqual(
-            (system_root / "etc/resolv.conf").read_text(encoding="utf-8"),
-            "nameserver 114.114.114.114\n",
-        )
-        self.assertEqual(
-            (system_root / "etc/apt/sources.list").read_text(encoding="utf-8"),
-            "old apt\n",
-        )
-        self.assertFalse(dropin.exists())
+        self.assertNotEqual((system_root / "etc/apt/sources.list").read_text(encoding="utf-8"), "old apt\n")
+        self.assertTrue(dropin.exists())
         self.assertEqual(moonraker.read_bytes(), moonraker_before)
         self.assertEqual(moonraker.stat().st_mode & 0o777, 0o640)
         self.assertEqual(fluidd.read_bytes(), fluidd_before)
@@ -762,7 +756,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                 raise KeyboardInterrupt
         with mock.patch.object(reporter, "line", side_effect=interrupt_after_preserve):
             with self.assertRaises(KeyboardInterrupt):
-                system_optimizations.restore_system_optimizations(paths=paths, manifest=manifest, state=state, reporter=reporter, input_stream=io.StringIO(), environ=env, run=fake_host_run(root))
+                system_optimizations.restore_system_optimizations(paths=paths, manifest=manifest, state=state, reporter=reporter, input_stream=io.StringIO(), environ=env, include_optional=True, run=fake_host_run(root))
         self.assertEqual(mount_options.read_text(encoding="utf-8"), "ro,noatime,async\n")
         recover_pending_system_optimization(paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, run=fake_host_run(root))
         self.assertEqual(mount_options.read_text(encoding="utf-8"), "ro,noatime,async\n")
@@ -783,6 +777,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                         reporter=PlainReporter(io.StringIO()),
                         input_stream=io.StringIO(),
                         environ=env,
+                        include_optional=True,
                         run=fake_host_run(root),
                     )
                 self.assertFalse(_journal_path(paths).exists())

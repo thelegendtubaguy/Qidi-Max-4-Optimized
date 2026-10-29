@@ -39,6 +39,10 @@ The existing printer-screen nginx operation owns the site file, so the root chan
 
 The Fluidd bundle and service-worker operations run after the nginx operation. While nginx serves a current build, they apply nothing; a file they own is restored from its preimage when it still matches the last installed patch, under the host journal, and its ownership is released either way. If nginx later stops serving the build, for example after a firmware update rewrites the site, the bundle patches apply again from a fresh preimage.
 
+### Uninstall always restores package changes
+
+Install makes the Fluidd, printer-screen, Moonraker, Klipper, and filament-link changes regardless of OS optimization policy, so uninstall undoes them regardless of the system-restoration prompt, with the usual drift preservation. The prompt and `--keep-system-optimizations` now cover only the optional OS optimizations (DNS, APT sources, disabled services, Rockchip root sync, QIDIClient GIFs), which is what the prompt already names; it is not asked when none were applied. Leaving package changes behind after a declined prompt was rejected: the installed state is deleted at the end of uninstall, so nothing would ever restore them, and the printer would keep this project's Fluidd with no package installed.
+
 ### Restoration order
 
 Uninstall restores the nginx site before the build, whatever order the ledger recorded them in. The build is removed only while it carries the marker and nginx no longer serves it, so a preserved, operator-modified site never points at a missing directory.

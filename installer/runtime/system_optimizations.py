@@ -78,6 +78,9 @@ ROCKCHIP_ROOT_SYNC_OPERATION = "rockchip_root_sync"
 ROCKCHIP_UNSUPPORTED = frozenset({"unsupported", "conflicting_dropin", "unsafe_path"})
 ROCKCHIP_ALREADY_CURRENT = frozenset({"already_current_owned", "already_current_unowned"})
 FLUIDD_BUILD_OPERATION = fluidd_build.OPERATION
+# Policy and the uninstall prompt cover only these and the service operations; uninstall always undoes every other
+# host change, because install makes them regardless of policy.
+OPTIONAL_OPERATIONS = frozenset({"dns", "apt_sources", "qidiclient_static_gifs", ROCKCHIP_ROOT_SYNC_OPERATION})
 # QIDI's bundle is patched only while nginx serves it; serving the package build retires these patches.
 FLUIDD_BUNDLE_OPERATIONS = (FLUIDD_BOX_OPERATION, FLUIDD_SERVICE_WORKER_OPERATION)
 # The build is only ever installed where nothing existed or over an earlier package build, so restoration is removal.
@@ -463,7 +466,8 @@ def maybe_prompt_restore_system_optimizations(
     input_stream,
     cli_options: SystemOptimizationCliOptions,
 ) -> bool:
-    if not _has_restore_preimages(state.system_ledger):
+    preimages = (state.system_ledger or {}).get("restore_preimages")
+    if not isinstance(preimages, dict) or not any(_is_optional_operation(operation_id) for operation_id in preimages):
         return False
     if cli_options.keep_system_optimizations:
         return False
@@ -606,12 +610,21 @@ def restore_system_optimizations(
     reporter,
     input_stream,
     environ: dict[str, str],
+    include_optional: bool,
     run=subprocess.run,
 ) -> None:
+    """Undo the package's host changes, and the optional OS optimizations when include_optional is set."""
     ledger = state.system_ledger or {}
     validate_system_ledger(ledger, manifest=manifest, paths=paths)
     preimages = ledger.get("restore_preimages")
-    if not isinstance(preimages, dict) or not preimages:
+    if not isinstance(preimages, dict):
+        return
+    preimages = {
+        operation_id: preimage
+        for operation_id, preimage in preimages.items()
+        if include_optional or not _is_optional_operation(operation_id)
+    }
+    if not preimages:
         return
     if not _system_root_allowed(paths=paths, environ=environ):
         reporter.debug(event="system_optimizations.restore.skipped", reason="non-default-system-root")
@@ -718,7 +731,8 @@ def restore_system_optimizations(
         atomic_delete(_journal_path(paths))
     if rockchip_restored:
         clear_host_reboot_marker(paths)
-    reporter.line(messages.SYSTEM_RESTORE_COMPLETE)
+    if include_optional:
+        reporter.line(messages.SYSTEM_RESTORE_COMPLETE)
 
 
 def resolve_policy(
@@ -2374,6 +2388,11 @@ def _path_has_symlink_component(path: Path, *, root: Path) -> bool:
     return path.is_symlink()
 
 
+def _is_optional_operation(operation_id: str) -> bool:
+    """Whether the operation is an optional OS optimization rather than a change every install makes."""
+    return operation_id in OPTIONAL_OPERATIONS or operation_id.startswith("service_")
+
+
 def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any]) -> tuple[str, ...]:
     # nginx switches to the package Fluidd only after it is installed.
     ids = [
@@ -3124,10 +3143,6 @@ def _replace_system_ledger(state: InstalledState, ledger: dict[str, Any]) -> Ins
         source_patches=state.source_patches,
         system_ledger=ledger,
     )
-
-
-def _has_restore_preimages(ledger: dict[str, Any] | None) -> bool:
-    return isinstance(ledger, dict) and isinstance(ledger.get("restore_preimages"), dict) and bool(ledger["restore_preimages"])
 
 
 def _system_root(environ: dict[str, str]) -> Path:

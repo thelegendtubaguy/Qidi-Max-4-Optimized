@@ -12,10 +12,11 @@
 - [x] 2.4 Bundle and service-worker operations retire while the build is served.
 - [x] 2.5 Uninstall restores nginx before removing the build.
 - [x] 2.6 Lifecycle test covers fallback, switch with rollback, retirement, update with rollback, and uninstall.
-- [x] 2.7 Update `README.md`, `CHANGELOG.md` under `26.10.28.3`, and the version.
+- [x] 2.7 Update `README.md`, `CHANGELOG.md` under `26.10.29.1`, and the version.
+- [x] 2.8 Uninstall always restores policy-independent host changes; the prompt covers only optional OS optimizations.
 
 ## 3. Verification
 
 - [x] 3.1 Installer core tests, OpenSpec validation, known-versions check, and the bundle smoke test pass.
 - [ ] 3.2 Install on the test printer: nginx serves the build, QIDI's bundle and service worker return to stock, and a browser that had QIDI's Fluidd open switches over.
-- [ ] 3.3 Uninstall restoration on the test printer serves QIDI's Fluidd again and removes the build.
+- [ ] 3.3 Uninstall on the test printer, with the system-restoration prompt declined, serves QIDI's Fluidd again, removes the build, and keeps the optional OS optimizations.

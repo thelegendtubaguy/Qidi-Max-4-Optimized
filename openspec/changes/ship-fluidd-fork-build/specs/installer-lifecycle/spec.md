@@ -29,7 +29,7 @@ Normal install and update SHALL serve the package's pinned build of the project'
 - **AND** QIDI's bundle keeps receiving the Fluidd bundle patches
 
 #### Scenario: Restoration returns to QIDI's Fluidd
-- **WHEN** accepted uninstall restoration runs
+- **WHEN** uninstall runs
 - **THEN** the unchanged nginx site is restored before the build is removed
 - **AND** the build is removed only while it carries the package marker and nginx no longer serves it; otherwise it is preserved and reported
 
@@ -73,7 +73,7 @@ Fluidd SHALL display and edit QIDI Box slots the way QIDI firmware `01.01.07.01`
 - **WHEN** QIDI's bundle is served and the recognized bundle requires the patch
 - **THEN** the installer backs up the original bytes and replaces the file atomically without restarting services
 - **AND** a bundle carrying an earlier package patch is updated in place while the first restore preimage is retained
-- **AND** accepted uninstall restoration reverts only the unchanged installed bundle; concurrent changes and operator drift are preserved
+- **AND** uninstall restoration reverts only the unchanged installed bundle; concurrent changes and operator drift are preserved
 
 ### Requirement: QIDI Box heater targets from Fluidd
 Normal install and update SHALL patch recognized QIDI Klipper `box_config.py`, and Fluidd SHALL let its temperature panel set QIDI Box heater targets within the Box heater and loaded-filament limits, independently of optional OS optimization policy. While QIDI's bundled Fluidd is served, the recognized bundle is patched to provide the panel behavior. Original files are retained and unrecognized or operator-modified files are preserved.
@@ -97,7 +97,7 @@ Normal install and update SHALL patch recognized QIDI Klipper `box_config.py`, a
 #### Scenario: Box heater deployment remains reversible
 - **WHEN** a recognized `box_config.py` requires the patch
 - **THEN** the installer backs up the original bytes, preserves line endings, replaces the file atomically, and restarts the Klipper service
-- **AND** accepted uninstall restoration reverts only the unchanged installed file and restarts the Klipper service; concurrent changes and operator drift are preserved
+- **AND** uninstall restoration reverts only the unchanged installed file and restarts the Klipper service; concurrent changes and operator drift are preserved
 - **AND** a missing or unrecognized `box_config.py` is left unchanged and the outcome is recorded without failing other host patches
 
 ### Requirement: Fluidd Box print slots can be shared
@@ -201,4 +201,109 @@ Normal install and update SHALL provide a Fluidd dashboard card that shows the l
 - **WHEN** install or update applies the service, its unit, or the nginx route
 - **THEN** absent package files are created and enabled, files from earlier package versions are replaced, and a recognized nginx site is backed up and patched once, together with the switch to the package build
 - **AND** unrecognized or operator-modified files are preserved and recorded without failing other host patches
-- **AND** accepted uninstall restoration stops and disables the service, removes unchanged package files, and restores the unchanged nginx site
+- **AND** uninstall restoration stops and disables the service, removes unchanged package files, and restores the unchanged nginx site
+
+### Requirement: Opt-in recoverable host optimization
+The installer SHALL apply host OS optimizations only under explicit persisted policy, preserve recoverable preimages, and keep host-operation failures separate from a verified printer-configuration result. System optimizations SHALL remain available through the same packaged install, update, and uninstall flow without requiring a separate package or operator command.
+
+#### Scenario: Enabled policy reconciles only recognized host state
+- **WHEN** system optimizations are enabled
+- **THEN** each declared operation validates its live preconditions before mutation
+- **AND** installer-owned drift is reconciled without replacing first restore preimages
+- **AND** unowned, unknown, or user-modified state is preserved and reported
+- **AND** operation failure rolls back journaled host work without deleting a verified configuration install
+- **AND** incomplete host compensation retains a recovery blocker and does not report the overall operation as complete
+
+#### Scenario: Uninstall follows the operator's host-state decision
+- **WHEN** uninstall finds host restore preimages
+- **THEN** it reverts only unchanged installer-owned targets: always for host changes that normal install makes independently of optional OS optimization policy, and for optional OS optimizations only when the operator accepts restoration
+- **AND** the operator is asked only when optional OS optimizations have restore preimages
+- **AND** targets already at their retained preimages are left unchanged
+- **AND** user-modified files, symlinks, assets, or service states are preserved and reported
+- **AND** declined restoration or explicit keep policy leaves optional OS optimizations unchanged
+
+#### Scenario: Reconciliation retains bounded recovery state
+- **WHEN** repeated checks find host optimizations already current
+- **THEN** installer recovery-state size and restoration-backup count do not grow with the number of checks
+- **AND** first restoration preimages and unresolved transaction or reboot evidence remain available
+- **AND** previously installed host ledgers remain recoverable when their historical action records are compacted
+
+#### Scenario: Host reboot is deferred until safe
+- **WHEN** an applied operation requires a host reboot
+- **THEN** the requirement is persisted without embedding executable commands
+- **AND** reboot is scheduled only after successful transaction completion, explicit authorization, and a fresh idle-printer check
+- **AND** later execution clears the requirement only after post-boot verification succeeds
+- **AND** dry-run, active, or unknown printer state performs no reboot
+
+### Requirement: Recoverable Moonraker metadata optimization
+Normal install and update SHALL apply recognized Moonraker metadata optimizations independently of optional OS optimization policy, retain original source preimages, and preserve unrecognized or operator-modified source.
+
+#### Scenario: Multi-plate 3MF metadata follows the selected plate
+- **WHEN** the optimized metadata extractor reads a `.gcode.3mf` archive
+- **THEN** G-code, metadata, and thumbnail selection use its valid selected plate index
+- **AND** missing or invalid plate metadata falls back to plate 1
+
+#### Scenario: Unchanged archives reuse persistent metadata
+- **WHEN** startup observation or upload handling encounters a 3MF with cached metadata matching its size, modification time, extractor stamp, and object-processing policy
+- **THEN** extraction is skipped without changing cached thumbnails or last-printed fields
+- **AND** new, changed, unstamped, or invalidated archives remain eligible for extraction
+- **AND** an unavailable extractor never validates a cached archive
+
+#### Scenario: Mixed metadata requests complete without a stuck queue
+- **WHEN** G-code and 3MF requests share a pending metadata queue
+- **THEN** both entrypoints use the same cache-aware worker
+- **AND** a request that becomes valid while queued is removed and its waiter released
+- **AND** exhausting extraction retries is not treated as a successful metadata refresh and does not prevent later requests from completing
+
+#### Scenario: Manual 3MF rescans use archive-aware extraction
+- **WHEN** an operator requests a metadata rescan for a 3MF within the G-code root
+- **THEN** the archive is explicitly re-extracted through the shared metadata queue, or the request joins extraction already pending for that archive
+- **AND** existing QIDI thumbnail files are not deleted
+- **AND** extraction failure returns an error and preserves prior metadata
+- **AND** escaped, reserved, and missing archive paths are rejected before extraction
+- **AND** ordinary G-code rescan behavior remains unchanged
+
+#### Scenario: File-manager deployment remains reversible
+- **WHEN** recognized file-manager source requires the cache patch
+- **THEN** the installer validates the reviewed metadata class and metascan handler before backup, preserves unrelated source and line endings, and replaces the file atomically
+- **AND** source changes require a successful Moonraker restart; restart failure compensates the file change or retains a recovery blocker
+- **AND** repeated reconciliation retains the first restore preimage without accumulating backups
+- **AND** uninstall restoration reverts only the unchanged installed file; concurrent changes and operator drift are preserved
+
+### Requirement: Klipper shutdown reasons remain visible
+Normal install and update SHALL patch recognized QIDI Klipper `print_stats_manager.py` so a Klipper shutdown keeps its original reason instead of ending in a host crash, independently of optional OS optimization policy, retaining the original file and preserving unrecognized or operator-modified files.
+
+#### Scenario: Shutdown during a print keeps its reason
+- **WHEN** Klipper shuts down while the QIDI main status is `printing` and later commands are refused
+- **THEN** the command-error status reset is skipped, no G-code is issued from it, and Klipper remains running in the shutdown state with the original reason
+
+#### Scenario: Status reset does not re-enter itself
+- **WHEN** Klipper is not shut down and a command run by the command-error status reset is itself refused
+- **THEN** the nested reset is skipped and the refusal is reported once
+- **AND** a later command error while ready resets the status to `ready` and restores the Z drivers' stealthChop threshold as QIDI's module does
+
+#### Scenario: Shutdown-reason deployment remains reversible
+- **WHEN** a recognized `print_stats_manager.py` requires the patch
+- **THEN** the installer backs up the original bytes, preserves line endings, replaces the file atomically, and restarts the Klipper service
+- **AND** uninstall restoration reverts only the unchanged installed file and restarts the Klipper service; concurrent changes and operator drift are preserved
+- **AND** a missing or unrecognized `print_stats_manager.py` is left unchanged and the outcome is recorded without failing other host patches
+
+### Requirement: QIDI filament database in Fluidd
+Normal install and update SHALL expose QIDI's touchscreen filament database directory as `config/qidi_filament_config` in Fluidd's configuration files, independently of optional OS optimization policy, without copying, backing up, or modifying the database files.
+
+#### Scenario: Link is created where the database exists
+- **WHEN** the QIDI filament database directory exists and `config/qidi_filament_config` is absent
+- **THEN** the installer creates a symlink to the directory and records ownership for restoration
+- **AND** reconciliation recreates an owned link that is absent and leaves a current link unchanged
+
+#### Scenario: Missing databases and existing entries are preserved
+- **WHEN** the database directory is missing or `config/qidi_filament_config` already exists as anything other than the installer's link
+- **THEN** no link is created, the existing entry is left unchanged, and the outcome is recorded without failing other host operations
+
+#### Scenario: Config backups tolerate the link
+- **WHEN** an install, update, uninstall, or restore backs up or restores `config/`
+- **THEN** the link is neither followed nor archived, and a restore keeps an existing link
+
+#### Scenario: Restoration removes only the installer's link
+- **WHEN** uninstall or transaction recovery runs
+- **THEN** the link is removed only while it still points at the database directory; an operator-replaced entry is preserved
