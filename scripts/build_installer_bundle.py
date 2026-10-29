@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -15,6 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from installer.runtime import fluidd_build
 from installer.runtime.compatibility import load_supported_upgrade_sources, validate_manifest_compatibility
 from installer.runtime.manifest import load_manifest
 from installer.runtime.naming import BUNDLE_NAME_PREFIX, BUNDLE_ROOT_NAME
@@ -41,6 +43,8 @@ ALLOWED_DIRECTORIES = [
     "installer/stock",
     "installer/system",
 ]
+# Release downloads are cached by checksum outside the bundled tree.
+DOWNLOAD_CACHE = REPO_ROOT / "build/downloads"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -57,6 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     validate_manifest_compatibility(manifest, compatibility)
     validate_source_payloads(manifest)
+    fluidd_archive = fetch_fluidd_build(manifest)
 
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -79,6 +84,7 @@ def main(argv: list[str] | None = None) -> int:
         source = REPO_ROOT / directory
         destination = bundle_root / directory
         shutil.copytree(source, destination, ignore=ignore)
+    shutil.copy2(fluidd_archive, bundle_root / "installer" / manifest.system_optimizations.fluidd_build.archive)
 
     (bundle_root / "RELEASE_METADATA.yaml").write_text(
         render_release_metadata(manifest.package.version, args.channel, args.build_id),
@@ -135,6 +141,24 @@ def validate_source_payloads(manifest) -> None:
                     f"{patch.id} for {variant.firmware} stock "
                     f"{variant.expected_sha256}"
                 )
+
+
+def fetch_fluidd_build(manifest) -> Path:
+    """Return the pinned Fluidd release archive, downloading it once and verifying it against the manifest."""
+    build = manifest.system_optimizations.fluidd_build
+    cached = DOWNLOAD_CACHE / f"fluidd-{build.sha256}.zip"
+    if not cached.is_file():
+        print(f"Downloading Fluidd {build.version} from {build.url}", file=sys.stderr)
+        with urllib.request.urlopen(build.url, timeout=120) as response:
+            data = response.read()
+        if hashlib.sha256(data).hexdigest() != build.sha256:
+            raise ValueError(f"Fluidd {build.version} from {build.url} does not match the pinned sha256.")
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        partial = cached.with_name(cached.name + ".partial")
+        partial.write_bytes(data)
+        partial.replace(cached)
+    fluidd_build.archive_files(cached, build.sha256)
+    return cached
 
 
 def bundle_names(*, channel: str, package_version: str, build_id: str | None) -> tuple[str, str]:

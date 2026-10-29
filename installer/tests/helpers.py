@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import atexit
+import dataclasses
+import hashlib
 import json
 import shutil
 import tempfile
 import threading
+import zipfile
 from subprocess import CompletedProcess
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -150,6 +153,19 @@ def fake_system_root(
     (root / "mounts").mkdir()
     (root / "mounts/root.options").write_text("rw,relatime,sync\n", encoding="utf-8")
     return root
+
+
+def with_fluidd_build(manifest):
+    """Pin the manifest's Fluidd build to a small archive; repository checkouts carry no release build."""
+    archive = temp_path("fluidd-build-") / "fluidd.zip"
+    with zipfile.ZipFile(archive, "w") as build:
+        build.writestr("index.html", "<!doctype html><title>Fluidd</title>\n")
+        build.writestr("sw.js", "self.skipWaiting()\n")
+        build.writestr("assets/", "")
+        build.writestr("assets/index.js", "console.log('fluidd')\n")
+    spec = manifest.system_optimizations
+    pinned = dataclasses.replace(spec.fluidd_build, archive=str(archive), sha256=hashlib.sha256(archive.read_bytes()).hexdigest())
+    return dataclasses.replace(manifest, system_optimizations=dataclasses.replace(spec, fluidd_build=pinned))
 
 
 def fake_host_run(root: Path):

@@ -67,20 +67,38 @@ Manual 3MF metadata rescans use the archive extractor and keep existing QIDI thu
 
 Unrecognized source is preserved and reported. Uninstall can restore the original source through its system-restoration prompt; files modified after installation are preserved.
 
-### QIDI Box filaments in Fluidd
+### Fluidd
 
-QIDI firmware `01.01.07.01` stores Box filaments with new IDs such as `QFA90`, colors as RGB values, and brands such as Bambu, HATCHBOX, Overture, and Polymaker through the filament itself. Its bundled Fluidd still expects the older numeric IDs: loaded slots show `?`, and filaments chosen in Fluidd are treated by the printer as QIDI PLA Basic.
+QIDI no longer updates the Fluidd that ships with the Max 4, version 1.30.5. Install and update now serve this project's build of current Fluidd instead, based on Fluidd 1.37.7, with QIDI's Max 4 additions and the Box, temperature, and screen features below. This applies even when optional OS optimizations are skipped. The source is at [thelegendtubaguy/fluidd](https://github.com/thelegendtubaguy/fluidd).
 
-Install and update patch QIDI's Fluidd, including when optional OS optimizations are skipped:
+- The build is installed in `~/tltg-fluidd`, and the printer's web server serves it in place of QIDI's `~/fluidd`, which is left untouched. Updates replace the whole build.
+- Your Fluidd settings, macros, and dashboard layout carry over, because both versions keep them in the same place on the printer.
+- Everything QIDI's **Enable Full Display** setting used to hide, such as the bed mesh card on the Tune page and sensors without a target temperature, is always shown.
+- Sliced `.gcode.3mf` files can be uploaded, and the G-code preview opens them.
 
-- Box slots show the filament, vendor, and color the printer is actually using. A slot set with an older numeric ID shows QIDI PLA Basic, because that is how `01.01.07.01` treats it; pick the filament again to fix it.
-- The Vendor and Filament pickers match the touchscreen: choose a vendor, then one of its filaments. Changing the vendor switches to that vendor's filament of the same type when one exists.
-- Colors chosen in Fluidd are saved the same way as on the touchscreen.
-- The Box card's Load, Unload, and Eject buttons and RFID read send the commands `01.01.07.01` uses, and Unload is available when the selected slot is loaded.
+After installing, close every Fluidd tab and open Fluidd again.
 
-Older supported firmware keeps Fluidd's original pickers and commands. After installing, close every Fluidd tab, then open Fluidd again; browsers that already had Fluidd open load the updated page on the next visit.
+To go back to QIDI's Fluidd, uninstall and accept the system-restoration prompt. It points the web server back at `~/fluidd` and removes `~/tltg-fluidd`. Cards that only QIDI's Fluidd has go back to their default places on the dashboard.
 
-A Fluidd build the installer does not recognize is left unchanged. Uninstall can restore the original Fluidd through its system-restoration prompt; files modified after installation are preserved.
+If the installer doesn't recognize QIDI's web server configuration for Fluidd, it leaves it alone, and QIDI's Fluidd stays in use with the fixes earlier versions made to its Box card.
+
+### QIDI Box in Fluidd
+
+The **QIDI Box** card shows every Box's slots and the external spool at once, and is hidden on printers without a Box.
+
+![QIDI Box card in Fluidd showing two Boxes, the external spool, the filament path of the loaded slot, and the tool mapping](.github/images/fluidd-qidibox-card.png)
+
+- Each spool shows its color and the tools mapped to it above, and the slot label below has a green border when filament is at the slot's inlet. The loaded slot's tool label is highlighted.
+- Under each Box are its humidity, temperature, and heater target when heating.
+- The filament path shows how far the selected slot's filament reaches, following the slot inlet, hub, and toolhead sensors. The hub and toolhead only light up for the slot whose filament is actually there.
+- With **Automatic reload** on, slots that can stand in for each other when one runs out are outlined in their filament color and share a reload letter (↻ A, ↻ B, …) under their labels: Box slots with the same filament, vendor, and color. The selected slot also lists its backups.
+- Click a slot to select it, then **Load**, **Unload**, **Eject**, **Read RFID**, or **Edit filament**. These are unavailable while printing or while the Box is busy.
+- The tool mapping at the bottom shows which slot each tool loads, one diagram per Box. While the printer is idle, click a tool or **Edit** to change it; **Default** restores T0 → 1A, T1 → 1B, and so on. Fluidd's print dialog sets the mapping for the print it starts, and a normal print end restores the default.
+- **Box settings** turns QIDI's detection on startup, detection on insertion, and automatic reload on or off, and holds the [load and unload motion](#qidi-box-load-and-unload-speed) settings.
+
+On firmware `01.01.07.01`, slots show the filament, vendor, and color the printer is actually using, including brands such as Bambu, HATCHBOX, Overture, and Polymaker. A slot set with an older numeric ID shows QIDI PLA Basic, because that is how `01.01.07.01` treats it; pick the filament again to fix it. The Vendor and Filament pickers match the touchscreen, colors are saved the same way as on the touchscreen, and the buttons send the commands `01.01.07.01` uses. Older supported firmware uses QIDI's earlier filament list and commands.
+
+Starting a print of a file sliced for the Box opens the Box print dialog. Choose a loaded slot for each filament in the file; slots are matched automatically by type and nearest color, and several filaments can use the same slot. Turn off **Use QIDI Box** to print from the external spool.
 
 ### Editing the QIDI filament list
 
@@ -97,26 +115,6 @@ Firmware updates replace these files, so keep a copy of any entries you add. Fil
 
 Set a QIDI Box heater target from the `Heater Box1`/`Heater Box2` rows in Fluidd's temperature panel. The highest target allowed is the lowest Box temperature limit among the filaments loaded in that Box; an empty Box allows up to 65 °C, the Box's advertised maximum. If a loaded filament does not allow Box heating, the target field is locked; a Box that is already heating can still be set to `0`.
 
-### Fluidd full display
-
-Install and update turn on QIDI's **Enable Full Display** setting in Fluidd by default. It shows the bed mesh card on the Tune page and adds sensors without a target temperature, such as the chamber thermal protection and electronics sensors, to the temperature panel and chart. Turning it off in Fluidd's settings is remembered across updates.
-
-### QidiBox card in Fluidd (preview)
-
-Install and update add a **QidiBox** card to Fluidd's dashboard, a preview of a redesigned Box card. The existing Box card stays as it is, so you can compare them and use either. Existing dashboards get the card at the bottom of the first column; drag it wherever you like in Fluidd's layout mode.
-
-![QidiBox card in Fluidd showing two Boxes with auto-reload groups, the filament path, and the tool mapping](.github/images/fluidd-qidibox-card.png)
-
-- Every Box's slots and the external spool are shown at once. Each spool shows its color and the tools mapped to it above, and the slot label below has a green border when filament is at the slot's inlet. The loaded slot's tool label is highlighted.
-- Under each Box are its humidity, temperature, and heater target when heating.
-- The filament path shows how far the selected slot's filament reaches, following the slot inlet, hub, and toolhead sensors. The hub and toolhead only light up for the slot whose filament is actually there.
-- With **Automatic Reload** on in Box settings, slots that can stand in for each other when one runs out are outlined in their filament color and share a reload letter (↻ A, ↻ B, …) under their labels: Box slots with the same filament, vendor, and color, as the Box card's AUTO view groups them. The selected slot also lists its backups.
-- Click a slot to select it, then **Load**, **Unload**, **Eject**, **Read RFID**, or **Edit filament**. These do the same as the Box card's buttons and pickers and are unavailable while printing.
-- The tool mapping at the bottom shows which slot each tool loads, one diagram per Box. While the printer is idle, click a tool or **Edit** to change it; **Default** restores T0 → 1A, T1 → 1B, and so on. Fluidd's print dialog sets the mapping for the print it starts, and a normal print end restores the default.
-- **Box settings** opens the same settings as the Box card's **Config**, including load/unload motion.
-
-After installing, close every Fluidd tab and open Fluidd again. Feedback on the layout is welcome in GitHub issues.
-
 ### Printer screen in Fluidd
 
 Install and update add a **Printer screen** card to Fluidd's dashboard that shows the printer's touchscreen live, so you can check or use it from another room. This applies even when optional OS optimizations are skipped. The card starts collapsed and the printer does no screen work until you expand it. It stops when you collapse it, leave the dashboard, or switch to another tab. Existing dashboards get the card at the bottom of the first column; drag it wherever you like in Fluidd's layout mode.
@@ -131,7 +129,7 @@ Install and update add a **Printer screen** card to Fluidd's dashboard that show
 
 The screen is only available to devices that can already use Fluidd: the printer checks every connection with Moonraker, and the screen service itself only listens on the printer. After installing, close every Fluidd tab and open Fluidd again to load the new card.
 
-Behind the card, the installer adds a small `tltg-remote-screen` service, and a `/tltg-screen/` route to QIDI's Fluidd web server configuration. The service sends a new image only when the screen changes. An nginx configuration the installer does not recognize is left unchanged, and the card then says the screen is unavailable. Uninstall can remove the service and restore the original web server configuration through its system-restoration prompt; files modified after installation are preserved.
+Behind the card, the installer adds a small `tltg-remote-screen` service, and a `/tltg-screen/` route to the printer's Fluidd web server configuration. The service sends a new image only when the screen changes. An nginx configuration the installer does not recognize is left unchanged, and the card then says the screen is unavailable. Uninstall can remove the service and restore the original web server configuration through its system-restoration prompt; files modified after installation are preserved.
 
 ### Klipper shutdown reasons
 
@@ -155,7 +153,7 @@ When reporting a Box MCU disconnect, include this file alongside the end of `kli
 
 ### QIDI Box load and unload speed
 
-You can tune how the Box pushes filament to the toolhead and pulls it back. A load pushes fast for most of the way, then approaches slowly until the toolhead filament sensor trips. Installing or updating saves the package defaults below unless you've already saved any of these settings, in which case all of yours are kept. Set them in Fluidd's Box card under **Config** → **Load/unload motion**, or with `TLTG_BOX_MOTION` in the console. Run `TLTG_BOX_MOTION` with no parameters to see the current settings and each slot's profile. After installing, close every Fluidd tab and open Fluidd again to load the new Box card.
+You can tune how the Box pushes filament to the toolhead and pulls it back. A load pushes fast for most of the way, then approaches slowly until the toolhead filament sensor trips. Installing or updating saves the package defaults below unless you've already saved any of these settings, in which case all of yours are kept. Set them in Fluidd's QIDI Box card under **Box settings** → **Load/unload motion**, or with `TLTG_BOX_MOTION` in the console. Run `TLTG_BOX_MOTION` with no parameters to see the current settings and each slot's profile.
 
 | Parameter | What it sets | Package default | QIDI value | Allowed |
 |---|---|---|---|---|

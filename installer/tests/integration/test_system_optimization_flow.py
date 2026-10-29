@@ -46,6 +46,7 @@ from installer.tests.helpers import (
     fake_system_root,
     moonraker_urlopen,
     snapshot_tree,
+    with_fluidd_build,
 )
 
 
@@ -189,8 +190,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(screen_unit.read_text(encoding="utf-8"), remote_screen.UNIT_CONTENT)
         self.assertEqual(screen_server.read_bytes(), remote_screen.SERVER_PAYLOAD.read_bytes())
         self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "enabled")
-        self.assertIn(b"location /tltg-screen/ {\r\n", nginx_site.read_bytes())
-        self.assertNotIn(b"\n", nginx_site.read_bytes().replace(b"\r\n", b""))
+        # Without a package Fluidd build, nginx keeps serving QIDI's patched bundle.
+        self.assertEqual(nginx_site.read_bytes(), nginx_site_before)
+        self.assertEqual(state.system_ledger["outcomes"][system_optimizations.FLUIDD_BUILD_OPERATION]["status"], "missing")
         fluidd_current = fluidd.read_bytes()
         # Earlier package versions left owned Fluidd patches, including an older Box motion section, that updates must replace in place.
         fluidd_previous = fluidd_before.decode().replace(fluidd_patch.SLOT_PARSE_STOCK, fluidd_patch.SLOT_PARSE_PATCHED).replace(
@@ -225,6 +227,58 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         )
         self.assertEqual(screen_server.read_bytes(), remote_screen.SERVER_PAYLOAD.read_bytes())
         self.assertFalse(reconciled["restore_preimages"][remote_screen.SERVER_OPERATION]["exists"])
+
+        # Serving the package Fluidd build retires QIDI's bundle patches; a failure first rolls the switch back.
+        manifest = with_fluidd_build(manifest)
+        build = system_root / "home/qidi/tltg-fluidd"
+        previous_build = system_root / "home/qidi/tltg-fluidd.tltg-previous"
+        marker = build / ".tltg-optimized-fluidd"
+
+        def failing_restart(unit):
+            failed = False
+
+            def run(command, **kwargs):
+                nonlocal failed
+                if not failed and list(command)[-3:] == ["systemctl", "restart", unit]:
+                    failed = True
+                    return CompletedProcess(command, 1, stdout="", stderr="restart failed")
+                return host_run(command, **kwargs)
+            return run
+
+        def reconcile(ledger, run=host_run):
+            return apply_system_optimizations(
+                paths=paths, spec=manifest.system_optimizations, ledger=ledger,
+                reporter=PlainReporter(io.StringIO()), input_stream=None, environ=env,
+                source="auto_update_reconcile", run=run,
+            )
+
+        with self.assertRaises(SystemOptimizationApplyError):
+            reconcile(reconciled, failing_restart("nginx.service"))
+        self.assertFalse(build.exists())
+        self.assertEqual(nginx_site.read_bytes(), nginx_site_before)
+        self.assertEqual(fluidd.read_bytes(), fluidd_current)
+        reconciled = reconcile(reconciled)
+        self.assertEqual(marker.read_text(encoding="utf-8"), manifest.system_optimizations.fluidd_build.sha256 + "\n")
+        self.assertEqual((build / "assets/index.js").stat().st_mode & 0o777, 0o644)
+        self.assertIn(b"\r\n    root /home/qidi/tltg-fluidd;\r\n", nginx_site.read_bytes())
+        self.assertIn(b"location /tltg-screen/ {\r\n", nginx_site.read_bytes())
+        self.assertNotIn(b"\n", nginx_site.read_bytes().replace(b"\r\n", b""))
+        self.assertEqual(fluidd.read_bytes(), fluidd_before)
+        self.assertEqual(service_worker.read_bytes(), service_worker_before)
+        self.assertNotIn(FLUIDD_BOX_OPERATION, reconciled["restore_preimages"])
+        self.assertNotIn(fluidd_patch.SERVICE_WORKER_OPERATION, reconciled["restore_preimages"])
+        self.assertEqual(reconciled["outcomes"][FLUIDD_BOX_OPERATION]["status"], "retired")
+        # Updates replace an earlier build, which comes back if a later change fails.
+        marker.write_text("0" * 64 + "\n", encoding="utf-8")
+        screen_server.write_bytes(prior_server)
+        reconciled["outcomes"][remote_screen.SERVER_OPERATION]["postflight"]["sha256"] = __import__("hashlib").sha256(prior_server).hexdigest()
+        with self.assertRaises(SystemOptimizationApplyError):
+            reconcile(reconciled, failing_restart(remote_screen.UNIT))
+        self.assertEqual(marker.read_text(encoding="utf-8"), "0" * 64 + "\n")
+        self.assertFalse(previous_build.exists())
+        reconciled = reconcile(reconciled)
+        self.assertEqual(marker.read_text(encoding="utf-8"), manifest.system_optimizations.fluidd_build.sha256 + "\n")
+        self.assertFalse(previous_build.exists())
         write_installed_state(printer_root / manifest.state_file, _replace_system_ledger(state, reconciled))
 
         run_uninstall(
@@ -257,6 +311,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertFalse(probe_helper.exists())
         self.assertFalse(filament_link.is_symlink())
         self.assertEqual(nginx_site.read_bytes(), nginx_site_before)
+        self.assertFalse(build.exists())
         self.assertFalse(screen_unit.exists())
         self.assertFalse(screen_server.exists())
         self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "disabled")

@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.29.1
+- Fluidd is now this project's build of current Fluidd, based on Fluidd 1.37.7, instead of QIDI's Fluidd 1.30.5, which QIDI no longer updates. It keeps QIDI's Max 4 additions and the Box, temperature, and screen features from earlier versions, and adds the rest of upstream Fluidd's improvements since 1.30.5. Install and update put it in `~/tltg-fluidd` and point the printer's web server at it, even when optional OS optimizations are skipped. QIDI's `~/fluidd` is left untouched, and the earlier patches to it are undone. Your settings, macros, and dashboard layout carry over. After installing, close every Fluidd tab and open Fluidd again. Uninstall's system-restoration prompt switches back to QIDI's Fluidd and removes `~/tltg-fluidd`. The source is at [thelegendtubaguy/fluidd](https://github.com/thelegendtubaguy/fluidd).
+- The **QidiBox** preview is now Fluidd's **QIDI Box** card. **Box settings** on the card has QIDI's detection on startup, detection on insertion, and automatic reload switches, along with the load and unload motion settings.
+- Everything QIDI's **Enable Full Display** setting hid, such as the bed mesh card on the Tune page and sensors without a target temperature, is now always shown.
+- Sliced `.gcode.3mf` files can now be uploaded from Fluidd, and its G-code preview opens them.
+
 ## 26.10.28.4
 - Fixed the Box MCU link monitor never recording the Box's reset reason. It asked before Klipper had connected to the Box, so it logged `firmware has no reset_reason_get` for every MCU, and when it did ask, the Box's answer went to `klippy.log` instead of `tltg_box_link.log`. The monitor now asks once Klipper is connected and writes the answer as a `reset-reason mcu_boxN:` line. After a Box disconnect, the first such line when Klipper reconnects shows why the Box restarted. Turning the monitor on while Klipper is running now records the reset reason right away. `mcu` and `THR` still report `firmware has no reset_reason_get`, because their firmware doesn't have the command.
 

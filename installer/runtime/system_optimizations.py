@@ -9,12 +9,14 @@ import subprocess
 import tarfile
 import tempfile
 import uuid
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
 from . import messages
+from . import fluidd_build
 from . import fluidd_filament_config as filament_config
 from .fluidd_box_filaments import (
     OPERATION as FLUIDD_BOX_OPERATION,
@@ -75,6 +77,12 @@ MOONRAKER_METADATA_PATCH_MARKER = "def _3mf_selected_plate_index(xml_data: str) 
 ROCKCHIP_ROOT_SYNC_OPERATION = "rockchip_root_sync"
 ROCKCHIP_UNSUPPORTED = frozenset({"unsupported", "conflicting_dropin", "unsafe_path"})
 ROCKCHIP_ALREADY_CURRENT = frozenset({"already_current_owned", "already_current_unowned"})
+FLUIDD_BUILD_OPERATION = fluidd_build.OPERATION
+# QIDI's bundle is patched only while nginx serves it; serving the package build retires these patches.
+FLUIDD_BUNDLE_OPERATIONS = (FLUIDD_BOX_OPERATION, FLUIDD_SERVICE_WORKER_OPERATION)
+# The build is only ever installed where nothing existed or over an earlier package build, so restoration is removal.
+FLUIDD_BUILD_PREIMAGE = {"path": fluidd_build.DESTINATION, "exists": False}
+FLUIDD_BUILD_UPDATE_PREIMAGE = {"path": fluidd_build.DESTINATION, "exists": True, "previous": fluidd_build.PREVIOUS}
 
 
 @dataclass(frozen=True)
@@ -361,6 +369,31 @@ def maybe_emit_system_dry_run(
     if policy.get("system_optimizations") != "enabled":
         reporter.line("  - optional OS optimizations skipped by policy")
     for operation_id in _selected_operation_ids(manifest.system_optimizations, policy):
+        if operation_id in FLUIDD_BUNDLE_OPERATIONS and _system_root_allowed(paths=paths, environ=environ):
+            if _fluidd_build_served(manifest.system_optimizations, _system_root(environ)):
+                prior_preimages = (prior_ledger or {}).get("restore_preimages")
+                if isinstance(prior_preimages, dict) and operation_id in prior_preimages:
+                    reporter.line(f"  - would restore QIDI's original {GUARDED_FILE_PATCHES[operation_id].label}")
+                else:
+                    reporter.line(f"  - {operation_id}: not needed while the package Fluidd is served")
+                continue
+        if operation_id == FLUIDD_BUILD_OPERATION and _system_root_allowed(paths=paths, environ=environ):
+            spec = manifest.system_optimizations
+            if not _fluidd_build_archive(spec).is_file():
+                reporter.line(f"  - {operation_id}: the package has no Fluidd build")
+                continue
+            try:
+                state = _fluidd_build_state(spec, _system_root(environ))
+            except InstallerError as exc:
+                reporter.line(f"  - would fail {operation_id}: {getattr(exc, 'message', str(exc))}")
+                continue
+            reporter.line({
+                fluidd_build.ABSENT: f"  - would install Fluidd {spec.fluidd_build.version} at {fluidd_build.DESTINATION}",
+                fluidd_build.OUTDATED: f"  - would replace {fluidd_build.DESTINATION} with Fluidd {spec.fluidd_build.version}",
+                fluidd_build.CURRENT: f"  - {operation_id}: already current",
+                fluidd_build.FOREIGN: f"  - would preserve existing {fluidd_build.DESTINATION}",
+            }[state])
+            continue
         if operation_id in GUARDED_FILE_PATCHES and _system_root_allowed(paths=paths, environ=environ):
             guarded = GUARDED_FILE_PATCHES[operation_id]
             root = _system_root(environ)
@@ -465,6 +498,78 @@ def _restore_filament_config_link(paths: RuntimePaths, spec: SystemOptimizations
         raise SystemOptimizationRecoveryError("QIDI filament config link changed during the transaction; preserving it for recovery.")
 
 
+def _fluidd_build_archive(spec: SystemOptimizationsSpec) -> Path:
+    return Path(__file__).resolve().parents[1] / spec.fluidd_build.archive
+
+
+def _fluidd_build_state(spec: SystemOptimizationsSpec, root: Path) -> str:
+    """Raises FluiddBuildError when the package archive is missing or invalid."""
+    build = spec.fluidd_build
+    destination = _map_path(root, fluidd_build.DESTINATION)
+    _reject_parent_symlink_path(destination, root=root)
+    hashes = fluidd_build.archive_files(_fluidd_build_archive(spec), build.sha256)
+    return fluidd_build.state(destination, hashes=hashes, sha256=build.sha256)
+
+
+def _fluidd_build_current(spec: SystemOptimizationsSpec, root: Path) -> bool:
+    try:
+        return _fluidd_build_state(spec, root) == fluidd_build.CURRENT
+    except InstallerError:
+        return False
+
+
+def _nginx_serves_fluidd_build(root: Path) -> bool:
+    site = _map_path(root, remote_screen.NGINX_SITE)
+    try:
+        return not site.is_symlink() and site.is_file() and remote_screen.serves_fluidd_build(site.read_bytes().decode("utf-8", "replace"))
+    except OSError:
+        return False
+
+
+def _fluidd_build_served(spec: SystemOptimizationsSpec, root: Path) -> bool:
+    return _nginx_serves_fluidd_build(root) and _fluidd_build_current(spec, root)
+
+
+def _restore_fluidd_build(preimage: dict[str, Any], *, root: Path) -> None:
+    destination = _map_path(root, fluidd_build.DESTINATION)
+    previous = _map_path(root, fluidd_build.PREVIOUS)
+    removing = _map_path(root, fluidd_build.REMOVING)
+    for path in (destination, previous, removing):
+        _reject_parent_symlink_path(path, root=root)
+    try:
+        if preimage.get("exists"):
+            # Without a moved-aside build, the replaced build is still in place.
+            if previous.is_symlink() or not previous.is_dir():
+                return
+            if destination.exists() or destination.is_symlink():
+                fluidd_build.remove(destination, removing)
+            previous.rename(destination)
+        elif destination.exists() or destination.is_symlink():
+            fluidd_build.remove(destination, removing)
+    except fluidd_build.FluiddBuildError as exc:
+        raise SystemOptimizationRecoveryError(exc.message) from exc
+
+
+def _retire_fluidd_bundle_patch(
+    operation_id: str,
+    *,
+    paths: RuntimePaths,
+    spec: SystemOptimizationsSpec,
+    root: Path,
+    sudo_password: str | None,
+    run,
+    restore_preimages: dict[str, Any],
+    outcomes: dict[str, Any],
+) -> None:
+    """Restore an unchanged patched QIDI bundle file and give up its ownership; a changed file is left as it is."""
+    preimage = restore_preimages[operation_id]
+    if not _guarded_file_has_drift(operation_id, spec, root, restore_preimages, outcomes) and not _file_matches_preimage(preimage, root=root):
+        _write_host_journal(paths, operation_id=operation_id, transaction_id=uuid.uuid4().hex, phase="restore", preimage=preimage)
+        _restore_guarded_file(GUARDED_FILE_PATCHES[operation_id], preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
+        atomic_delete(_journal_path(paths))
+    del restore_preimages[operation_id]
+
+
 def _outcome_file_sha256(outcome: dict[str, Any]) -> str | None:
     postflight = outcome.get("postflight")
     return postflight.get("sha256") if isinstance(postflight, dict) else None
@@ -517,7 +622,10 @@ def restore_system_optimizations(
     )
     rockchip_restored = False
     outcomes = ledger.get("outcomes") if isinstance(ledger.get("outcomes"), dict) else {}
-    for operation_id in reversed(list(preimages.keys())):
+    # The Fluidd build goes last, after nginx stops serving it.
+    order = [operation_id for operation_id in reversed(list(preimages)) if operation_id != FLUIDD_BUILD_OPERATION]
+    order.extend(operation_id for operation_id in preimages if operation_id == FLUIDD_BUILD_OPERATION)
+    for operation_id in order:
         preimage = preimages[operation_id]
         outcome = outcomes.get(operation_id) if isinstance(outcomes.get(operation_id), dict) else None
         if outcome is None or outcome.get("status") == "legacy_unproven":
@@ -538,6 +646,13 @@ def restore_system_optimizations(
         if operation_id == FILAMENT_CONFIG_OPERATION:
             if _filament_config_state(paths, manifest.system_optimizations, root) != filament_config.CURRENT:
                 reporter.line(f"{manifest.system_optimizations.fluidd_filament_config.link} was modified after install and was preserved.")
+                continue
+        elif operation_id == FLUIDD_BUILD_OPERATION:
+            if _nginx_serves_fluidd_build(root):
+                reporter.line(f"{fluidd_build.DESTINATION} was kept because nginx still serves it.")
+                continue
+            if fluidd_build.installed_sha256(_map_path(root, fluidd_build.DESTINATION)) is None:
+                reporter.line(f"{fluidd_build.DESTINATION} was replaced after install and was preserved.")
                 continue
         elif operation_id != ROCKCHIP_ROOT_SYNC_OPERATION and guarded is None and _operation_needs_apply(
             operation_id, spec=manifest.system_optimizations, root=root, run=run
@@ -580,6 +695,8 @@ def restore_system_optimizations(
             _restart_service("moonraker.service", root=root, sudo_password=sudo_password, run=run)
         elif operation_id == FILAMENT_CONFIG_OPERATION:
             _restore_filament_config_link(paths, manifest.system_optimizations)
+        elif operation_id == FLUIDD_BUILD_OPERATION:
+            _restore_fluidd_build(preimage, root=root)
         elif guarded is not None:
             _restore_guarded_file(guarded, preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
         elif operation_id == ROCKCHIP_ROOT_SYNC_OPERATION:
@@ -680,10 +797,45 @@ def apply_system_optimizations(
         for operation_id in selected_ids:
             started_at = _now()
             guarded = GUARDED_FILE_PATCHES.get(operation_id)
+            if operation_id in FLUIDD_BUNDLE_OPERATIONS and _fluidd_build_served(spec, root):
+                if operation_id in restore_preimages:
+                    _retire_fluidd_bundle_patch(
+                        operation_id, paths=paths, spec=spec, root=root, sudo_password=sudo_password, run=run,
+                        restore_preimages=restore_preimages, outcomes=ledger.get("outcomes", {}),
+                    )
+                    actions.append(
+                        _action_record(
+                            operation_id=operation_id,
+                            status="retired",
+                            started_at=started_at,
+                            preimage=None,
+                            desired=_desired(operation_id, spec),
+                            postflight={"path": guarded.file(spec)},
+                            source=source,
+                            reconciled=source in {"auto_update_child", "auto_update_reconcile"},
+                        )
+                    )
+                    applied_any = True
+                continue
             if guarded is not None and _guarded_file_has_drift(operation_id, spec, root, restore_preimages, ledger.get("outcomes", {})):
                 if guarded.required:
                     raise SystemOptimizationError(f"Required {guarded.label} was modified and was preserved.")
                 reporter.line(f"{guarded.label} was modified after install and was preserved.")
+                continue
+            if operation_id == remote_screen.NGINX_OPERATION and not _fluidd_build_current(spec, root):
+                reporter.line(f"{guarded.label} was left unchanged because the package Fluidd is not installed.")
+                actions.append(
+                    _action_record(
+                        operation_id=operation_id,
+                        status="skipped",
+                        started_at=started_at,
+                        preimage=None,
+                        desired=_desired(operation_id, spec),
+                        postflight={"path": guarded.file(spec)},
+                        source=source,
+                        reconciled=False,
+                    )
+                )
                 continue
             if guarded is not None and guarded.skip_unrecognized:
                 try:
@@ -750,6 +902,73 @@ def apply_system_optimizations(
                     )
                 )
                 restore_preimages.setdefault(operation_id, preimage)
+                atomic_delete(_journal_path(paths))
+                applied_any = True
+                continue
+            if operation_id == FLUIDD_BUILD_OPERATION:
+                build = spec.fluidd_build
+                archive = _fluidd_build_archive(spec)
+                if not archive.is_file():
+                    state = "missing"
+                    reporter.line("The package has no Fluidd build; QIDI's Fluidd stays in use.")
+                else:
+                    state = _fluidd_build_state(spec, root)
+                if state == fluidd_build.FOREIGN:
+                    reporter.line(f"{fluidd_build.DESTINATION} already exists and was preserved; QIDI's Fluidd stays in use.")
+                if state in {"missing", fluidd_build.FOREIGN, fluidd_build.CURRENT}:
+                    if state == fluidd_build.CURRENT and operation_id in restore_preimages:
+                        continue
+                    actions.append(
+                        _action_record(
+                            operation_id=operation_id,
+                            status={"missing": "missing", fluidd_build.FOREIGN: "preserved"}.get(state, "already_current"),
+                            started_at=started_at,
+                            preimage=None,
+                            desired=_desired(operation_id, spec),
+                            postflight={"path": fluidd_build.DESTINATION, "state": state},
+                            source=source,
+                            reconciled=False,
+                        )
+                    )
+                    if state == fluidd_build.CURRENT:
+                        # The marker shows a package build, so its restoration is removal.
+                        restore_preimages.setdefault(operation_id, dict(FLUIDD_BUILD_PREIMAGE))
+                    continue
+                destination = _map_path(root, fluidd_build.DESTINATION)
+                staging = _map_path(root, fluidd_build.STAGING)
+                previous = _map_path(root, fluidd_build.PREVIOUS)
+                for leftover in (staging, previous):
+                    _reject_parent_symlink_path(leftover, root=root)
+                    fluidd_build.discard(leftover)
+                fluidd_build.extract(archive, build.sha256, staging)
+                preimage = dict(FLUIDD_BUILD_PREIMAGE if state == fluidd_build.ABSENT else FLUIDD_BUILD_UPDATE_PREIMAGE)
+                current_preimages[operation_id] = preimage
+                _write_host_journal(
+                    paths,
+                    operation_id=operation_id,
+                    transaction_id=uuid.uuid4().hex,
+                    phase="apply",
+                    preimage=preimage,
+                    preimages=current_preimages,
+                )
+                if state == fluidd_build.OUTDATED:
+                    destination.rename(previous)
+                staging.rename(destination)
+                if _fluidd_build_state(spec, root) != fluidd_build.CURRENT:
+                    raise SystemOptimizationError("Fluidd build failed postflight.")
+                actions.append(
+                    _action_record(
+                        operation_id=operation_id,
+                        status="applied",
+                        started_at=started_at,
+                        preimage=preimage,
+                        desired=_desired(operation_id, spec),
+                        postflight={"path": fluidd_build.DESTINATION, "state": fluidd_build.CURRENT, "version": build.version},
+                        source=source,
+                        reconciled=source in {"auto_update_child", "auto_update_reconcile"},
+                    )
+                )
+                restore_preimages.setdefault(operation_id, dict(FLUIDD_BUILD_PREIMAGE))
                 atomic_delete(_journal_path(paths))
                 applied_any = True
                 continue
@@ -1041,6 +1260,11 @@ def apply_system_optimizations(
             restore_preimages=initial_restore_preimages,
         )
         raise SystemOptimizationApplyError(getattr(exc, "message", str(exc)), partial) from exc
+    # The replaced Fluidd build is kept only while the transaction can still roll back.
+    with suppress(OSError, InstallerError):
+        previous = _map_path(root, fluidd_build.PREVIOUS)
+        _reject_parent_symlink_path(previous, root=root)
+        fluidd_build.discard(previous)
     if source in {"auto_update_child", "auto_update_reconcile"}:
         reporter.line(
             "System optimizations reconciled."
@@ -1417,6 +1641,8 @@ def _restore_preimage_map(preimages: dict[str, Any], *, paths: RuntimePaths, spe
             _restore_guarded_file_preimage(operation_id, preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
         elif operation_id == FILAMENT_CONFIG_OPERATION:
             _restore_filament_config_link(paths, spec)
+        elif operation_id == FLUIDD_BUILD_OPERATION:
+            _restore_fluidd_build(preimage, root=root)
         elif operation_id == MOONRAKER_METADATA_OPERATION:
             _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
             _restart_service("moonraker.service", root=root, sudo_password=sudo_password, run=run)
@@ -1485,6 +1711,12 @@ def _operation_matches_preimage(
     if operation_id == FILAMENT_CONFIG_OPERATION:
         link = paths.printer_data_root / str(preimage.get("path", ""))
         return not link.exists() and not link.is_symlink()
+    if operation_id == FLUIDD_BUILD_OPERATION:
+        destination = _map_path(root, fluidd_build.DESTINATION)
+        if preimage.get("exists"):
+            previous = _map_path(root, fluidd_build.PREVIOUS)
+            return not previous.exists() and not previous.is_symlink() and fluidd_build.installed_sha256(destination) is not None
+        return not destination.exists() and not destination.is_symlink()
     if operation_id in {"apt_sources", MOONRAKER_METADATA_OPERATION, *GUARDED_FILE_PATCHES}:
         item = preimage.get("file", preimage)
         return isinstance(item, dict) and _file_matches_preimage(item, root=root)
@@ -2143,25 +2375,26 @@ def _path_has_symlink_component(path: Path, *, root: Path) -> bool:
 
 
 def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any]) -> tuple[str, ...]:
+    # nginx switches to the package Fluidd only after it is installed.
     ids = [
         MOONRAKER_METADATA_OPERATION,
         MOONRAKER_CACHE_OPERATION,
-        FLUIDD_BOX_OPERATION,
-        FLUIDD_SERVICE_WORKER_OPERATION,
         KLIPPER_BOX_OPERATION,
         KLIPPER_PRINT_STATS_OPERATION,
         FILAMENT_CONFIG_OPERATION,
+        FLUIDD_BUILD_OPERATION,
         remote_screen.UNIT_OPERATION,
         remote_screen.SERVER_OPERATION,
         remote_screen.NGINX_OPERATION,
     ]
-    if policy.get("system_optimizations") != "enabled":
-        return tuple(ids)
-    ids.extend(["dns", "apt_sources", "qidiclient_static_gifs"])
-    ids.extend(f"service_{service}" for service in spec.services.disable)
-    if policy.get("ai_detection") == "disable":
-        ids.extend(f"service_{item.service}" for item in spec.services.optional_disable)
-    ids.append(ROCKCHIP_ROOT_SYNC_OPERATION)
+    if policy.get("system_optimizations") == "enabled":
+        ids.extend(["dns", "apt_sources", "qidiclient_static_gifs"])
+        ids.extend(f"service_{service}" for service in spec.services.disable)
+        if policy.get("ai_detection") == "disable":
+            ids.extend(f"service_{item.service}" for item in spec.services.optional_disable)
+        ids.append(ROCKCHIP_ROOT_SYNC_OPERATION)
+    # QIDI's bundle goes last: restoring it after nginx serves the build is outside transaction rollback.
+    ids.extend(FLUIDD_BUNDLE_OPERATIONS)
     return tuple(ids)
 
 
@@ -2208,6 +2441,8 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
         return {"path": spec.klipper_print_stats_manager.file, "restart_service": spec.klipper_print_stats_manager.restart_service}
     if operation_id == FILAMENT_CONFIG_OPERATION:
         return {"path": spec.fluidd_filament_config.link, "target": spec.fluidd_filament_config.target}
+    if operation_id == FLUIDD_BUILD_OPERATION:
+        return {"path": fluidd_build.DESTINATION, "version": spec.fluidd_build.version, "archive_sha256": spec.fluidd_build.sha256}
     if operation_id in (remote_screen.UNIT_OPERATION, remote_screen.SERVER_OPERATION, remote_screen.NGINX_OPERATION):
         guarded = GUARDED_FILE_PATCHES[operation_id]
         return {"path": guarded.file(spec), "restart_service": guarded.restart_service}
@@ -2664,6 +2899,7 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             KLIPPER_BOX_OPERATION,
             KLIPPER_PRINT_STATS_OPERATION,
             FILAMENT_CONFIG_OPERATION,
+            FLUIDD_BUILD_OPERATION,
             remote_screen.UNIT_OPERATION,
             remote_screen.SERVER_OPERATION,
             remote_screen.NGINX_OPERATION,
@@ -2704,6 +2940,10 @@ def _validate_host_preimage(
         return
     if operation_id == MOONRAKER_METADATA_OPERATION:
         _validate_host_file_preimage(preimage, expected_path=spec.moonraker_metadata_3mf.file, paths=paths)
+        return
+    if operation_id == FLUIDD_BUILD_OPERATION:
+        if preimage not in (FLUIDD_BUILD_PREIMAGE, FLUIDD_BUILD_UPDATE_PREIMAGE):
+            raise StateValidationError("Fluidd build restoration preimage is invalid.")
         return
     if operation_id.startswith("service_"):
         expected_service = _service_for_operation(operation_id, spec)
@@ -3093,6 +3333,9 @@ def _restore_preimage_for_operation(
         return
     if operation_id == FILAMENT_CONFIG_OPERATION:
         _restore_filament_config_link(paths, spec)
+        return
+    if operation_id == FLUIDD_BUILD_OPERATION:
+        _restore_fluidd_build(preimage, root=root)
         return
     if operation_id == MOONRAKER_METADATA_OPERATION:
         _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)

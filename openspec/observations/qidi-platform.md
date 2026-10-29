@@ -52,6 +52,9 @@
 - **Runtime-confirmed:** with no RS-485 adapter attached, `box485` logs that its serial device cannot be opened and then repeatedly logs `Can not find 485 device`; Klipper otherwise reaches ready.
 - **Config-confirmed:** the SOC payload ships Fluidd `v1.30.5` with active bundle `/home/qidi/fluidd/assets/index-DlFvHGAh.js`, SHA-256 `178b2e076d3a75716819ee13f9ea1f0c92e536546c8b2adafde8632f6723710c`, byte-identical to the `01.01.06.05` SOC payload. Its QIDI Box card still parses saved slot values with `parseInt` and resolves them through `officiall_filas_list.cfg`; see [material metadata](qidi-box/material-metadata.md).
 - **Runtime-confirmed:** Fluidd is served by nginx over plain HTTP with `ETag` and `Last-Modified` but no explicit expiry for `/assets/`; `index.html` is `no-store`. Browsers do not register its Workbox service worker over a plain-HTTP LAN address.
+- **Runtime-confirmed:** nginx (workers run as `www-data`) serves Fluidd from `root /home/qidi/fluidd;` in `/etc/nginx/sites-available/fluidd`; no other location in the site or in `/etc/nginx/conf.d/` serves files from that tree. `/home/qidi` and the Fluidd tree are owned by `qidi` and world-readable. QIDI's `config.json` declares no endpoints and adds a `Qidi Tech` theme preset.
+- **Runtime-confirmed:** upstream Fluidd `v1.37.7` connects to QIDI's Moonraker (API `1.4.0`, version reported as `?`) without RPC errors. Upstream and QIDI's Fluidd keep settings and dashboard layouts in the same Moonraker `fluidd` database namespace; when upstream Fluidd saves a layout, card IDs it does not know are dropped, and its next load appends its own missing default cards.
+- **Unresolved:** whether a firmware update rewrites `/etc/nginx/sites-available/fluidd`, and with what content.
 
 ## Klipper shutdown reporting
 
