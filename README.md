@@ -133,6 +133,12 @@ The screen is only available to devices that can already use Fluidd: the printer
 
 Behind the card, the installer adds a small `tltg-remote-screen` service, and a `/tltg-screen/` route to the printer's Fluidd web server configuration. The service sends a new image only when the screen changes. An nginx configuration the installer does not recognize is left unchanged, and the card then says the screen is unavailable. Uninstall removes the service and restores the original web server configuration; files modified after installation are preserved.
 
+### Restarting the touchscreen app from Fluidd
+
+Install and update let Fluidd control `qidi-client`, QIDI's touchscreen app, so you can restart a frozen screen without SSH. This applies even when optional OS optimizations are skipped. Open Fluidd's power menu; `qidi-client` is listed under services with **Restart**, **Stop**, and **Start**. **Stop** leaves the touchscreen off until you start it again or the printer reboots.
+
+The installer adds `qidi-client` to `~/printer_data/moonraker.asvc`, Moonraker's list of services Fluidd may control, and restarts Moonraker once. A list the installer does not recognize is left unchanged. Uninstall restores the original list; a list modified after installation is preserved.
+
 ### Klipper shutdown reasons
 
 When Klipper stops on an error, such as a heater or fan fault or a lost Box connection, QIDI's print status module could crash Klipper during the shutdown, so the screen, Fluidd, and slicers showed only `MCU shutdown`. Install and update patch QIDI's `print_stats_manager.py` so the original reason stays on screen; `FIRMWARE_RESTART` recovers as usual. This applies even when optional OS optimizations are skipped, and Klipper restarts once when the patch is applied. Unrecognized source is preserved and reported. Uninstall restores the original file; files modified after installation are preserved.
@@ -329,7 +335,7 @@ You can also run uninstall by fetching the latest script directly from the web:
 /bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/install-latest.sh)" -- --uninstall
 ```
 
-Uninstall always undoes the changes every install makes to QIDI's own files: Fluidd goes back to QIDI's Fluidd, the Printer screen service and web server route are removed, and the Moonraker and Klipper source fixes and the filament configuration link are restored. It then asks whether to also restore the optional OS optimizations: DNS, APT sources, disabled services, Rockchip root sync, and the QIDIClient GIFs. `--keep-system-optimizations` keeps those without asking. Files modified after installation are preserved and reported.
+Uninstall always undoes the changes every install makes to QIDI's own files: Fluidd goes back to QIDI's Fluidd, the Printer screen service and web server route are removed, and the Moonraker and Klipper source fixes, Moonraker's allowed services list, and the filament configuration link are restored. It then asks whether to also restore the optional OS optimizations: DNS, APT sources, disabled services, Rockchip root sync, and the QIDIClient GIFs. `--keep-system-optimizations` keeps those without asking. Files modified after installation are preserved and reported.
 
 ## If something goes wrong
 

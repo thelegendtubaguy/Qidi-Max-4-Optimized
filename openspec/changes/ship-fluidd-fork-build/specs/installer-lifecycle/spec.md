@@ -33,6 +33,19 @@ Normal install and update SHALL serve the package's pinned build of the project'
 - **THEN** the unchanged nginx site is restored before the build is removed
 - **AND** the build is removed only while it carries the package marker and nginx no longer serves it; otherwise it is preserved and reported
 
+### Requirement: Touchscreen app control in Fluidd
+Normal install and update SHALL let Fluidd's service controls restart, stop, and start QIDI's touchscreen app by allowing it in Moonraker's allowed-services list, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches.
+
+#### Scenario: The touchscreen app is listed with Fluidd's services
+- **WHEN** install or update finds a recognized allowed-services list without the touchscreen app
+- **THEN** it backs up the list, adds the touchscreen app once, keeps the list's existing entries and line endings, and restarts Moonraker
+- **AND** a list that already allows the touchscreen app is left unchanged
+
+#### Scenario: Unrecognized or modified lists are preserved
+- **WHEN** the allowed-services list is missing, is not a plain list of service names, or was modified after installation
+- **THEN** it is left unchanged and recorded without failing other host patches
+- **AND** uninstall restores an unchanged list to its original content and restarts Moonraker
+
 ## MODIFIED Requirements
 
 ### Requirement: Recoverable Fluidd QIDI Box filament display

@@ -15,6 +15,7 @@
 - [x] 2.7 Update `README.md`, `CHANGELOG.md` under `26.10.29.1`, and the version.
 - [x] 2.8 Uninstall always restores policy-independent host changes; the prompt covers only optional OS optimizations.
 - [x] 2.9 Guarded Moonraker patch: 3MF prints started without a plate number use the sliced plate.
+- [x] 2.10 Guarded allowed-services patch: Fluidd's service controls list `qidi-client`.
 
 ## 3. Verification
 

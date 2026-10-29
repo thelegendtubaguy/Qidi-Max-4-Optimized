@@ -90,6 +90,7 @@ def fake_system_root(
     include_klipper_box_config: bool = False,
     include_klipper_print_stats_manager: bool = False,
     include_nginx_site: bool = False,
+    include_moonraker_asvc: bool = False,
 ) -> Path:
     root = temp_path("system-optimization-flow-")
     (root / "etc/resolvconf/resolv.conf.d").mkdir(parents=True)
@@ -129,6 +130,15 @@ def fake_system_root(
         site = root / "etc/nginx/sites-available/fluidd"
         site.parent.mkdir(parents=True)
         site.write_bytes((REPO_ROOT / "installer/tests/fixtures/nginx_fluidd_site.conf").read_bytes())
+    if include_moonraker_asvc:
+        asvc = root / "home/qidi/printer_data/moonraker.asvc"
+        asvc.parent.mkdir(parents=True)
+        # QIDI's list, which has no final newline.
+        asvc.write_text(
+            "klipper_mcu\nwebcamd\nMoonCord\nKlipperScreen\nmoonraker-telegram-bot\n"
+            "moonraker-obico\nsonar\ncrowsnest\noctoeverywhere\nratos-configurator",
+            encoding="utf-8",
+        )
     if include_filament_config:
         filaments = root / "home/qidi/QIDI_Client/resource/filament_config/filament-0.4.json"
         filaments.parent.mkdir(parents=True)

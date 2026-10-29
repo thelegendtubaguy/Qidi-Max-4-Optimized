@@ -12,6 +12,7 @@ from unittest import mock
 
 from installer.runtime import system_optimizations
 from installer.runtime import fluidd_box_filaments as fluidd_patch
+from installer.runtime import moonraker_allowed_services
 from installer.runtime import remote_screen
 from installer.runtime.fluidd_box_filaments import OPERATION as FLUIDD_BOX_OPERATION, PATCH_MARKER
 from installer.runtime.fluidd_filament_config import OPERATION as FILAMENT_CONFIG_OPERATION
@@ -60,6 +61,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             include_klipper_box_config=True,
             include_klipper_print_stats_manager=True,
             include_nginx_site=True,
+            include_moonraker_asvc=True,
         )
         host_run = fake_host_run(system_root)
         moonraker = system_root / "home/qidi/moonraker/moonraker/components/file_manager/file_manager.py"
@@ -81,6 +83,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         screen_unit = system_root / remote_screen.UNIT_FILE.lstrip("/")
         screen_server = system_root / remote_screen.SERVER_FILE.lstrip("/")
         screen_state = system_root / "systemd" / f"{remote_screen.UNIT}.json"
+        asvc = system_root / moonraker_allowed_services.FILE.lstrip("/")
+        asvc_before = asvc.read_bytes()
         before = snapshot_tree(system_root)
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
         env[SYSTEM_ROOT_ENV] = str(system_root)
@@ -196,6 +200,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         # Without a package Fluidd build, nginx keeps serving QIDI's patched bundle.
         self.assertEqual(nginx_site.read_bytes(), nginx_site_before)
         self.assertEqual(state.system_ledger["outcomes"][system_optimizations.FLUIDD_BUILD_OPERATION]["status"], "missing")
+        self.assertEqual(asvc.read_bytes(), asvc_before + b"\nqidi-client\n")
         fluidd_current = fluidd.read_bytes()
         # Earlier package versions left owned Fluidd patches, including an older Box motion section, that updates must replace in place.
         fluidd_previous = fluidd_before.decode().replace(fluidd_patch.SLOT_PARSE_STOCK, fluidd_patch.SLOT_PARSE_PATCHED).replace(
@@ -309,14 +314,15 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertFalse(probe_helper.exists())
         self.assertFalse(filament_link.is_symlink())
         self.assertEqual(nginx_site.read_bytes(), nginx_site_before)
+        self.assertEqual(asvc.read_bytes(), asvc_before)
         self.assertFalse(build.exists())
         self.assertFalse(screen_unit.exists())
         self.assertFalse(screen_server.exists())
         self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "disabled")
 
-    def test_unreviewed_fluidd_bundle_is_preserved_without_blocking_other_patches(self):
+    def test_unreviewed_host_files_are_preserved_without_blocking_other_patches(self):
         printer_root = copy_base_runtime()
-        root = fake_system_root(include_moonraker_cache=True, include_fluidd_bundle=True)
+        root = fake_system_root(include_moonraker_cache=True, include_fluidd_bundle=True, include_moonraker_asvc=True)
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
         env[SYSTEM_ROOT_ENV] = str(root)
         paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
@@ -324,6 +330,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         fluidd = root / manifest.system_optimizations.fluidd_box_filament_ids.file.lstrip("/")
         fluidd.write_text(fluidd.read_text().replace('"officiallFilasList",e)', '"officiallFilasList",e||{})'))
         original = fluidd.read_bytes()
+        asvc = root / moonraker_allowed_services.FILE.lstrip("/")
+        asvc.write_text("[allowed]\nklipper_mcu\n", encoding="utf-8")
 
         ledger = apply_system_optimizations(
             paths=paths, spec=manifest.system_optimizations,
@@ -335,6 +343,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(fluidd.read_bytes(), original)
         self.assertEqual(ledger["outcomes"][FLUIDD_BOX_OPERATION]["status"], "unsupported")
         self.assertNotIn(FLUIDD_BOX_OPERATION, ledger["restore_preimages"])
+        self.assertEqual(asvc.read_text(encoding="utf-8"), "[allowed]\nklipper_mcu\n")
+        self.assertEqual(ledger["outcomes"][moonraker_allowed_services.OPERATION]["status"], "unsupported")
         self.assertIn(system_optimizations.MOONRAKER_CACHE_OPERATION, ledger["restore_preimages"])
 
     def test_moonraker_cache_admission_and_restart_failure_preserve_source(self):
