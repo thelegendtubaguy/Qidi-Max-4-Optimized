@@ -243,6 +243,11 @@ Normal install and update SHALL apply recognized Moonraker metadata optimization
 - **THEN** G-code, metadata, and thumbnail selection use its valid selected plate index
 - **AND** missing or invalid plate metadata falls back to plate 1
 
+#### Scenario: 3MF prints start on the sliced plate
+- **WHEN** a print of a `.gcode.3mf` archive is started without a plate number, such as from Fluidd, a history reprint, or the job queue
+- **THEN** the plate selected in the archive's slice information is printed, the same plate its metadata describes
+- **AND** an explicit plate number from the request is used unchanged, and non-3MF files and archives without valid plate information use plate 1
+
 #### Scenario: Unchanged archives reuse persistent metadata
 - **WHEN** startup observation or upload handling encounters a 3MF with cached metadata matching its size, modification time, extractor stamp, and object-processing policy
 - **THEN** extraction is skipped without changing cached thumbnails or last-printed fields
@@ -269,6 +274,7 @@ Normal install and update SHALL apply recognized Moonraker metadata optimization
 - **AND** source changes require a successful Moonraker restart; restart failure compensates the file change or retains a recovery blocker
 - **AND** repeated reconciliation retains the first restore preimage without accumulating backups
 - **AND** uninstall restoration reverts only the unchanged installed file; concurrent changes and operator drift are preserved
+- **AND** the print-start plate selection is deployed the same way to Moonraker's Klippy API source, which is left unchanged when unrecognized
 
 ### Requirement: Klipper shutdown reasons remain visible
 Normal install and update SHALL patch recognized QIDI Klipper `print_stats_manager.py` so a Klipper shutdown keeps its original reason instead of ending in a host crash, independently of optional OS optimization policy, retaining the original file and preserving unrecognized or operator-modified files.

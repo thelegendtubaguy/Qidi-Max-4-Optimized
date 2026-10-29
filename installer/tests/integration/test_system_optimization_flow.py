@@ -74,6 +74,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         box_config_before = box_config.read_bytes()
         stats_manager = system_root / "home/qidi/klipper/klippy/extras/print_stats_manager.py"
         stats_manager_before = stats_manager.read_bytes()
+        klippy_apis = system_root / "home/qidi/moonraker/moonraker/components/klippy_apis.py"
+        klippy_apis_before = klippy_apis.read_bytes()
         nginx_site = system_root / remote_screen.NGINX_SITE.lstrip("/")
         nginx_site_before = nginx_site.read_bytes()
         screen_unit = system_root / remote_screen.UNIT_FILE.lstrip("/")
@@ -161,6 +163,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertNotEqual(moonraker.read_bytes(), moonraker_before)
         self.assertIn(b"\r\n", moonraker.read_bytes())
         self.assertEqual(moonraker.stat().st_mode & 0o777, 0o640)
+        self.assertIn(b"            plateindex = self._tltg_3mf_plate_index(filename)\r\n", klippy_apis.read_bytes())
         self.assertIn(FLUIDD_BOX_OPERATION, state.system_ledger["restore_preimages"])
         self.assertIn(PATCH_MARKER.encode(), fluidd.read_bytes())
         self.assertIn(b"Math.floor(u/4)===t-1", fluidd.read_bytes())
@@ -302,6 +305,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(service_worker.read_bytes(), service_worker_before)
         self.assertEqual(box_config.read_bytes(), box_config_before)
         self.assertEqual(stats_manager.read_bytes(), stats_manager_before)
+        self.assertEqual(klippy_apis.read_bytes(), klippy_apis_before)
         self.assertFalse(probe_helper.exists())
         self.assertFalse(filament_link.is_symlink())
         self.assertEqual(nginx_site.read_bytes(), nginx_site_before)

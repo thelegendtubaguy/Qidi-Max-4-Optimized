@@ -150,6 +150,8 @@ def fake_system_root(
             (REPO_ROOT / "installer/tests/fixtures/moonraker_metadata_storage.py").read_text(),
             encoding="utf-8",
         )
+        klippy_apis = moonraker.parent.parent / "klippy_apis.py"
+        klippy_apis.write_bytes((REPO_ROOT / "installer/tests/fixtures/moonraker_klippy_apis.py").read_bytes().replace(b"\n", b"\r\n"))
     (root / "mounts").mkdir()
     (root / "mounts/root.options").write_text("rw,relatime,sync\n", encoding="utf-8")
     return root

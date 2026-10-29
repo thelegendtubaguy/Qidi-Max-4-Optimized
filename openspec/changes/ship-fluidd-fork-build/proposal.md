@@ -9,6 +9,7 @@ QIDI no longer maintains the Fluidd it bundles with the Max 4 (v1.30.5, source u
 - While nginx serves the build, QIDI's bundle is no longer patched: unchanged files patched by earlier package versions are restored and their ownership released.
 - When the build cannot be served (no build in the package, an unrecognized nginx site, or an unowned directory in the way), QIDI's Fluidd stays in use with the existing bundle patches.
 - Uninstall points nginx back at QIDI's bundle and then removes the build.
+- A 3MF print started without a plate number prints the plate the archive was sliced on, through a guarded patch of QIDI's Moonraker Klippy API source; before, it failed whenever plate 1 had no G-code.
 - Uninstall always undoes the host changes that install makes independently of OS optimization policy (Fluidd, the printer screen, the Moonraker and Klipper source patches, the filament database link). The system-restoration prompt and `--keep-system-optimizations` cover only the optional OS optimizations.
 
 ## Capabilities
@@ -23,7 +24,7 @@ None.
 
 ## Impact
 
-- New `installer/runtime/fluidd_build.py`; `installer/runtime/remote_screen.py` (nginx root), `installer/runtime/system_optimizations.py` (operation, ordering, retirement, restoration), `installer/runtime/uninstall.py`, manifest model and parser.
+- New `installer/runtime/fluidd_build.py`; `installer/runtime/remote_screen.py` (nginx root), `installer/runtime/system_optimizations.py` (operation, ordering, retirement, restoration), `installer/runtime/uninstall.py`, new `installer/runtime/moonraker_klippy_apis.py`, manifest model and parser.
 - `installer/package.yaml` pins the build; `scripts/build_installer_bundle.py` downloads it into the bundle, which grows by about 4.4 MB.
 - Installer lifecycle tests; `README.md`; `CHANGELOG.md` under `26.10.29.1`.
 - No Klipper config, macro, or slicer changes. QIDI's bundled Fluidd files are not modified.

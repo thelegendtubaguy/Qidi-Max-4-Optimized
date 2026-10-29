@@ -14,6 +14,7 @@
 - [x] 2.6 Lifecycle test covers fallback, switch with rollback, retirement, update with rollback, and uninstall.
 - [x] 2.7 Update `README.md`, `CHANGELOG.md` under `26.10.29.1`, and the version.
 - [x] 2.8 Uninstall always restores policy-independent host changes; the prompt covers only optional OS optimizations.
+- [x] 2.9 Guarded Moonraker patch: 3MF prints started without a plate number use the sliced plate.
 
 ## 3. Verification
 
