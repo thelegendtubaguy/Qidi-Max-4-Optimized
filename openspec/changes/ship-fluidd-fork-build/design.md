@@ -1,6 +1,6 @@
 ## Context
 
-QIDI's Fluidd lives in `/home/qidi/fluidd` (owned by `qidi`) and is served by the nginx site `/etc/nginx/sites-available/fluidd` (`root /home/qidi/fluidd;`, CRLF line endings), which the printer-screen operation already backs up and patches. nginx runs as `www-data`; `/home/qidi` is world-readable. The installer runs as the invoking user (`qidi`) and uses sudo only for system files. The fork's release workflow publishes `fluidd.zip` (about 4.4 MB, 13 MB extracted, about 260 entries) for each `vX.Y.Z-qidi.N` tag. Upstream Fluidd and QIDI's Fluidd share Moonraker's `fluidd` database namespace for settings and layouts.
+QIDI's Fluidd lives in `/home/qidi/fluidd` (owned by `qidi`) and is served by the nginx site `/etc/nginx/sites-available/fluidd` (`root /home/qidi/fluidd;`, CRLF line endings), which the printer-screen operation already backs up and patches. nginx runs as `www-data`; `/home/qidi` is world-readable. The installer runs as the invoking user (`qidi`) and uses sudo only for system files. The fork's release workflow publishes `fluidd.zip` (about 4.4 MB, 13 MB extracted, about 260 entries) for each `vX.Y.Z-tltg-<hash>` tag, the version its footer shows. Upstream Fluidd and QIDI's Fluidd share Moonraker's `fluidd` database namespace for settings and layouts.
 
 ## Goals / Non-Goals
 

@@ -69,7 +69,7 @@ Unrecognized source is preserved and reported. Uninstall can restore the origina
 
 ### Fluidd
 
-QIDI no longer updates the Fluidd that ships with the Max 4, version 1.30.5. Install and update now serve this project's build of current Fluidd instead, based on Fluidd 1.37.7, with QIDI's Max 4 additions and the Box, temperature, and screen features below. This applies even when optional OS optimizations are skipped. The source is at [thelegendtubaguy/fluidd](https://github.com/thelegendtubaguy/fluidd).
+QIDI no longer updates the Fluidd that ships with the Max 4, version 1.30.5. Install and update now serve this project's build of current Fluidd instead, based on Fluidd 1.37.7, with QIDI's Max 4 additions and the Box, temperature, and screen features below. This applies even when optional OS optimizations are skipped. The source is at [thelegendtubaguy/fluidd](https://github.com/thelegendtubaguy/fluidd). The footer of every Fluidd page shows which one is in use: this project's build reads `fluidd: v1.37.7-tltg-` followed by a commit ID.
 
 - The build is installed in `~/tltg-fluidd`, and the printer's web server serves it in place of QIDI's `~/fluidd`, which is left untouched. Updates replace the whole build.
 - Your Fluidd settings, macros, and dashboard layout carry over, because both versions keep them in the same place on the printer.
