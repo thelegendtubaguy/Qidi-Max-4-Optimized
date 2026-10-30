@@ -492,6 +492,17 @@ When optimized print start calibrates a fresh adaptive mesh, it SHALL save the p
 - **WHEN** `SAVE_CONFIG` or `SAVE_CONFIG_QD` runs while a background save is writing
 - **THEN** it starts only after the background save finishes
 
+### Requirement: Fast variable saves
+Optimized configuration SHALL make `SAVE_VARIABLE` leave `saved_variables.cfg` and the saved values Klipper reports exactly as QIDI's handler would, while skipping the write when the stored value would not change and not re-reading the file after a write. A completed write SHALL replace the file whole, so it is never left partly written. Names and values whose round trip through the file is not exact SHALL use QIDI's handler unchanged.
+
+#### Scenario: Unchanged value
+- **WHEN** `SAVE_VARIABLE` stores the value a variable already has, such as print end resetting retained-filament state that is already reset
+- **THEN** the file is not rewritten and the saved values are unchanged
+
+#### Scenario: Changed value
+- **WHEN** `SAVE_VARIABLE` stores a new value
+- **THEN** the file contents and the saved values Klipper reports match what QIDI's handler produces
+
 ### Requirement: QIDI Box heater refresh
 Optimized configuration SHALL make each USB QIDI Box heater resend an unchanged output at most about one second after the last one it sent, so that a Klipper main-loop stall of up to about three seconds does not let the Box MCU's 5 s heater limit expire. Other heaters, heater limits, and heater verification SHALL be unchanged.
 
