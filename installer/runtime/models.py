@@ -115,7 +115,6 @@ class PackageMeta:
     display_name: str
     printer_model: str
     version: str
-    known_versions: tuple[str, ...]
 
 
 @dataclass(frozen=True)

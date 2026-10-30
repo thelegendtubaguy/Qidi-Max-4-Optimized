@@ -182,13 +182,12 @@ def prune_installer_backups(
 def requires_external_backup_manifest(
     *,
     package_version: str | None,
-    known_package_versions: tuple[str, ...],
     state_declares_source_patches: bool,
 ) -> bool:
     if state_declares_source_patches:
         return True
     components = _package_version_components(package_version)
-    if package_version not in known_package_versions or components is None:
+    if components is None:
         return True
     return components >= EXTERNAL_MANIFEST_INTRODUCTION_VERSION
 

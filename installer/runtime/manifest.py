@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
@@ -47,13 +48,19 @@ class ManifestValidationError(ValueError):
 
 def load_manifest(path: Path) -> Manifest:
     try:
-        with path.open("r", encoding="utf-8") as handle:
-            raw = yaml.safe_load(handle)
+        text = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise ManifestValidationError(f"Could not read manifest: {path}") from exc
+    try:
+        return _parse_manifest_text(text)
     except yaml.YAMLError as exc:
         raise ManifestValidationError(f"Could not parse manifest: {path}") from exc
-    return parse_manifest(raw)
+
+
+# The parsed manifest is immutable, so one parse serves every load of the same text.
+@lru_cache(maxsize=4)
+def _parse_manifest_text(text: str) -> Manifest:
+    return parse_manifest(yaml.safe_load(text))
 
 
 def parse_manifest(raw: Any) -> Manifest:
@@ -69,7 +76,6 @@ def parse_manifest(raw: Any) -> Manifest:
         display_name=_require_str(package_raw, "display_name"),
         printer_model=_require_str(package_raw, "printer_model"),
         version=_require_str(package_raw, "version"),
-        known_versions=_require_unique_str_list(package_raw, "known_versions", non_empty=True),
     )
 
     firmware_raw = _require_mapping(raw, "firmware")

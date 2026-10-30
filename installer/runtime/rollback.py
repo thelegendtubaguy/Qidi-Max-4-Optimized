@@ -222,7 +222,6 @@ def clear_recovery_sentinel(
     external_root: Path | None = None,
     allowed_external_entries: dict[str, str] | None = None,
     install_label_prefix: str | None = None,
-    known_package_versions: tuple[str, ...] | None = None,
 ) -> bool:
     if not path.exists():
         return False
@@ -262,7 +261,6 @@ def clear_recovery_sentinel(
             )
             require_manifest = requires_external_backup_manifest(
                 package_version=parsed.package_version if parsed is not None else None,
-                known_package_versions=known_package_versions or (),
                 state_declares_source_patches=_snapshot_declares_source_patches(
                     backup_snapshot
                 ),

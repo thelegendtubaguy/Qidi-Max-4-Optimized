@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import stat
 from dataclasses import dataclass, replace
+from functools import lru_cache
 from pathlib import Path, PurePosixPath
 
 from .fs_atomic import atomic_write_bytes
@@ -36,6 +37,12 @@ def sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
+# Payloads are fixed bundle files, so each distinct one needs only one syntax check.
+@lru_cache(maxsize=64)
+def _check_python_syntax(payload: bytes, filename: str) -> None:
+    compile(payload, filename, "exec")
+
+
 def destination_path(paths: RuntimePaths, destination: str) -> Path:
     return paths.managed_klipper_root / PurePosixPath(destination)
 
@@ -53,7 +60,7 @@ def validate_payload(
         raise SourcePatchError(
             f"Source patch payload hash does not match manifest: {patch.id}"
         )
-    compile(value, str(source), "exec")
+    _check_python_syntax(value, str(source))
     return value
 
 
@@ -292,7 +299,7 @@ def install_extra_module(
     if source.is_symlink() or not source.is_file():
         raise SourcePatchError(f"Extra module payload is not a regular file: {source}")
     payload = source.read_bytes()
-    compile(payload, str(source), "exec")
+    _check_python_syntax(payload, str(source))
     target = paths.managed_klipper_root / PurePosixPath(module.destination)
     ensure_external_path_has_no_symlink_components(
         root=paths.managed_klipper_root, target=target
