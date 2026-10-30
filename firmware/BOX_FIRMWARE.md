@@ -1,6 +1,6 @@
 # QIDI Box firmware shutdown fix
 
-`max4-box-shutdown-fix-v1` fixes how the USB QIDI Box (firmware `02.03.01.21`) handles a Klipper shutdown. In QIDI's firmware, every shutdown of the Box's processor, whether from an emergency stop, a heater safety limit, or any other Klipper MCU error, loops in QIDI's Box feeder shutdown code until the Box's watchdog restarts it. Klipper then reports `Lost communication with MCU 'mcu_boxN'` instead of the reason, and every other Box restarts the same way. With the fix, a Box that shuts down stays connected and Klipper shows the real reason, such as `Scheduled pwm event will exceed max_duration`.
+`max4-box-shutdown-fix-v1` fixes how the USB QIDI Box (firmware `02.03.01.21`) handles a Klipper shutdown. In QIDI's firmware, every shutdown of the Box's processor, whether from an emergency stop, a heater safety limit, or any other Klipper MCU error, loops in QIDI's Box feeder shutdown code until the Box's watchdog restarts it. Klipper then reports `Lost communication with MCU 'mcu_boxN'` instead of the reason, and every other Box restarts the same way. With the fix, a Box that shuts down stays connected and Klipper shows the real reason, such as `Missed scheduling of next digital out event` when a Box heater goes 5 seconds without an update from Klipper.
 
 The patched firmware reports its version as `02.03.01.21-tltg-shutdownfix1`. You can see it in `klippy.log` (`Loaded MCU 'mcu_boxN' … (02.03.01.21-tltg-shutdownfix1 …`), in Fluidd's system information, and with `./box-firmware.sh status`.
 
