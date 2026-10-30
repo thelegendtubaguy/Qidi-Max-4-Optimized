@@ -15,16 +15,20 @@ UrlOpenFn = Callable[..., object]
 
 
 THR_RECOVERY_MARKER = ".tltg_thr_firmware_pending.json"
+BOX_RECOVERY_MARKER = ".tltg_box_firmware_pending.json"
 
 
-def ensure_no_pending_thr_firmware(path: Path) -> None:
+def ensure_no_pending_firmware(path: Path, *, allow_box: bool = False) -> None:
     marker = path.parent / THR_RECOVERY_MARKER
     if marker.exists() or marker.is_symlink():
         raise InstallerError("Unresolved THR firmware operation; recover and verify the board before continuing: " + str(marker))
+    marker = path.parent / BOX_RECOVERY_MARKER
+    if not allow_box and (marker.exists() or marker.is_symlink()):
+        raise InstallerError("Unresolved Box firmware operation; run ./box-firmware.sh rescue before continuing: " + str(marker))
 
 
 def ensure_no_recovery_sentinel(path: Path) -> None:
-    ensure_no_pending_thr_firmware(path)
+    ensure_no_pending_firmware(path)
     if path.exists():
         raise RecoveryRequiredError()
 

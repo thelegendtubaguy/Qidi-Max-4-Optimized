@@ -37,6 +37,18 @@ Flashing requires an idle, ready printer with every heater target at zero. Keep 
 
 `--yes` alone and automatic updates never authorize firmware programming. To opt in explicitly from the command line, use `~/tltg-optimized-macros/install.sh --flash-thr-fifo`; add `--dry-run` for a preview without serial access or service changes. Configuration restore and uninstall do not revert MCU firmware.
 
+### Optional QIDI Box firmware fix
+
+QIDI's USB Box firmware turns every Klipper shutdown of the Box, such as an emergency stop or a heater safety limit, into a watchdog restart, so Klipper reports `Lost communication with MCU 'mcu_boxN'` instead of the reason. The installer bundle includes a fix that keeps the Box connected so Klipper shows what actually happened. **It is never installed or offered by the installer.** Run it yourself from the installer folder over SSH:
+
+```sh
+./box-firmware.sh status    # which Boxes have the fix
+./box-firmware.sh install   # flash it to every USB Box (or --box N)
+./box-firmware.sh restore   # put QIDI's stock Box firmware back
+```
+
+The script needs an idle, ready printer with every heater target at zero, asks you to type `FLASH`, and stops Klipper and the touchscreen for about four minutes per Box. It only flashes Box bootloader and firmware builds it recognizes, reads the result back to verify it, and keeps the stock firmware under `~/printer_data/.tltg_box_firmware_backups/`. A fixed Box reports its version as `02.03.01.21-tltg-shutdownfix1` in Fluidd and `klippy.log`. See [QIDI Box firmware shutdown fix](firmware/BOX_FIRMWARE.md) for what happens if a flash fails and how to recover.
+
 ### Automatic Updates
 
 The installer asks whether to enable hourly automatic optimized config updates before asking whether to restart Klipper. Auto-updates use a system-level systemd timer. Enabling auto-updates requires sudo once to install `/etc/systemd/system/tltg-optimized-auto-update.service` and `/etc/systemd/system/tltg-optimized-auto-update.timer`; the installer uses QIDI's public default sudo password (`qiditech`) unless the environment variable `TLTG_OPTIMIZED_SUDO_PASSWORD` is set, then prompts for a password if the initial sudo attempt fails.

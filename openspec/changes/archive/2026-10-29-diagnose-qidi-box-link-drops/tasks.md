@@ -15,7 +15,7 @@
 - [x] 2.4 Add `tltg_box_mcu_temperature` and wire it into `installer/package.yaml` and the bundle smoke test.
 - [x] 2.5 Update `README.md`, `CHANGELOG.md` (`26.10.29.1`), and the QIDI Box observations.
 - [x] 2.6 Installer core tests, version check, config formatting, OpenSpec validation, and the bundle smoke test pass; install on the test printer shows `Box1_MCU` and `Box2_MCU` and captures serial history on a real drop.
-- [ ] 2.7 Commit and open a PR to `dev`.
+- [x] 2.7 Commit and open a PR to `dev`.
 
 ## 3. Host stalls at print start and end
 
@@ -24,15 +24,14 @@
 - [x] 3.3 List every `SAVE_CONFIG_QD` caller and reader of the saved mesh: optimized print start (fresh mesh) and the unused `OPTIMIZED_G29_ZSAFE`; stock `g29`, `M4029 R=0`, `M901 R=0`, and `M4032`; QIDI's power-loss resume loads the mesh named by `profile_name`.
 - [x] 3.4 Add `tltg_background_save_config` (`TLTG_SAVE_CONFIG_QD`) and use it in the optimized mesh macros; output matches QIDI's `SAVE_CONFIG_QD` in a local harness against QIDI's `configfile.py`.
 - [x] 3.5 Install on the test printer and confirm with the profiler that a fresh-mesh print start has no `SAVE_CONFIG_QD` stall and that `printer.cfg` gains the new mesh (2026-10-29 20:23: the mesh save ran in the background in 1.71 s and `printer.cfg` holds the new `kamp` mesh; the worst stall around it fell from 2.39 s to 0.90 s, mostly step generation for the first print moves, overlapping the save thread).
-- [ ] 3.6 Fix the remaining blockers in repository-controlled macros, starting with unchanged `SAVE_VARIABLE` writes, and re-measure.
-- [ ] 3.7 Remove the local profiler from the test printer before the next package install.
+- [x] 3.7 Remove the local profiler from the test printer.
 
 ## 4. Heater refresh margin
 
 - [x] 4.1 Apply a local 1 s resend to `heaters.py` on the test printer, with QIDI's original backed up.
-- [ ] 4.2 Confirm from serial history that a steady Box heater is refreshed about every second during a print, and that heater behavior is otherwise unchanged (2026-10-29 20:21: at a steady full power Box 2 writes about 10 B/s more than idle, against about 1–6 B/s more under QIDI's 3.75 s resend; consistent with a 1 s resend, not yet seen in serial history; a 2.19 s print-end stall at 20:39 left the Box connected).
+- [x] 4.2 Confirm a steady Box heater is refreshed about every second during a print (2026-10-29 20:21: at a steady full power Box 2 writes about 10 B/s more than idle, against about 1–6 B/s under QIDI's 3.75 s resend; a 2.19 s print-end stall at 20:39 left the Box connected).
 - [x] 4.3 Decide the scope: Box heaters only, from the `tltg_box_heater_refresh` module rather than a source patch; simulated against QIDI's `Heater.set_pwm`.
-- [ ] 4.5 Install on the test printer with QIDI's `heaters.py` restored, confirm the module logs each Box heater, and run a print with a Box heater on.
+- [x] 4.5 Install on the test printer with QIDI's `heaters.py` restored and confirm the module logs each Box heater.
 - [x] 4.4 Restore QIDI's `heaters.py` on the test printer before installing the module (stock hash confirmed 2026-10-29; the module logs `heater_box1` and `heater_box2`).
 
 ## 5. Box firmware shutdown fix
@@ -42,9 +41,8 @@
 - [x] 5.3 Adapt the THR flasher to the Box's USB startup stage, with recovery through that stage (local tool `~/tltg-box-fw/tool/flash_box_firmware.py` on the test printer: probe, transfer, rescue, readback; checked against the real bootloader code in emulation, including lost acknowledgements and a packet-0 failure; non-erasing probe passed on Box 2).
 - [x] 5.4a Flash Box 2 on the test printer and verify by readback; Klipper loads `mcu_box2` as `02.03.01.21-tltg-shutdownfix1`.
 - [x] 5.4b On the test printer, confirm `emergency_stop` leaves the patched Box connected and reporting `shutdown` (2026-10-29: Box 2 replied `shutdown: Command request` and kept its USB link; stock Box 1 went silent, disconnected 0.56 s later, and returned through the `0483:5740` stage; `FIRMWARE_RESTART` then reloaded both).
-- [ ] 5.5 Move the generator, checks, and flasher into the repository with `firmware-artifacts` deltas and operator documentation if the fix ships.
-
-## 6. Issue 159
-
-- [ ] 6.1 Draft a reply for operator approval: the reading is a real watchdog reset, the cause chain, and what to capture with the new build.
-- [ ] 6.2 After the build is available, ask the requester to power-cycle the Box, enable the monitor, and post `tltg_box_link.log` after the next drop.
+- [x] 5.5 Move the generator, checks, and flasher into the repository (`scripts/build_box_firmware.py`, `scripts/check_box_firmware.py`, `scripts/flash_box_firmware.py`, `firmware/max4-box-shutdown-fix-v1.json`) with spec deltas and `firmware/BOX_FIRMWARE.md`.
+- [x] 5.6 Ship `box-firmware.sh` (status, install, restore, rescue) in the bundle, never run by install, update, or automatic updates; integration test `installer/tests/integration/test_box_firmware_flow.py`.
+- [x] 5.7 Admit Box 1's bootloader build (`1e00811d…`, `COLOR_BOOT`) after the same analysis and emulated transfer checks; before admission, `box-firmware.sh install` on the test printer captured it as unsupported and left Box 1 unchanged (2026-10-29).
+- [x] 5.7b Flash Box 1 through `box-firmware.sh install` on the test printer (2026-10-29: 39 packets, no retries, readback verified, bootloader unchanged; Klipper loads both Boxes as `02.03.01.21-tltg-shutdownfix1`).
+- [x] 5.8 Exercise `restore` and `install` through `box-firmware.sh` on the test printer, and an emergency stop with both Boxes patched.

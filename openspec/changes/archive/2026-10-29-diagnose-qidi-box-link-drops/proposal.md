@@ -14,18 +14,20 @@ A drop captured on 2026-10-29 with the serial history in this change explains th
 - Each Box heater resends an unchanged output every second instead of every 3.75 s, from a package module (`tltg_box_heater_refresh`).
 - Optimized print start saves a freshly calibrated mesh to `printer.cfg` in the background (`TLTG_SAVE_CONFIG_QD`) instead of through QIDI's `SAVE_CONFIG_QD`, which stalled Klipper for 2.4 s.
 - Each configured Box gets a `BoxN_MCU` temperature sensor for its processor, shown in Fluidd and recorded by the monitor.
-- Pending decisions, tracked in `design.md` and `tasks.md`: shorten the remaining host stalls at print start and end, and ship a Box firmware fix for the shutdown-to-reset bug.
+- An optional Box firmware fix for the shutdown-to-reset bug, run only through `box-firmware.sh`, never by the installer.
+- Pending, tracked in `design.md` and `tasks.md`: shorten the remaining host stalls at print start and end.
 
 ## Capabilities
 
 ### New Capabilities
 
-None.
+- `box-firmware-transfer`: restricted USB Box snapshots, transfers, and readback verification.
 
 ### Modified Capabilities
 
 - `optimized-printer-behavior`: Box processor temperature sensors, and the optional link monitor's recorded evidence.
-- `firmware-artifacts`: only if the Box firmware fix ships.
+- `firmware-artifacts`: the Box shutdown fix image.
+- `installer-lifecycle`: the dedicated `box-firmware.sh` script.
 
 ## Impact
 

@@ -37,15 +37,15 @@ WARNING = (
 )
 
 
-def _query(paths, names, urlopen):
+def _query(paths, names, urlopen, subject="THR firmware"):
     parts = urllib.parse.urlsplit(paths.moonraker_url)
     url = urllib.parse.urlunsplit(parts._replace(query="&".join(urllib.parse.quote(n, safe="") for n in names)))
     with urlopen(url, timeout=5) as response:
         status = json.load(response)["result"]["status"]
     if status["print_stats"]["state"] not in {"standby", "complete", "cancelled", "error"}:
-        raise ThrFirmwareError("THR firmware requires an idle printer.")
+        raise ThrFirmwareError(subject + " requires an idle printer.")
     if status["webhooks"]["state"] != "ready" or status["idle_timeout"]["state"] not in {"Ready", "Idle"}:
-        raise ThrPrinterNotReady("THR firmware requires Klipper ready and idle.")
+        raise ThrPrinterNotReady(subject + " requires Klipper ready and idle.")
     return status
 
 
@@ -81,41 +81,41 @@ def _clear_input_shaper_calibration(paths, directory, reporter):
     reporter.line("Cleared the saved input shaper calibration from printer.cfg; input shaping stays off until you recalibrate.")
 
 
-def check_thr_printer_ready(paths, *, urlopen=urllib.request.urlopen):
+def check_thr_printer_ready(paths, *, urlopen=urllib.request.urlopen, subject="THR firmware"):
     try:
         names = ("print_stats", "webhooks", "idle_timeout", "heaters")
-        status = _query(paths, names, urlopen)
+        status = _query(paths, names, urlopen, subject)
         heaters = status["heaters"]["available_heaters"]
         if (not isinstance(heaters, list) or not 1 <= len(heaters) <= 32
                 or not all(isinstance(n, str) and n for n in heaters)
                 or len(set(heaters)) != len(heaters)
                 or not {"extruder", "heater_bed", "heater_generic chamber"}.issubset(heaters)):
             raise ValueError("Incomplete heater registry")
-        status = _query(paths, (*names, *heaters), urlopen)
+        status = _query(paths, (*names, *heaters), urlopen, subject)
         if status["heaters"]["available_heaters"] != heaters:
             raise ValueError("Heater registry changed during preflight")
         for name in heaters:
             target = status[name]["target"]
             if (isinstance(target, bool) or not isinstance(target, (int, float))
                     or not math.isfinite(target) or target != 0):
-                raise ThrFirmwareError("THR firmware requires every heater target at zero: " + name)
+                raise ThrFirmwareError(subject + " requires every heater target at zero: " + name)
     except ThrFirmwareError:
         raise
     except (OSError, ValueError, KeyError, TypeError) as exc:
-        raise ThrPrinterNotReady("Could not verify idle/ready state and all heater targets for THR firmware.") from exc
+        raise ThrPrinterNotReady("Could not verify idle/ready state and all heater targets for " + subject + ".") from exc
 
 
-def wait_for_thr_printer_ready(paths, *, urlopen, sleep, clock, reporter=None):
+def wait_for_thr_printer_ready(paths, *, urlopen, sleep, clock, reporter=None, subject="THR firmware"):
     deadline = clock() + READY_TIMEOUT_SECONDS
     waiting = False
     while True:
         try:
-            return check_thr_printer_ready(paths, urlopen=urlopen)
+            return check_thr_printer_ready(paths, urlopen=urlopen, subject=subject)
         except ThrPrinterNotReady:
             if clock() >= deadline:
                 raise
             if reporter is not None and not waiting:
-                reporter.line("Waiting for Klipper to be ready before THR firmware...")
+                reporter.line("Waiting for Klipper to be ready before " + subject + "...")
             waiting = True
             sleep(1)
 

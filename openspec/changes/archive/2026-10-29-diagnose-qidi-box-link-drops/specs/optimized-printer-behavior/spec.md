@@ -54,3 +54,10 @@ Optimized configuration SHALL make each USB QIDI Box heater resend an unchanged 
 - **WHEN** the extruder, bed, or chamber heater holds a steady output
 - **THEN** it is resent on Klipper's normal schedule
 
+### Requirement: Box heater sensors stop polling after a shutdown
+Once Klipper has shut down, a failed read of a Box heater's AHT20 SHALL stop that sensor's polling instead of raising, so Klipper stays in its shutdown state with the original reason. While Klipper is not shut down, sensor read errors SHALL propagate unchanged.
+
+#### Scenario: Box stays connected through a shutdown
+- **WHEN** Klipper shuts down while a Box running the shutdown-fix firmware stays connected and refuses sensor reads
+- **THEN** Klipper remains in its shutdown state showing the original reason and does not restart itself
+
