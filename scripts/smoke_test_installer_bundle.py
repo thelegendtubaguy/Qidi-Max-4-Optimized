@@ -183,8 +183,9 @@ def main(argv: list[str] | None = None) -> int:
         module_targets = {
             plain_printer_root / f"klipper/klippy/extras/tltg_{name}.py":
                 REPO_ROOT / f"installer/klipper/tltg/{name}.py"
-            for name in ("box_link_monitor", "box_feed_motion", "box_eject",
-                         "box_filament_guard", "probe_test")
+            for name in ("box_link_monitor", "box_mcu_temperature", "background_save_config",
+                         "box_heater_refresh",
+                         "box_feed_motion", "box_eject", "box_filament_guard", "probe_test")
         }
         for module_target, module_source in module_targets.items():
             if not module_target.is_file():

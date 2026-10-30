@@ -151,13 +151,25 @@ A Box that drops off its USB link shows up as `Lost communication with MCU 'mcu_
 SAVE_VARIABLE VARIABLE=tltg_box_link_monitor VALUE=1
 ```
 
-While it is enabled, it writes `printer_data/logs/tltg_box_link.log`, separate from `klippy.log` so it survives log rotation. It records Box MCU serial counters and any change to them, box heater and print context, the reset reason each Box MCU reports at connect, and the first `Got EOF when reading from device`, `Timeout with MCU`, or `shutdown:` line that appears in `klippy.log`. Kernel USB lines are captured at that point too.
+While it is enabled, it writes `printer_data/logs/tltg_box_link.log`, separate from `klippy.log` so it survives log rotation. It records Box MCU serial counters and any change to them, box heater, Box processor temperature, and print context for up to four Boxes, the reset reason each Box MCU reports at connect, and the first `Got EOF when reading from device`, `Timeout with MCU`, or `shutdown:` line that appears in `klippy.log`. Kernel USB lines are captured at that point too.
 
-After a disconnect, the first `reset-reason mcu_boxN` line written when Klipper reconnects records why that Box restarted, such as power loss or its watchdog. Turning the monitor on while Klipper is running records the reset reason right away.
+At that first line, the monitor also writes the last messages Klipper sent to and received from each Box as `serial-history mcu_boxN:` lines, with their times. They show how long the Box went quiet before it disconnected and what Klipper last asked it to do. A `serial-history clock` line records the time they were saved, for lining them up with the kernel USB lines.
+
+Each `reset-reason mcu_boxN` line records what that Box reports when Klipper connects to it. Turning the monitor on while Klipper is running records it right away. The Box remembers every kind of reset until it is turned off, and reports the most serious one since it was last turned on, not the latest:
+
+- `PowerOn`: nothing but power-on, or a power dip, since the Box was turned on.
+- `Software`: Klipper restarted the Box with `FIRMWARE_RESTART`, and nothing more serious happened.
+- `IndependentWatchdog`: the Box's firmware stopped responding and its watchdog restarted it at least once since it was turned on.
+
+To find out why a Box dropped, turn the Box off and on before printing. After a drop, use `RESTART` or restart the Klipper service rather than `FIRMWARE_RESTART`, so the monitor reads the Box before Klipper restarts it. `FIRMWARE_RESTART` changes `PowerOn` to `Software`, but it can't hide `IndependentWatchdog`.
 
 Set the variable back to `0` to stop recording; it takes effect without a restart. The log is capped at 2 MB and rotates once to `tltg_box_link.log.1`.
 
 When reporting a Box MCU disconnect, include this file alongside the end of `klippy.log`.
+
+### Box processor temperature
+
+Each QIDI Box's processor temperature shows in Fluidd's temperature card and graph as **Box1 MCU** through **Box4 MCU**, one for each Box Klipper is set up with. Printers without a Box show none. These sensors have no limits, so they never stop a print.
 
 ### QIDI Box load and unload speed
 
