@@ -235,6 +235,13 @@ Optimized cut, purge, cooldown, cleaning, calibration, and cancel helpers SHALL 
 - **AND** the optimized macros recognize a slicer filament change from print state, so slicer G-code passes no tool-change parameter
 - **AND** the same slicer G-code remains correct with older supported firmware
 
+#### Scenario: Slicer filament change that keeps the loaded Box slot skips the reheat
+- **WHEN** an optimized slicer filament change runs during a print under the vendor tool-change flow
+- **AND** the Box slot loaded before the change is still loaded, with filament at the toolhead, when the slicer's filament-change heat wait runs
+- **THEN** the nozzle returns to its pre-change target instead of waiting at the filament-change temperature
+- **AND** the chute visit, purge, wipe, and the slicer's later temperature commands run unchanged
+- **AND** a change that loads another slot, a direct-feed spool change, a stale record from an earlier change, and older firmware keep the slicer's heat wait
+
 #### Scenario: Optimized cut keeps the vendor reliability sequence
 - **WHEN** the optimized filament cut or the stock-named cutter macro used by vendor flows runs
 - **THEN** the extruder stepper is released and allowed to settle before the cutter strike
