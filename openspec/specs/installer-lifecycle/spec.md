@@ -33,6 +33,12 @@ Install, reinstall, restore, and uninstall SHALL execute as serialized, idle-pri
 - **THEN** it validates printer state, prior state, targets, paths, bundle contents, and required storage before backup or writes
 - **AND** printing, paused, unknown, malformed, concurrent, or recovery-blocked state fails closed
 
+#### Scenario: Any build of this package can be updated
+- **WHEN** installed state was written by any build of this package, including an unreleased development build or a newer build
+- **THEN** install and uninstall admit it whatever package version it records
+- **AND** admission depends only on its ownership ledger, source-patch provenance, and recorded host backups validating
+- **AND** installed state written by a different package fails before backup or writes
+
 #### Scenario: Installation commits atomically
 - **WHEN** installation changes validated targets
 - **THEN** a configuration backup and recoverable preimages are created automatically before the first write without requesting installation confirmation

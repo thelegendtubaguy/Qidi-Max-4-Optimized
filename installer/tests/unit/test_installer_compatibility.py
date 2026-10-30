@@ -53,7 +53,6 @@ class InstallerCompatibilityTests(unittest.TestCase):
             json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
         self.assertEqual(self.envelope.schema_version, 2)
-        self.assertIn(self.manifest.package.version, self.manifest.package.known_versions)
         self.assertEqual(len(self.envelope.allowed_patch_targets), 31)
         self.assertEqual(len(self.envelope.source_patches), 5)
         self.assertEqual(
@@ -101,21 +100,7 @@ class InstallerCompatibilityTests(unittest.TestCase):
                 with self.assertRaises(CompatibilityValidationError):
                     parse_supported_upgrade_sources(document)
 
-    def test_current_manifest_requires_known_version_and_envelope_coverage(self) -> None:
-        missing_version = replace(
-            self.manifest,
-            package=replace(
-                self.manifest.package,
-                known_versions=tuple(
-                    version
-                    for version in self.manifest.package.known_versions
-                    if version != self.manifest.package.version
-                ),
-            ),
-        )
-        with self.assertRaises(CompatibilityValidationError):
-            validate_manifest_compatibility(missing_version, self.envelope)
-
+    def test_current_manifest_requires_envelope_coverage(self) -> None:
         missing_target = replace(
             self.envelope,
             allowed_patch_targets=self.envelope.allowed_patch_targets[1:],
@@ -146,16 +131,15 @@ class InstallerCompatibilityTests(unittest.TestCase):
                 ),
             ),
         )
-        validate_installed_state_identity(state, self.manifest)
+        for package_version in ("26.04.21.1", "26.10.28.4", "99.01.01.1"):
+            validate_installed_state_identity(
+                replace(state, package_version=package_version), self.manifest
+            )
         validate_patch_ledger(state, self.envelope)
 
         with self.assertRaises(CompatibilityValidationError):
             validate_installed_state_identity(
                 replace(state, package_id="unrelated-package"), self.manifest
-            )
-        with self.assertRaises(CompatibilityValidationError):
-            validate_installed_state_identity(
-                replace(state, package_version="26.99.99.1"), self.manifest
             )
         with self.assertRaises(CompatibilityValidationError):
             validate_patch_ledger(
@@ -168,8 +152,7 @@ class InstallerCompatibilityTests(unittest.TestCase):
                 self.envelope,
             )
 
-    def test_external_backup_manifest_boundary_requires_admitted_numeric_versions(self) -> None:
-        known = self.manifest.package.known_versions
+    def test_external_backup_manifest_boundary_requires_numeric_versions(self) -> None:
         cases = (
             ("26.07.13.2", False, False),
             ("26.07.26.1", False, True),
@@ -183,45 +166,38 @@ class InstallerCompatibilityTests(unittest.TestCase):
                 self.assertEqual(
                     requires_external_backup_manifest(
                         package_version=package_version,
-                        known_package_versions=known,
                         state_declares_source_patches=declares_source,
                     ),
                     expected,
                 )
 
     def test_prior_state_identity_rejection_precedes_backup(self) -> None:
-        for package_id, package_version in (
-            ("unrelated-package", "26.04.21.1"),
-            (self.manifest.package.id, "26.99.99.1"),
-        ):
-            with self.subTest(package_id=package_id, package_version=package_version):
-                printer_root, paths = _runtime_paths()
-                write_installed_state(
-                    printer_root / self.manifest.state_file,
-                    _state(
-                        package_id=package_id,
-                        package_version=package_version,
-                        patch_ledger=(),
-                    ),
+        printer_root, paths = _runtime_paths()
+        write_installed_state(
+            printer_root / self.manifest.state_file,
+            _state(
+                package_id="unrelated-package",
+                package_version="26.04.21.1",
+                patch_ledger=(),
+            ),
+        )
+        with mock.patch("installer.runtime.runner.create_config_backup") as backup:
+            with self.assertRaises(Exception) as raised:
+                run_install(
+                    paths,
+                    self.manifest,
+                    PlainReporter(io.StringIO()),
+                    urlopen=moonraker_urlopen(),
                 )
-                with mock.patch(
-                    "installer.runtime.runner.create_config_backup"
-                ) as backup:
-                    with self.assertRaises(Exception) as raised:
-                        run_install(
-                            paths,
-                            self.manifest,
-                            PlainReporter(io.StringIO()),
-                            urlopen=moonraker_urlopen(),
-                        )
-                self.assertEqual(type(raised.exception).__name__, "PreviousPackageValidationError")
-                backup.assert_not_called()
+        self.assertEqual(type(raised.exception).__name__, "PreviousPackageValidationError")
+        backup.assert_not_called()
 
     def test_direct_historical_update_and_uninstall_need_no_migration_chain(self) -> None:
         for version in (
             "26.04.21.1",
             "26.07.13.2",
             "26.07.26.1",
+            "26.10.28.4",
             self.manifest.package.version,
         ):
             with self.subTest(version=version):

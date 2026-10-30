@@ -2,7 +2,7 @@
 
 # Qidi Max 4 Optimized
 
-Opinionated and Optimized Klipper macros and slicer machine GCode for the QIDI Max 4.
+A faster, fixed, and more capable QIDI Max 4: optimized Klipper macros, slicer start G-code, and a current Fluidd, installed and removed with one command.
 
 > [!NOTE]
 > If you want to help support content like this, consider subscribing over on [YouTube](https://youtube.com/@TubaMakes)!
@@ -10,396 +10,64 @@ Opinionated and Optimized Klipper macros and slicer machine GCode for the QIDI M
 > [!CAUTION]
 > I refuse to be responsible for your printer.  PLEASE watch prints start ensuring the printer doesn't do something horrible like gouge your bed and be ready to cut power at a moment's notice.
 
-## tl;dr
+## Install
+
 1. SSH into your printer `qidi@<your printer's ip>`.
 2. Run this on your printer:
-```bash
-/bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/install-latest.sh)"
-```
-3. Follow the prompts
-4. Use Orca and subscribe to the OrcaCloud bundle shared [here](https://cloud.orcaslicer.com/b/4c4b3b74c745).  If you're not using Orca >= 2.4.0, see [the section on slicer configs](#slicer-machine-gcode-updates).
-5. Slice using the printer profile `Qidi X-Max 4 0.4 nozzle - TLTG Optimized GCode`
-6. Optional: Make a copy and customize the machine profile to your liking.
+   ```bash
+   /bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/install-latest.sh)"
+   ```
+3. Follow the prompts.
+4. In OrcaSlicer 2.4.0 or later, subscribe to the [OrcaCloud bundle](https://cloud.orcaslicer.com/b/4c4b3b74c745). For QIDI Studio or older Orca, [copy the start G-code by hand](docs/install.md#slicer-start-g-code).
+5. Slice using the printer profile `Qidi X-Max 4 0.4 nozzle - TLTG Optimized GCode`. Optionally, make a copy and customize it.
 
+On firmware `01.01.07.01`, the installer first asks whether to flash a fix for the toolhead board's accelerometer. **The default is No.** If you say yes, **rerun input shaper calibration before printing**; see [Firmware fixes](docs/firmware.md).
 
-### Installer Dry-Run
-If you'd rather do a dry-run before committing to a full install, you can run this:
+[Dry run, automatic updates, updating, and uninstalling →](docs/install.md)
 
-```bash
-/bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/install-latest.sh)" -- --dry-run
-```
+## What you get
 
-### Optional THR accelerometer firmware fix
+### Faster prints
+- Shorter print starts and filament changes: quicker homing and probing, and less fixed waiting around cuts, wipes, and saves.
+- Box filament stays loaded between prints, so the next print skips the unload and reload.
+- Options to reuse a saved bed mesh, warm up the bed, chamber, and nozzle in turn, and start once the chamber reaches a minimum temperature.
 
-On QIDI firmware `01.01.07.01`, the interactive installer asks early, before changing any configuration, whether to flash the THR toolhead board's LIS2DW FIFO bug fix. **The default is No**: press Enter to leave firmware unchanged. Answering yes flashes after the configuration install finishes. The installer checks the actual application and bootloader hashes; a board that already has the fix is verified without another reset or flash. **After flashing THR, rerun input shaper calibration before printing.** The installer clears the saved input shaper calibration from `printer.cfg`, so input shaping stays off until you recalibrate; the previous `printer.cfg` is kept with the THR recovery files. The installer does not run calibration.
+[Print start and end →](docs/print-start.md)
 
-Flashing requires an idle, ready printer with every heater target at zero. Keep printer power on until verification completes. The installer preserves stock recovery files under `~/printer_data/.tltg_thr_firmware_backups/`, flashes only THR, and verifies the complete application and unchanged bootloader before restoring services. If the bootloader is unsupported, THR firmware is left unchanged and previously active services are restored without a firmware blocker; the configuration install is kept. The installer saves a private read-only capture and identifies a shareable `report.json` to attach to a GitHub issue. Do not attach its flash binaries. See [THR-only operations](firmware/FLASHING.md) for admitted bootloader identities and recovery requirements.
+### QIDI Box
+- Faster, tunable loading and unloading.
+- Box heater control from Fluidd, and Box processor temperatures.
+- Edit QIDI's filament list from Fluidd, including brands such as Bambu, Overture, and Polymaker.
 
-`--yes` alone and automatic updates never authorize firmware programming. To opt in explicitly from the command line, use `~/tltg-optimized-macros/install.sh --flash-thr-fifo`; add `--dry-run` for a preview without serial access or service changes. Configuration restore and uninstall do not revert MCU firmware.
+[QIDI Box →](docs/qidi-box.md)
 
-### Optional QIDI Box firmware fix
+### Current Fluidd
+- [This project's build of current Fluidd](https://github.com/thelegendtubaguy/fluidd), replacing QIDI's 1.30.5, which QIDI no longer updates. Your settings carry over.
+- A redesigned QIDI Box card, a live view of the touchscreen, and a restart button for a frozen touchscreen.
 
-QIDI's USB Box firmware turns every Klipper shutdown of the Box, such as an emergency stop or a heater safety limit, into a watchdog restart, so Klipper reports `Lost communication with MCU 'mcu_boxN'` instead of the reason. The installer bundle includes a fix that keeps the Box connected so Klipper shows what actually happened. **It is never installed or offered by the installer.** Run it yourself from the installer folder over SSH:
+[Installing and undoing it →](docs/fluidd.md)
 
-```sh
-./box-firmware.sh status    # which Boxes have the fix
-./box-firmware.sh install   # flash it to every USB Box (or --box N)
-./box-firmware.sh restore   # put QIDI's stock Box firmware back
-```
+### Fixes for QIDI bugs
+- The real error instead of a bare `MCU shutdown`.
+- Fewer Boxes dropping with `Lost communication with MCU 'mcu_boxN'`.
+- Multi-plate 3MF files print the right plate from Fluidd, reprints, and the job queue.
 
-The script needs an idle, ready printer with every heater target at zero, asks you to type `FLASH`, and stops Klipper and the touchscreen for about four minutes per Box. It only flashes Box bootloader and firmware builds it recognizes, reads the result back to verify it, and keeps the stock firmware under `~/printer_data/.tltg_box_firmware_backups/`. A fixed Box reports its version as `02.03.01.21-tltg-shutdownfix1` in Fluidd and `klippy.log`. See [QIDI Box firmware shutdown fix](firmware/BOX_FIRMWARE.md) for what happens if a flash fails and how to recover.
+[All fixes →](docs/fixes.md)
 
-### Automatic Updates
+### Tools
+- A guided nozzle load-cell check, probe accuracy, and bed screw helpers.
+- A switch to stop the external spool's runout sensor from pausing prints.
 
-The installer asks whether to enable hourly automatic optimized config updates before asking whether to restart Klipper. Auto-updates use a system-level systemd timer. Enabling auto-updates requires sudo once to install `/etc/systemd/system/tltg-optimized-auto-update.service` and `/etc/systemd/system/tltg-optimized-auto-update.timer`; the installer uses QIDI's public default sudo password (`qiditech`) unless the environment variable `TLTG_OPTIMIZED_SUDO_PASSWORD` is set, then prompts for a password if the initial sudo attempt fails.
+[Tools →](docs/tools.md)
 
-If those systemd units already exist from a dev installer, a release install refreshes them to the current `~/tltg-optimized-macros` bundle, clears auto-update URL environment overrides, seeds the latest release checksum when GitHub is reachable, and re-enables/restarts the timer.
+## More
 
-Each hourly run checks the latest GitHub release checksum, skips while the printer is printing or paused, and then runs the normal installer with preflight checks and auto-approval.
-
-Disable auto-updates:
-
-```bash
-~/tltg-optimized-macros/auto-update.sh --disable-systemd
-```
-
-Run one auto-update check manually:
-
-```bash
-~/tltg-optimized-macros/auto-update.sh --run
-```
-
-### Moonraker 3MF metadata cache
-
-Install and update patch recognized QIDI Moonraker source so unchanged 3MF files reuse their metadata instead of being re-extracted at every startup, and so a 3MF started without a plate number, for example from Fluidd, a reprint, or the job queue, prints the plate it was sliced on instead of plate 1. This applies even when optional OS optimizations are skipped. Moonraker restarts when its file-manager patch changes; installation requires an idle printer.
-
-The first restart rebuilds existing 3MF metadata once. Later scans still enumerate directories, but only new, changed, or invalidated archives need extraction. Changing the metadata extractor or object-processing policy invalidates the cache. This does not bypass print preparation or archive decompression needed by the printer itself.
-
-Manual 3MF metadata rescans use the archive extractor and keep existing QIDI thumbnail files. A rescan joins extraction already pending for the same archive rather than starting another copy; failures report an error and preserve prior metadata. Ordinary G-code rescans are unchanged.
-
-Unrecognized source is preserved and reported. Uninstall restores the original source; files modified after installation are preserved.
-
-### Fluidd
-
-QIDI no longer updates the Fluidd that ships with the Max 4, version 1.30.5. Install and update now serve this project's build of current Fluidd instead, based on Fluidd 1.37.7, with QIDI's Max 4 additions and the Box, temperature, and screen features below. This applies even when optional OS optimizations are skipped. The source is at [thelegendtubaguy/fluidd](https://github.com/thelegendtubaguy/fluidd). The footer of every Fluidd page shows which one is in use: this project's build reads `fluidd: v1.37.7-tltg-` followed by a commit ID.
-
-- The build is installed in `~/tltg-fluidd`, and the printer's web server serves it in place of QIDI's `~/fluidd`, which is left untouched. Updates replace the whole build, and open Fluidd tabs switch to the new version by themselves within a few minutes, or as soon as the tab is shown again.
-- Your Fluidd settings, macros, and dashboard layout carry over, because both versions keep them in the same place on the printer.
-- Everything QIDI's **Enable Full Display** setting used to hide, such as the bed mesh card on the Tune page and sensors without a target temperature, is always shown.
-- Sliced `.gcode.3mf` files can be uploaded, and the G-code preview opens them.
-
-After installing, close every Fluidd tab and open Fluidd again.
-
-Uninstall goes back to QIDI's Fluidd: it points the web server back at `~/fluidd` and removes `~/tltg-fluidd`. Cards that only QIDI's Fluidd has go back to their default places on the dashboard.
-
-If the installer doesn't recognize QIDI's web server configuration for Fluidd, it leaves it alone, and QIDI's Fluidd stays in use with the fixes earlier versions made to its Box card.
-
-### QIDI Box in Fluidd
-
-The **QIDI Box** card shows every Box's slots and the external spool at once, and is hidden on printers without a Box.
-
-![QIDI Box card in Fluidd showing two Boxes, the external spool, the filament path of the loaded slot, and the tool mapping](.github/images/fluidd-qidibox-card.png)
-
-- Each spool shows its color and the tools mapped to it above, and the slot label below has a green border when filament is at the slot's inlet. The loaded slot's tool label is highlighted.
-- Under each Box are its humidity, temperature, and heater target when heating.
-- The filament path shows how far the selected slot's filament reaches, following the slot inlet, hub, and toolhead sensors. The hub and toolhead only light up for the slot whose filament is actually there.
-- With **Automatic reload** on, slots that can stand in for each other when one runs out are outlined in their filament color and share a reload letter (↻ A, ↻ B, …) under their labels: Box slots with the same filament, vendor, and color. The selected slot also lists its backups.
-- Click a slot to select it, then **Load**, **Unload**, **Eject**, **Read RFID**, or **Edit filament**. These are unavailable while printing or while the Box is busy.
-- The tool mapping at the bottom shows which slot each tool loads, one diagram per Box. While the printer is idle, click a tool or **Edit** to change it; **Default** restores T0 → 1A, T1 → 1B, and so on. Fluidd's print dialog sets the mapping for the print it starts, and a normal print end restores the default.
-- **Box settings** turns QIDI's detection on startup, detection on insertion, and automatic reload on or off, and holds the [load and unload motion](#qidi-box-load-and-unload-speed) settings.
-
-On firmware `01.01.07.01`, slots show the filament, vendor, and color the printer is actually using, including brands such as Bambu, HATCHBOX, Overture, and Polymaker. A slot set with an older numeric ID shows QIDI PLA Basic, because that is how `01.01.07.01` treats it; pick the filament again to fix it. The Vendor and Filament pickers match the touchscreen, colors are saved the same way as on the touchscreen, and the buttons send the commands `01.01.07.01` uses. Older supported firmware uses QIDI's earlier filament list and commands.
-
-Starting a print of a file sliced for the Box opens the Box print dialog. Choose a loaded slot for each filament in the file; slots are matched automatically by type and nearest color, and several filaments can use the same slot. Turn off **Use QIDI Box** to print from the external spool.
-
-### Editing the QIDI filament list
-
-On `01.01.07.01`, the touchscreen's Vendor and Filament lists come from QIDI's filament files. Install and update add a `qidi_filament_config` folder to Fluidd's configuration files that opens them, so you can add or adjust filaments from Fluidd:
-
-- `filament-0.4.json` is the list for the 0.4 mm nozzle; the other files cover the other nozzle sizes. Right-click a file and choose Edit.
-- To add a filament, copy an entry of the same material and give it a new name, a new unused `filament_id`, and the vendor to list it under. A new vendor name adds that vendor to the pickers.
-- Keep the material letter of the copied entry's `filament_id`: the letter after `QF` is `A` for PLA, `B` for ABS and ASA, `C` for PC, `G` for PETG, `N` for PA, `U` for TPU, and so on. For example, a new PLA could use `QFA93` if no other entry has it.
-- The file must stay valid JSON; a missing comma or bracket can break the touchscreen's filament list. If Fluidd can't read any filaments from the file, the QIDI Box card says so instead of offering **Edit filament**.
-- After saving, turn the printer off and on again, or choose **Reboot** in Fluidd's power menu, so the touchscreen picks up the change. Restarting Klipper from Fluidd updates the Box and Fluidd, but the touchscreen keeps showing its old list until the printer restarts.
-- If you change the `filament_id` of a filament a Box slot is set to, choose that filament for the slot again.
-
-Firmware updates replace these files, so keep a copy of any entries you add. Files in this folder are QIDI's own files, not copies: they are not part of the installer's configuration backups, and deleting one in Fluidd deletes it from the printer. If `qidi_filament_config` already exists, the installer leaves it alone. Uninstall removes the link but never your edits.
-
-### QIDI Box temperature from Fluidd
-
-Set a QIDI Box heater target from the `Heater Box1`/`Heater Box2` rows in Fluidd's temperature panel. The highest target allowed is the lowest Box temperature limit among the filaments loaded in that Box; an empty Box allows up to 65 °C, the Box's advertised maximum. If a loaded filament does not allow Box heating, the target field is locked; a Box that is already heating can still be set to `0`.
-
-### Printer screen in Fluidd
-
-Install and update add a **Printer screen** card to Fluidd's dashboard that shows the printer's touchscreen live, so you can check or use it from another room. This applies even when optional OS optimizations are skipped. The card starts collapsed and the printer does no screen work until you expand it. It stops when you collapse it, leave the dashboard, or switch to another tab. Existing dashboards get the card at the bottom of the first column; drag it wherever you like in Fluidd's layout mode.
-
-![Printer screen card in Fluidd showing the touchscreen's home page](.github/images/fluidd-printer-screen-view-only.png)
-
-- The screen opens **view only**: clicking or tapping the image does nothing on the printer.
-- Choose **View only** in the card's header and confirm to turn on control. Clicks, taps, and drags on the image then press the real touchscreen, including during a print. Collapsing the card turns control back off.
-- **Full screen** fills your browser or phone screen with it.
-
-![Confirmation shown before Fluidd can press the touchscreen](.github/images/fluidd-printer-screen-control-confirm.png)
-
-The screen is only available to devices that can already use Fluidd: the printer checks every connection with Moonraker, and the screen service itself only listens on the printer. After installing, close every Fluidd tab and open Fluidd again to load the new card.
-
-Behind the card, the installer adds a small `tltg-remote-screen` service, and a `/tltg-screen/` route to the printer's Fluidd web server configuration. The service sends a new image only when the screen changes. An nginx configuration the installer does not recognize is left unchanged, and the card then says the screen is unavailable. Uninstall removes the service and restores the original web server configuration; files modified after installation are preserved.
-
-### Restarting the touchscreen app from Fluidd
-
-Install and update let Fluidd control `qidi-client`, QIDI's touchscreen app, so you can restart a frozen screen without SSH. This applies even when optional OS optimizations are skipped. Open Fluidd's power menu; `qidi-client` is listed under services with **Restart**, **Stop**, and **Start**. **Stop** leaves the touchscreen off until you start it again or the printer reboots.
-
-The installer adds `qidi-client` to `~/printer_data/moonraker.asvc`, Moonraker's list of services Fluidd may control, and restarts Moonraker once. A list the installer does not recognize is left unchanged. Uninstall restores the original list; a list modified after installation is preserved.
-
-### Klipper shutdown reasons
-
-When Klipper stops on an error, such as a heater or fan fault or a lost Box connection, QIDI's print status module could crash Klipper during the shutdown, so the screen, Fluidd, and slicers showed only `MCU shutdown`. Install and update patch QIDI's `print_stats_manager.py` so the original reason stays on screen; `FIRMWARE_RESTART` recovers as usual. This applies even when optional OS optimizations are skipped, and Klipper restarts once when the patch is applied. Unrecognized source is preserved and reported. Uninstall restores the original file; files modified after installation are preserved.
-
-### Box MCU link monitoring
-
-A Box that drops off its USB link shows up as `Lost communication with MCU 'mcu_boxN'` with no shutdown reason, so the cause is not recorded anywhere by default. The installer adds a monitor that is **off by default**. Enable it from Fluidd's console:
-
-```gcode
-SAVE_VARIABLE VARIABLE=tltg_box_link_monitor VALUE=1
-```
-
-While it is enabled, it writes `printer_data/logs/tltg_box_link.log`, separate from `klippy.log` so it survives log rotation. It records Box MCU serial counters and any change to them, box heater, Box processor temperature, and print context for up to four Boxes, the reset reason each Box MCU reports at connect, and the first `Got EOF when reading from device`, `Timeout with MCU`, or `shutdown:` line that appears in `klippy.log`. Kernel USB lines are captured at that point too.
-
-At that first line, the monitor also writes the last messages Klipper sent to and received from each Box as `serial-history mcu_boxN:` lines, with their times. They show how long the Box went quiet before it disconnected and what Klipper last asked it to do. A `serial-history clock` line records the time they were saved, for lining them up with the kernel USB lines.
-
-Each `reset-reason mcu_boxN` line records what that Box reports when Klipper connects to it. Turning the monitor on while Klipper is running records it right away. The Box remembers every kind of reset until it is turned off, and reports the most serious one since it was last turned on, not the latest:
-
-- `PowerOn`: nothing but power-on, or a power dip, since the Box was turned on.
-- `Software`: Klipper restarted the Box with `FIRMWARE_RESTART`, and nothing more serious happened.
-- `IndependentWatchdog`: the Box's firmware stopped responding and its watchdog restarted it at least once since it was turned on.
-
-To find out why a Box dropped, turn the Box off and on before printing. After a drop, use `RESTART` or restart the Klipper service rather than `FIRMWARE_RESTART`, so the monitor reads the Box before Klipper restarts it. `FIRMWARE_RESTART` changes `PowerOn` to `Software`, but it can't hide `IndependentWatchdog`.
-
-Set the variable back to `0` to stop recording; it takes effect without a restart. The log is capped at 2 MB and rotates once to `tltg_box_link.log.1`.
-
-When reporting a Box MCU disconnect, include this file alongside the end of `klippy.log`.
-
-### Box processor temperature
-
-Each QIDI Box's processor temperature shows in Fluidd's temperature card and graph as **Box1 MCU** through **Box4 MCU**, one for each Box Klipper is set up with. Printers without a Box show none. These sensors have no limits, so they never stop a print.
-
-### QIDI Box load and unload speed
-
-You can tune how the Box pushes filament to the toolhead and pulls it back. A load pushes fast for most of the way, then approaches slowly until the toolhead filament sensor trips. Installing or updating saves the package defaults below unless you've already saved any of these settings, in which case all of yours are kept. Set them in Fluidd's QIDI Box card under **Box settings** → **Load/unload motion**, or with `TLTG_BOX_MOTION` in the console. Run `TLTG_BOX_MOTION` with no parameters to see the current settings and each slot's profile.
-
-| Parameter | What it sets | Package default | QIDI value | Allowed |
-|---|---|---|---|---|
-| `FAST_LENGTH` | How far the fast push goes, in mm | 950 | 930 | 100–2000 |
-| `FAST_SPEED_1` | Speed of the first fast stage, in mm/s | 120 | 85 | 10–150 |
-| `FAST_SPEED_2` | Speed of the second fast stage, in mm/s | 100 | 65 | 10–150 |
-| `APPROACH_SPEED` | Speed for the rest of the way to the toolhead sensor, in mm/s | 15 | 10 | 2–40, below both fast speeds |
-| `LOAD_ACCEL` | Load acceleration | QIDI's | 100 | 20–400 |
-| `UNLOAD_SPEED_1`, `UNLOAD_SPEED_2` | Speeds of the two unload stages, in mm/s | 115, 120 | 65, 85 | 10–150, must differ |
-| `UNLOAD_ACCEL` | Unload acceleration | QIDI's | 100 | 20–400 |
-| `UNLOAD_EXTRUDER_LENGTH` | How far the extruder pulls filament back before the Box takes over, in mm. All slots only. | 50 | 120 | 20–300 |
-
-```gcode
-TLTG_BOX_MOTION FAST_SPEED_1=100 FAST_SPEED_2=100 APPROACH_SPEED=20
-```
-
-The command refuses a combination the Box can't run and says why. Settings take effect on the next load or unload, without a restart. Use `PARAM=vendor` to put one setting back to QIDI's value, or `TLTG_BOX_MOTION RESET=1` to go back to QIDI's motion everywhere, including slot settings. Updates don't reapply the package defaults after that.
-
-Any setting can also be set for a single slot, which takes priority over the setting for all slots. For example, to load slot 2 more gently:
-
-```gcode
-TLTG_BOX_MOTION SLOT=2 FAST_SPEED_1=60 FAST_SPEED_2=60 APPROACH_SPEED=8
-```
-
-Slots are numbered from 0 the same way as `LOAD_FILAMENT_CONTROL SLOT=`, so the Box card's 1A is slot 0 and 2A is slot 4. Use `SLOT=2 FAST_SPEED_1=global` to make slot 2 follow the all-slots setting again, or `SLOT=2 RESET=1` to clear all of slot 2's settings.
-
-`FAST_LENGTH` is used exactly as set. On the test printer, filament reached the toolhead sensor 1001–1016 mm into the push, so QIDI's 930 mm leaves about 70–85 mm for the slow approach. Set it past the sensor and the filament reaches the toolhead at full fast speed.
-
-An unload starts with the extruder pulling the cut filament back 30 mm, then `UNLOAD_EXTRUDER_LENGTH` more at 10 mm/s, before the Box retracts at your unload speeds. On the test printer the filament left the toolhead sensor 34 mm into the unload, only about 4 mm into this second retract, so most of QIDI's 120 mm is the Box pulling free filament at 10 mm/s. The sensor sits above the extruder gears, so once it clears, the filament is out of the gears. A value of 20–30 mm keeps a margin past the sensor and saves about 9 seconds per unload.
-
-If you saved one of the settings with an invalid value using `SAVE_VARIABLE`, the affected load or unload goes back to QIDI's motion and the console says why. If a QIDI firmware update changes how the Box moves filament in a way the settings don't recognize, the Box keeps QIDI's motion and the console says so.
-
-### QIDI Box eject
-
-QIDI's eject parks the toolhead over the waste chute before and after the Box pulls the filament back, so an eject homes X and Y on a printer that isn't homed. When the eject only needs the Box to pull filament back, the toolhead now stays where it is. That's when nothing is fed past the Box hub, or when another slot's filament is the one loaded. An eject that first has to heat and unload filament from the path to the toolhead still parks the way QIDI does. Either way the eject turns the hotend off and disables the extruder motor afterwards.
-
-### QIDI Box filaments missing from QIDI's list
-
-If a Box slot or the external spool has a saved filament that isn't in QIDI's filament list, such as `None`, QIDI's load fails with `Internal error on command:"LOAD_FILAMENT_CONTROL"` and shuts Klipper down. The load now uses QIDI PLA Basic temperatures for that filament, the way QIDI already does for some older saved values, and the console names the saved filament. Choose the slot's filament again to clear it.
-
-Setting the external spool's filament to one that isn't in QIDI's list is refused with `External spool filament not changed`, the way QIDI refuses it for a Box slot. Before, QIDI saved `None` as the external spool's filament.
-
-### Helpful Klipper tools
-
-After install and Klipper restart, the optimized macro set includes:
-
-```gcode
-TLTG_TEST_PROBE CONFIRM=1
-TLTG_PROBE_ACCURACY_CENTER
-TLTG_CORNER_BED_SCREW_CHECK
-SCREWS_TILT_CALCULATE
-TLTG_RESET_TOOL_MAPPINGS
-```
-
-`TLTG_TEST_PROBE CONFIRM=1` checks that the nozzle load cell responds to light pressure. It does not move, home, heat, or change calibration. In Fluidd's macro controls, enter `1` in the `CONFIRM` field. The printer must be idle with all heaters off and the nozzle and bed below 40 °C. Make sure you can reach the nozzle and it is clear of the bed; **do not home to prepare for this test**.
-
-Follow the console prompts. The test takes about 40 seconds:
-
-1. Leave the nozzle alone through `DO NOT TOUCH` and `Measuring...`.
-2. At `GET READY TO PRESS`, get ready. At `PRESS`, press lightly upward on the nozzle and hold.
-3. When told to stop pressing, let go and leave the nozzle alone through `DO NOT TOUCH` and `Measuring...`.
-
-The result is one of:
-
-- `RESPONSE_DETECTED`: the readings look correct.
-- `NO_RELIABLE_RESPONSE`: the sensor did not respond as expected.
-- `INCONCLUSIVE`: there was not enough difference between pressing and not pressing to tell, or the test stopped early.
-
-**A detected response does not verify the homing trigger or certify safe homing.** For any other result, do not press harder, and do not home or probe until the cause is understood. `QUERY_PROBE` cannot check this sensor. `TLTG_PROBE_ACCURACY_CENTER` and the screw check below both home, so they are not safe tests for a suspected failed sensor.
-
-`TLTG_PROBE_ACCURACY_CENTER [SAMPLES=20]` homes, moves to `X195 Y195 Z10`, and runs Klipper `PROBE_ACCURACY`.
-
-`TLTG_CORNER_BED_SCREW_CHECK` homes, runs `Z_TILT_ADJUST`, and runs `SCREWS_TILT_CALCULATE`.
-
-`TLTG_RESET_TOOL_MAPPINGS` restores QIDI Box tool-to-slot identity mappings while the printer is idle. It is rejected while printing or paused.
-
-### Print-start bed mesh
-
-Each optimized print start calibrates a fresh adaptive KAMP mesh by default. To reuse an existing Klipper bed-mesh profile for every optimized start, save its exact name from the Klipper console:
-
-```gcode
-SAVE_VARIABLE VARIABLE=tltg_start_bed_mesh_profile VALUE='"default"'
-```
-
-Restore fresh adaptive calibration by saving an empty value:
-
-```gcode
-SAVE_VARIABLE VARIABLE=tltg_start_bed_mesh_profile VALUE='""'
-```
-
-The setting applies to existing sliced files and requires no change to slicer gcode. The console reports whether start preparation is loading the named profile or calibrating a fresh adaptive mesh. A configured profile must already exist; Klipper stops print preparation if it cannot load the name.
-
-### Minimum chamber temperature
-
-With OrcaSlicer 2.4.2 or later, use the updated `orcaslicer_gcode/start.gcode` and set the filament profile's chamber **Target** and **Minimal** temperatures. For example, Target `60°C` and Minimal `50°C` allow leveling and printing once the chamber reaches `50°C`, while heating continues toward `60°C`. The initial tool's filament supplies the minimum; values above the target are capped at the target.
-
-Minimal `0` keeps the existing target-minus-3°C wait. Older start G-code and QIDI Studio retain that behavior with updated macros; updated Orca start G-code also works with older optimized macros, which ignore the minimum and retain their existing wait. Both the start G-code and optimized macros must be updated to use the shorter wait.
-
-The minimum also applies to the chamber stage of staggered heating. A lower minimum allows nozzle heating to begin while the chamber is still heating toward its target.
-
-### Staggered print-start heating
-
-Staggered heating is disabled by default. Enable bed, chamber, then nozzle warm-up with a 10-second dwell between active stages:
-
-```gcode
-SAVE_VARIABLE VARIABLE=tltg_staggered_start_heating VALUE=1
-SAVE_VARIABLE VARIABLE=tltg_staggered_start_heating_dwell_seconds VALUE=10
-```
-
-Set the dwell to another non-negative number of seconds, or use `0` to retain ordered heating without fixed dwell time. To disable staggered heating:
-
-```gcode
-SAVE_VARIABLE VARIABLE=tltg_staggered_start_heating VALUE=0
-```
-
-You will need to slice files with the latest slicer gcode from this repo (or Orca cloud).
-
-### End-of-print filament handling
-
-The installer sets `tltg_keep_loaded_between_prints` to `1` if the setting does not already exist. That makes filament retention the default after installation.
-
-- `1`: Keep the current QIDI Box filament loaded after a completed print.
-- `0` or not set: Cut and unload the filament after a completed print.
-
-To disable filament retention and use the stock-style cut-and-unload behavior:
-
-```gcode
-SAVE_VARIABLE VARIABLE=tltg_keep_loaded_between_prints VALUE=0
-```
-
-To turn filament retention back on:
-
-```gcode
-SAVE_VARIABLE VARIABLE=tltg_keep_loaded_between_prints VALUE=1
-```
-
-The installer preserves an existing setting during updates. The setting survives Klipper restarts, works with existing sliced files, and does not require any slicer G-code changes.
-
-### Filament runout sensor
-
-```gcode
-TLTG_FILAMENT_SENSOR ENABLE=0
-TLTG_FILAMENT_SENSOR ENABLE=1
-```
-
-`ENABLE=0` keeps toolhead filament-sensor events and external-spool runout status reporting active while suppressing automatic external-spool pausing. `ENABLE=1` restores automatic external-spool pausing. The setting resets enabled after a Klipper restart. QIDI Box runout handling remains enabled in both modes.
-
-> [!WARNING]
-> With `ENABLE=0`, ignore filament-runout warnings on the printer screen. Do not interact with those warnings; the print continues and the warning remains only as sensor-event status.
-
-The console identifies the toolhead sensor trip and the active pause policy.
-
-![Filament sensor console output](.github/images/tltg-filament-sensor-console.png)
-
-### Slicer Machine GCode Updates
-
-> [!TIP]
-> If you're using Orca >= 2.4.0, use the OrcaCloud [shared bundle you can subscribe to](https://cloud.orcaslicer.com/b/4c4b3b74c745)!  It will let you get future updates in your slicer easily and you don't have to manually copy/paste anything!
-
-You will need to manually copy the machine GCode to your slicer of choice to take advantage of the optimized path.  The stock print path remains in place for backwards compatibility, safety, and general user happiness :)
-
-Use the pack that matches your slicer. The two packs are functionally aligned, but their placeholder syntax differs because of variable type differences.
-   - OrcaSlicer: `orcaslicer_gcode/`
-   - QIDI Studio: `qidistudio_gcode/`
-
-## Uninstall
-
-If `~/tltg-optimized-macros/` is still present on the printer:
-
-```bash
-~/tltg-optimized-macros/install.sh --uninstall --plain
-```
-
-You can also run uninstall by fetching the latest script directly from the web:
-
-```bash
-/bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/install-latest.sh)" -- --uninstall
-```
-
-Uninstall always undoes the changes every install makes to QIDI's own files: Fluidd goes back to QIDI's Fluidd, the Printer screen service and web server route are removed, and the Moonraker and Klipper source fixes, Moonraker's allowed services list, and the filament configuration link are restored. It then asks whether to also restore the optional OS optimizations: DNS, APT sources, disabled services, Rockchip root sync, and the QIDIClient GIFs. `--keep-system-optimizations` keeps those without asking. Files modified after installation are preserved and reported.
-
-## If something goes wrong
-
-Read the installer output first. The installer stops before writing when firmware detection, preflight, printer state, or free-space checks fail.
-
-If Klipper is stopped with an error, such as `... is not a valid config section`, you can still run the installer. It installs its files first, restarts Klipper, and then updates saved settings. If Klipper still doesn't start, the installer says so; fix the error shown in Fluidd and run the installer again.
-
-Installer-created backup `.zip` files are stored under `/home/qidi/printer_data/` with `tltg-optimized-macros-before-optimize-...zip` and `tltg-optimized-macros-before-uninstall-...zip` labels.
-
-You can restore interactively when SSH'd into the printer.
-
-```bash
-cd ~/tltg-optimized-macros && ./restore.sh
-```
-
-Restore a specific backup:
-
-```bash
-cd ~/tltg-optimized-macros && ./restore.sh --backup /home/qidi/printer_data/<backup-name>.zip
-```
-
-If restore completed and the recovery sentinel is still present, clear it with:
-
-```bash
-cd ~/tltg-optimized-macros && ./install.sh --clear-recovery-sentinel
-```
-
-## Testing
-
-See [TESTING](TESTING.md) to help validate releases.
-
-## Development
-
-For development documentation, see [DEVELOPMENT](DEVELOPMENT.md).
+- [Every setting and command in one table](docs/settings.md)
+- [If something goes wrong](docs/troubleshooting.md): restoring backups and reporting problems
+- [Optional firmware fixes](docs/firmware.md) for the toolhead board and QIDI Box
+- [What the installer changes on your printer](docs/under-the-hood.md)
+- [Changelog](CHANGELOG.md)
+- [Help test releases](TESTING.md) and [run the dev branch](DEVELOPMENT.md)
 
 ## License
 

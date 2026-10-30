@@ -279,7 +279,6 @@ def main(
                         for patch in manifest.install.source_patches
                     },
                     install_label_prefix=manifest.backup.label_prefix,
-                    known_package_versions=manifest.package.known_versions,
                 )
                 reporter.emit_clear_recovery_sentinel(removed)
                 reporter.debug(
@@ -319,10 +318,7 @@ def main(
             paths.installer_root / "supported_upgrade_sources.yaml"
         )
         validate_manifest_compatibility(manifest, compatibility)
-        reporter.debug(
-            event="cli.compatibility.validated",
-            known_versions=len(manifest.package.known_versions),
-        )
+        reporter.debug(event="cli.compatibility.validated")
 
         lock_inherited = _lock_inherited(args.mode, env)
         with nullcontext() if lock_inherited else acquire(paths.lock_path):

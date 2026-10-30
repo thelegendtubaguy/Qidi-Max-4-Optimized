@@ -1,0 +1,90 @@
+# QIDI Box
+
+[← Back to the README](../README.md)
+
+The **QIDI Box** card in [this project's Fluidd](fluidd.md) shows every Box's slots, the filament path, and tool mapping, and controls loading, the Box heater, and Box settings. See [thelegendtubaguy/fluidd](https://github.com/thelegendtubaguy/fluidd) for how to use it.
+
+This page covers what the optimized configuration changes for the Box.
+
+## Tool mapping
+
+A normal print end restores the default tool mapping, T0 → 1A, T1 → 1B, and so on. `TLTG_RESET_TOOL_MAPPINGS` restores it while the printer is idle.
+
+## Box heater
+
+Box heater targets can be set from Fluidd, up to 65 °C, the Box's advertised maximum.
+
+Each Box's processor temperature shows in Fluidd's temperature card as **Box1 MCU** through **Box4 MCU**. These sensors have no limits, so they never stop a print.
+
+## Load and unload speed
+
+A load pushes filament fast for most of the way, then approaches slowly until the toolhead filament sensor trips. An unload has the extruder pull the filament back before the Box retracts it.
+
+The installer saves faster defaults, unless you've already saved any of these settings, in which case all of yours are kept. Change them in Fluidd's QIDI Box card, or with `TLTG_BOX_MOTION` in the console. Run `TLTG_BOX_MOTION` with no parameters to see the current settings and each slot's profile.
+
+| Parameter | What it sets | This project | QIDI | Allowed |
+|---|---|---|---|---|
+| `FAST_LENGTH` | How far the fast push goes, in mm | 950 | 930 | 100–2000 |
+| `FAST_SPEED_1` | Speed of the first fast stage, in mm/s | 120 | 85 | 10–150 |
+| `FAST_SPEED_2` | Speed of the second fast stage, in mm/s | 100 | 65 | 10–150 |
+| `APPROACH_SPEED` | Speed for the rest of the way to the toolhead sensor, in mm/s | 15 | 10 | 2–40, below both fast speeds |
+| `LOAD_ACCEL` | Load acceleration | QIDI's | 100 | 20–400 |
+| `UNLOAD_SPEED_1`, `UNLOAD_SPEED_2` | Speeds of the two unload stages, in mm/s | 115, 120 | 65, 85 | 10–150, must differ |
+| `UNLOAD_ACCEL` | Unload acceleration | QIDI's | 100 | 20–400 |
+| `UNLOAD_EXTRUDER_LENGTH` | How far the extruder pulls filament back before the Box takes over, in mm. All slots only. | 50 | 120 | 20–300 |
+
+```gcode
+TLTG_BOX_MOTION FAST_SPEED_1=100 FAST_SPEED_2=100 APPROACH_SPEED=20
+```
+
+Settings take effect on the next load or unload, without a restart. The command refuses a combination the Box can't run and says why.
+
+- **One setting back to QIDI's:** `PARAM=vendor`, for example `FAST_SPEED_1=vendor`.
+- **Everything back to QIDI's,** including slot settings: `TLTG_BOX_MOTION RESET=1`. Updates won't reapply this project's defaults after that.
+
+### Per-slot settings
+
+Any setting can also be set for one slot, which overrides the all-slots setting. For example, to load slot 2 more gently:
+
+```gcode
+TLTG_BOX_MOTION SLOT=2 FAST_SPEED_1=60 FAST_SPEED_2=60 APPROACH_SPEED=8
+```
+
+Slots are numbered from 0, the same as `LOAD_FILAMENT_CONTROL SLOT=`, so the card's 1A is slot 0 and 2A is slot 4. `SLOT=2 FAST_SPEED_1=global` makes slot 2 follow the all-slots setting again, and `SLOT=2 RESET=1` clears all of slot 2's settings.
+
+### Choosing values
+
+- **`FAST_LENGTH`** is used exactly as set. On the test printer, filament reached the toolhead sensor 1001–1016 mm into the push, so QIDI's 930 mm leaves about 70–85 mm for the slow approach. Set it past the sensor and filament reaches the toolhead at full speed.
+- **`UNLOAD_EXTRUDER_LENGTH`:** an unload starts with the extruder pulling the cut filament back 30 mm, then this much more at 10 mm/s, before the Box takes over. On the test printer the filament left the toolhead sensor 34 mm into the unload, about 4 mm into this second pull, so most of QIDI's 120 mm is slow pulling of free filament. The sensor sits above the extruder gears, so once it clears, the filament is out of the gears. A value of 20–30 mm keeps a margin and saves about 9 seconds per unload.
+
+If a setting saved with `SAVE_VARIABLE` is invalid, the affected load or unload uses QIDI's motion and the console says why. If a QIDI firmware update changes how the Box moves filament in a way these settings don't recognize, the Box keeps QIDI's motion and the console says so.
+
+## Eject
+
+QIDI's eject parks the toolhead over the waste chute before and after the Box pulls the filament back, so it homes X and Y on a printer that isn't homed. When the eject only needs the Box to pull filament back, because nothing is fed past the Box hub or another slot's filament is loaded, the toolhead now stays where it is. An eject that first has to heat and unload filament from the toolhead still parks the way QIDI does. Either way the eject turns the hotend off and disables the extruder motor afterward.
+
+## Editing QIDI's filament list
+
+On firmware `01.01.07.01`, the Vendor and Filament lists on the touchscreen and in Fluidd come from QIDI's filament files. The installer adds a `qidi_filament_config` folder to Fluidd's configuration files that opens them:
+
+- `filament-0.4.json` is the list for the 0.4 mm nozzle; the other files cover the other nozzle sizes. Right-click a file and choose **Edit**.
+- **To add a filament,** copy an entry of the same material and give it a new name, an unused `filament_id`, and the vendor to list it under. A new vendor name adds that vendor to the pickers.
+- **Keep the material letter** of the copied entry's `filament_id`: the letter after `QF` is `A` for PLA, `B` for ABS and ASA, `C` for PC, `G` for PETG, `N` for PA, `U` for TPU, and so on. For example, a new PLA could use `QFA93` if no other entry has it.
+- **Keep it valid JSON.** A missing comma or bracket can break the touchscreen's filament list.
+- **After saving,** restart Klipper so the Box and Fluidd pick up the change, and restart `qidi-client` from Fluidd's power menu, or reboot the printer, so the touchscreen does too.
+- If you change the `filament_id` of a filament a Box slot is set to, choose that filament for the slot again.
+
+> [!WARNING]
+> These are QIDI's own files, not copies. Firmware updates replace them, so keep a copy of any entries you add. They aren't part of the installer's backups, and deleting one in Fluidd deletes it from the printer.
+
+If `qidi_filament_config` already exists, the installer leaves it alone. Uninstall removes the link but never your edits.
+
+## Filaments missing from QIDI's list
+
+If a Box slot or the external spool has a saved filament that isn't in QIDI's list, such as `None`, QIDI's load fails with `Internal error on command:"LOAD_FILAMENT_CONTROL"` and shuts Klipper down. The load now uses QIDI PLA Basic temperatures instead, the way QIDI already does for some older saved values, and the console names the saved filament. Choose the slot's filament again to clear it.
+
+Setting the external spool to a filament that isn't in QIDI's list is refused with `External spool filament not changed`, as QIDI already does for Box slots.
+
+## Box disconnects
+
+See [Fixes](fixes.md#qidi-box-disconnects) for what this project changes, and [Troubleshooting](troubleshooting.md#box-link-monitor) to record why a Box drops.
