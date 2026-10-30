@@ -111,6 +111,10 @@ install:
       - "start_end.cfg"
       - "temperatures.cfg"
       - "box_link_monitor.cfg"
+      - "box_mcu_temperature.cfg"
+      - "background_save_config.cfg"
+      - "box_heater_refresh.cfg"
+      - "save_variables_fast.cfg"
       - "box_feed_motion.cfg"
       - "box_eject.cfg"
       - "box_filament_guard.cfg"
@@ -125,6 +129,18 @@ install:
     - id: box_link_monitor
       source: "klipper/tltg/box_link_monitor.py"
       destination: "klippy/extras/tltg_box_link_monitor.py"
+    - id: box_mcu_temperature
+      source: "klipper/tltg/box_mcu_temperature.py"
+      destination: "klippy/extras/tltg_box_mcu_temperature.py"
+    - id: background_save_config
+      source: "klipper/tltg/background_save_config.py"
+      destination: "klippy/extras/tltg_background_save_config.py"
+    - id: box_heater_refresh
+      source: "klipper/tltg/box_heater_refresh.py"
+      destination: "klippy/extras/tltg_box_heater_refresh.py"
+    - id: save_variables_fast
+      source: "klipper/tltg/save_variables_fast.py"
+      destination: "klippy/extras/tltg_save_variables_fast.py"
     - id: box_feed_motion
       source: "klipper/tltg/box_feed_motion.py"
       destination: "klippy/extras/tltg_box_feed_motion.py"

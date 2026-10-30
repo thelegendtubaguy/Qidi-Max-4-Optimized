@@ -41,13 +41,17 @@ INTEGER_FIELDS = (
 FLOAT_FIELDS = ("rto", "srtt", "rttvar", "mcu_awake")
 STATUS_FIELDS = INTEGER_FIELDS + FLOAT_FIELDS
 
-CONTEXT_OBJECTS = (
-    ("heater_generic heater_box1", ("target", "temperature", "power")),
-    ("heater_generic heater_box2", ("target", "temperature", "power")),
-    ("temperature_sensor heater_temp_a_box1", ("temperature",)),
-    ("temperature_sensor heater_temp_b_box1", ("temperature",)),
-    ("temperature_sensor heater_temp_a_box2", ("temperature",)),
-    ("temperature_sensor heater_temp_b_box2", ("temperature",)),
+# QIDI supports up to four Boxes; objects for absent Boxes are skipped.
+MAX_BOXES = 4
+CONTEXT_OBJECTS = tuple(
+    item for box in range(1, MAX_BOXES + 1) for item in (
+        ("heater_generic heater_box%d" % box,
+         ("target", "temperature", "power")),
+        ("temperature_sensor heater_temp_a_box%d" % box, ("temperature",)),
+        ("temperature_sensor heater_temp_b_box%d" % box, ("temperature",)),
+        ("temperature_sensor Box%d_MCU" % box, ("temperature",)),
+    )
+) + (
     ("temperature_sensor AP_Board_SOC", ("temperature",)),
     ("temperature_sensor Mainboard_MCU", ("temperature",)),
 )
@@ -105,8 +109,8 @@ class BoxLinkMonitor:
         self._previous = {}
         self._mcus = {}
         self._reset_oid = {}
-        self._reset_labels = {}
         self._reset_requested = set()
+        self._serial_dumped = False
         self._connected = False
         # MCU objects exist before any other section loads, so object ids must
         # be reserved here to be included in allocate_oids.
@@ -116,7 +120,6 @@ class BoxLinkMonitor:
             except Exception:
                 continue
             self._reset_oid[name] = oid
-            self._reset_labels[oid] = self._label(name)
         self.printer.register_event_handler("klippy:connect",
                                             self._handle_connect)
         self.printer.register_event_handler("klippy:disconnect",
@@ -230,18 +233,20 @@ class BoxLinkMonitor:
                         % self._label(name))
             return
         oid = self._reset_oid[name]
+        label = self._label(name)
+        # Each MCU numbers its object ids independently, so Boxes with the same
+        # config get the same oid; the label must come from the MCU, not the oid.
         try:
-            mcu.register_response(self._handle_reset_reason,
-                                  "reset_reason_return", oid)
+            mcu.register_response(
+                lambda params: self._handle_reset_reason(label, params),
+                "reset_reason_return", oid)
             command.send([oid])
         except Exception as exc:
             self._write("reset-reason %s: query failed: %s"
                         % (self._label(name), exc))
 
-    def _handle_reset_reason(self, params):
+    def _handle_reset_reason(self, label, params):
         try:
-            oid = params.get("oid")
-            label = self._reset_labels.get(oid, "oid=%s" % (oid,))
             self._write("reset-reason %s: %s"
                         % (label, _decode(params.get("reason", ""))),
                         durable=True)
@@ -279,6 +284,34 @@ class BoxLinkMonitor:
                                                  stats.get("adj")))
         return " ".join(parts)
 
+    def _dump_box_serial(self):
+        # Klipper writes an MCU's recent message history to klippy.log only when
+        # that MCU reports a shutdown, which a lost Box never does. The history
+        # holds the messages exchanged before the link failed, with host
+        # monotonic times; the clock line aligns them with dmesg.
+        if self._serial_dumped:
+            return
+        self._serial_dumped = True
+        clocks = ["monotonic=%.6f" % time.monotonic()]
+        if hasattr(time, "CLOCK_BOOTTIME"):
+            clocks.append("boottime=%.6f"
+                          % time.clock_gettime(time.CLOCK_BOOTTIME))
+        self._write("serial-history clock %s" % " ".join(clocks))
+        for name, mcu in self._mcu_objects().items():
+            label = self._label(name)
+            if not label.startswith("mcu_box"):
+                continue
+            try:
+                history = mcu._serial.dump_debug()
+            except Exception as exc:
+                self._write("serial-history %s: dump failed: %s"
+                            % (label, exc))
+                continue
+            for line in history.splitlines():
+                self._write("serial-history %s: %s" % (label, line))
+        self._write("serial-history end", durable=True)
+        self._dmesg()
+
     def _dmesg(self):
         if not self.capture_dmesg:
             return
@@ -292,8 +325,11 @@ class BoxLinkMonitor:
         except Exception as exc:
             self._write("dmesg: capture failed: %s" % exc)
             return
-        for line in lines[-15:]:
-            self._write("dmesg: %s" % line, durable=True)
+        # A dying hub logs a burst of errors before the disconnect itself, and
+        # the first of them marks when the link failed.
+        for line in lines[-60:]:
+            self._write("dmesg: %s" % line)
+        self._write("dmesg: end", durable=True)
 
     def _read_klippy_log(self):
         path = self._klippy_log_path()
@@ -322,6 +358,7 @@ class BoxLinkMonitor:
             if "tltg_box_link" in line:
                 continue
             self._write("klippy: %s" % line.strip(), durable=True)
+            self._dump_box_serial()
 
     def _snapshot(self):
         for name, mcu in self._mcu_objects().items():
@@ -346,6 +383,7 @@ class BoxLinkMonitor:
         # MCU command dictionaries are loaded only once identification is
         # done, so the reset reason cannot be looked up before this event.
         self._connected = True
+        self._serial_dumped = False
         if self._enabled:
             self._write("connected %s" % self._context())
 

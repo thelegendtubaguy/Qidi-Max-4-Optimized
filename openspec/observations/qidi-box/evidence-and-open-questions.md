@@ -55,9 +55,9 @@ A command returning `ok` proves acceptance in that captured state; it does not p
 
 ### Box MCU firmware and link
 
-- Whether a box link loss originates in the USB path, the box supply, or a box firmware reset. All three look identical from the host, because an IWDG reset removes the CDC device from the bus.
+- Whether a box link loss originates in the box supply or a box firmware stall. The double re-enumeration in the 2026-10-28 capture shows the Box MCU reset; what reset it is open. See `link-failures.md` for the timing evidence that would separate them.
 - Which device raised the `Got EOF when reading from device` on 2026-10-22. The timeout names `mcu_box2`, but the EOF line carries no MCU name.
-- The box MCU's reset reason. `reset_reason_get` exists on the MCU and no vendor module issues it, so the value is never recorded.
+- When the IWDG resets recorded on three Boxes happened, and what preceded them. The firmware keeps reset flags until power-off, so an `IndependentWatchdog` reading dates only from the Box's last power-on. See `mcu-firmware.md`, Reset reason.
 - The consumer of the MCU's `!!warnning:%s` output, and therefore whether MCU-side I2C warnings reach any log.
 - Whether a non-fatal I2C fault leaves `heater_boxN` supervision to be the only observer of a failed heater sensor.
 

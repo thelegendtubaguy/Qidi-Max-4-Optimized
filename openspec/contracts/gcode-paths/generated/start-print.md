@@ -459,7 +459,7 @@ Ordered invariants:
 - `BED_MESH_CALIBRATE PROFILE=kamp`
 - `SAVE_VARIABLE VARIABLE=profile_name VALUE='"kamp"'`
 - `G4 P500`
-- `SAVE_CONFIG_QD`
+- `TLTG_SAVE_CONFIG_QD`
 
 Forbidden patterns:
 

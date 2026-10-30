@@ -136,6 +136,13 @@ def main(argv: list[str] | None = None) -> int:
     tool_help = run_command([sys.executable, str(bundle_root / "scripts/flash_thr_firmware.py"), "--help"], cwd=bundle_root, env=os.environ.copy())
     if tool_help.returncode != 0:
         raise SystemExit(tool_help.stdout + tool_help.stderr)
+    for relative in ("box-firmware.sh", "scripts/flash_box_firmware.py", "scripts/build_box_firmware.py", "firmware/max4-box-shutdown-fix-v1.json", "firmware/BOX_FIRMWARE.md"):
+        if not (bundle_root / relative).is_file():
+            raise SystemExit("bundle is missing Box firmware support: " + relative)
+    box_tool_help = run_command([sys.executable, str(bundle_root / "scripts/flash_box_firmware.py"), "--help"], cwd=bundle_root, env=os.environ.copy())
+    box_help = run_command([str(bundle_root / "box-firmware.sh"), "--help"], cwd=bundle_root, env=os.environ.copy())
+    if box_tool_help.returncode != 0 or box_help.returncode != 0 or "rescue" not in box_help.stdout:
+        raise SystemExit(box_tool_help.stdout + box_tool_help.stderr + box_help.stdout + box_help.stderr)
     version_output = run_command([str(bundle_root / "install.sh"), "-v"], cwd=bundle_root, env=os.environ.copy())
     if version_output.returncode != 0:
         raise SystemExit(version_output.stdout + version_output.stderr)
@@ -183,8 +190,9 @@ def main(argv: list[str] | None = None) -> int:
         module_targets = {
             plain_printer_root / f"klipper/klippy/extras/tltg_{name}.py":
                 REPO_ROOT / f"installer/klipper/tltg/{name}.py"
-            for name in ("box_link_monitor", "box_feed_motion", "box_eject",
-                         "box_filament_guard", "probe_test")
+            for name in ("box_link_monitor", "box_mcu_temperature", "background_save_config",
+                         "box_heater_refresh", "save_variables_fast",
+                         "box_feed_motion", "box_eject", "box_filament_guard", "probe_test")
         }
         for module_target, module_source in module_targets.items():
             if not module_target.is_file():

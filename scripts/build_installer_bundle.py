@@ -28,10 +28,15 @@ ALLOWED_FILES = [
     "installer/release/install.sh",
     "installer/release/restore.sh",
     "installer/release/auto-update.sh",
+    "installer/release/box-firmware.sh",
     "scripts/flash_thr_firmware.py",
     "scripts/thr_bootloaders.py",
     "scripts/build_thr_firmware.py",
     "firmware/max4-thr-lis2dw-fifo-v1.json",
+    "scripts/flash_box_firmware.py",
+    "scripts/build_box_firmware.py",
+    "firmware/max4-box-shutdown-fix-v1.json",
+    "firmware/BOX_FIRMWARE.md",
     "firmware/FLASHING.md",
 ]
 ALLOWED_DIRECTORIES = [
@@ -79,6 +84,7 @@ def main(argv: list[str] | None = None) -> int:
     shutil.copy2(REPO_ROOT / "installer/release/install.sh", bundle_root / "install.sh")
     shutil.copy2(REPO_ROOT / "installer/release/restore.sh", bundle_root / "restore.sh")
     shutil.copy2(REPO_ROOT / "installer/release/auto-update.sh", bundle_root / "auto-update.sh")
+    shutil.copy2(REPO_ROOT / "installer/release/box-firmware.sh", bundle_root / "box-firmware.sh")
     ignore = shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo")
     for directory in ALLOWED_DIRECTORIES:
         source = REPO_ROOT / directory

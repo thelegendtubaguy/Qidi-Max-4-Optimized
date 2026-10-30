@@ -37,6 +37,18 @@ Flashing requires an idle, ready printer with every heater target at zero. Keep 
 
 `--yes` alone and automatic updates never authorize firmware programming. To opt in explicitly from the command line, use `~/tltg-optimized-macros/install.sh --flash-thr-fifo`; add `--dry-run` for a preview without serial access or service changes. Configuration restore and uninstall do not revert MCU firmware.
 
+### Optional QIDI Box firmware fix
+
+QIDI's USB Box firmware turns every Klipper shutdown of the Box, such as an emergency stop or a heater safety limit, into a watchdog restart, so Klipper reports `Lost communication with MCU 'mcu_boxN'` instead of the reason. The installer bundle includes a fix that keeps the Box connected so Klipper shows what actually happened. **It is never installed or offered by the installer.** Run it yourself from the installer folder over SSH:
+
+```sh
+./box-firmware.sh status    # which Boxes have the fix
+./box-firmware.sh install   # flash it to every USB Box (or --box N)
+./box-firmware.sh restore   # put QIDI's stock Box firmware back
+```
+
+The script needs an idle, ready printer with every heater target at zero, asks you to type `FLASH`, and stops Klipper and the touchscreen for about four minutes per Box. It only flashes Box bootloader and firmware builds it recognizes, reads the result back to verify it, and keeps the stock firmware under `~/printer_data/.tltg_box_firmware_backups/`. A fixed Box reports its version as `02.03.01.21-tltg-shutdownfix1` in Fluidd and `klippy.log`. See [QIDI Box firmware shutdown fix](firmware/BOX_FIRMWARE.md) for what happens if a flash fails and how to recover.
+
 ### Automatic Updates
 
 The installer asks whether to enable hourly automatic optimized config updates before asking whether to restart Klipper. Auto-updates use a system-level systemd timer. Enabling auto-updates requires sudo once to install `/etc/systemd/system/tltg-optimized-auto-update.service` and `/etc/systemd/system/tltg-optimized-auto-update.timer`; the installer uses QIDI's public default sudo password (`qiditech`) unless the environment variable `TLTG_OPTIMIZED_SUDO_PASSWORD` is set, then prompts for a password if the initial sudo attempt fails.
@@ -151,13 +163,25 @@ A Box that drops off its USB link shows up as `Lost communication with MCU 'mcu_
 SAVE_VARIABLE VARIABLE=tltg_box_link_monitor VALUE=1
 ```
 
-While it is enabled, it writes `printer_data/logs/tltg_box_link.log`, separate from `klippy.log` so it survives log rotation. It records Box MCU serial counters and any change to them, box heater and print context, the reset reason each Box MCU reports at connect, and the first `Got EOF when reading from device`, `Timeout with MCU`, or `shutdown:` line that appears in `klippy.log`. Kernel USB lines are captured at that point too.
+While it is enabled, it writes `printer_data/logs/tltg_box_link.log`, separate from `klippy.log` so it survives log rotation. It records Box MCU serial counters and any change to them, box heater, Box processor temperature, and print context for up to four Boxes, the reset reason each Box MCU reports at connect, and the first `Got EOF when reading from device`, `Timeout with MCU`, or `shutdown:` line that appears in `klippy.log`. Kernel USB lines are captured at that point too.
 
-After a disconnect, the first `reset-reason mcu_boxN` line written when Klipper reconnects records why that Box restarted, such as power loss or its watchdog. Turning the monitor on while Klipper is running records the reset reason right away.
+At that first line, the monitor also writes the last messages Klipper sent to and received from each Box as `serial-history mcu_boxN:` lines, with their times. They show how long the Box went quiet before it disconnected and what Klipper last asked it to do. A `serial-history clock` line records the time they were saved, for lining them up with the kernel USB lines.
+
+Each `reset-reason mcu_boxN` line records what that Box reports when Klipper connects to it. Turning the monitor on while Klipper is running records it right away. The Box remembers every kind of reset until it is turned off, and reports the most serious one since it was last turned on, not the latest:
+
+- `PowerOn`: nothing but power-on, or a power dip, since the Box was turned on.
+- `Software`: Klipper restarted the Box with `FIRMWARE_RESTART`, and nothing more serious happened.
+- `IndependentWatchdog`: the Box's firmware stopped responding and its watchdog restarted it at least once since it was turned on.
+
+To find out why a Box dropped, turn the Box off and on before printing. After a drop, use `RESTART` or restart the Klipper service rather than `FIRMWARE_RESTART`, so the monitor reads the Box before Klipper restarts it. `FIRMWARE_RESTART` changes `PowerOn` to `Software`, but it can't hide `IndependentWatchdog`.
 
 Set the variable back to `0` to stop recording; it takes effect without a restart. The log is capped at 2 MB and rotates once to `tltg_box_link.log.1`.
 
 When reporting a Box MCU disconnect, include this file alongside the end of `klippy.log`.
+
+### Box processor temperature
+
+Each QIDI Box's processor temperature shows in Fluidd's temperature card and graph as **Box1 MCU** through **Box4 MCU**, one for each Box Klipper is set up with. Printers without a Box show none. These sensors have no limits, so they never stop a print.
 
 ### QIDI Box load and unload speed
 
