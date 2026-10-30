@@ -463,6 +463,13 @@ patches:
         - firmwares: ["01.01.07.01"]
           expected_normalized_sha256: "79234acad35e02bf68724057dc355e2e85e29c5f001fce4566e2550f3d1d5c44"
 
+    - id: heaters_m109_0
+      file: "config/klipper-macros-qd/heaters.cfg"
+      section: "gcode_macro m109.0"
+      variants:
+        - firmwares: ["01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01"]
+          expected_normalized_sha256: "50260f1efe090bd27f49c61a34b960989cfa2cdff5656bc5193cbbfc6a387b77"
+
     - id: kinematics_homing_override
       file: "config/klipper-macros-qd/kinematics.cfg"
       section: "homing_override"

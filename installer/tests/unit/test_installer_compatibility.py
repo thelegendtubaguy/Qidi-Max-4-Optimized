@@ -54,11 +54,11 @@ class InstallerCompatibilityTests(unittest.TestCase):
         ).hexdigest()
         self.assertEqual(self.envelope.schema_version, 2)
         self.assertIn(self.manifest.package.version, self.manifest.package.known_versions)
-        self.assertEqual(len(self.envelope.allowed_patch_targets), 30)
+        self.assertEqual(len(self.envelope.allowed_patch_targets), 31)
         self.assertEqual(len(self.envelope.source_patches), 5)
         self.assertEqual(
             digest,
-            "8274989be77e80be63f30d2b4be4b8d036033f15b0486da01e77494fc9acd899",
+            "a152636ed174058a9890712fb678fd022bf21f4df0aa5cfd5a34e33155c19829",
         )
 
     def test_parser_rejects_malformed_duplicate_and_unsafe_envelope_entries(self) -> None:
