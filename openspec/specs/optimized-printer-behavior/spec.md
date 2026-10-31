@@ -449,6 +449,33 @@ Optimized configuration SHALL let a QIDI Box load, unload, or swap proceed when 
 - **WHEN** QIDI's Box controller lacks the traced filament database or external spool adapter
 - **THEN** the corresponding vendor behavior is unchanged
 
+### Requirement: QIDI Box unload of hub filament with no recorded slot
+Optimized configuration SHALL record which QIDI Box slot's own motion brought filament to the Box hub sensor, so that record survives a Box disconnect or Klipper restart. When the vendor Box unload would refuse because filament is at the hub while `last_load_slot` is `slot16` or missing, it SHALL log the Box state to `klippy.log` and SHALL name the hub's slot only from that record or from the only slot holding filament, never by guessing among several.
+
+#### Scenario: A slot motion brings filament to the hub
+- **WHEN** a slot's own motion starts with the hub sensor clear and ends with filament at it, such as the automatic slot load on insertion or a load
+- **THEN** that slot is saved as `tltg_box_hub_slot`
+- **AND** a slot motion that ends with the hub clear clears it
+
+#### Scenario: The recorded slot still has filament
+- **WHEN** the vendor Box unload would refuse with `无法识别到已进料耗材`, and the recorded slot's inlet sensor detects filament
+- **THEN** that slot is saved as `last_load_slot` before the vendor unload runs, so the vendor unload retracts it and the flow continues
+- **AND** the console names the slot
+
+#### Scenario: Only one slot holds filament
+- **WHEN** the vendor Box unload would refuse, nothing usable is recorded, and every slot inlet sensor reports, with exactly one detecting filament
+- **THEN** that slot is saved as `last_load_slot` and the vendor unload retracts it
+
+#### Scenario: The slot cannot be told
+- **WHEN** the vendor Box unload would refuse and neither rule above names a slot
+- **THEN** the vendor refusal and flow pause are unchanged
+- **AND** the console explains how to save the slot as `last_load_slot` and continue with `FLOW_RETRY`, and lists the slots with filament
+- **AND** when no print is running or paused, the hotend target is set to 0
+
+#### Scenario: Other unloads and unrecognized controllers are unchanged
+- **WHEN** the hub is clear, `last_load_slot` names a Box slot, the Box adapter is not the USB adapter, or QIDI's Box controller lacks the traced flow structure
+- **THEN** the vendor unload runs unchanged
+
 ### Requirement: QIDI Box processor temperature
 Optimized configuration SHALL provide a temperature sensor named `BoxN_MCU` for the processor of each USB QIDI Box Klipper is configured with, numbered as that Box's MCU, and none when no Box is configured. These sensors SHALL set no temperature limits.
 

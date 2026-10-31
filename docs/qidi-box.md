@@ -85,6 +85,21 @@ If a Box slot or the external spool has a saved filament that isn't in QIDI's li
 
 Setting the external spool to a filament that isn't in QIDI's list is refused with `External spool filament not changed`, as QIDI already does for Box slots.
 
+## Stuck Box loads
+
+If a slot's filament sits at the Box hub but the printer has no slot recorded as loaded, a Box load has QIDI unload the hub first, and QIDI's unload stops with `无法识别到已进料耗材` ("can't identify the loaded filament") and `Step BOX_UNLOAD failed. Pausing flow.` It does the same on every retry. This can happen when a Box disconnects while it feeds newly inserted filament up to the hub.
+
+The printer now remembers which slot fed filament to the hub, in the saved variable `tltg_box_hub_slot`. When that slot, or the only slot holding filament, still has filament at its inlet, the load unloads it and carries on, and the console names the slot.
+
+Otherwise the console says so and lists the slots with filament, and the nozzle is turned off unless a print is running or paused. Follow the filament from the hub back to its slot, then save that slot and continue the load:
+
+```gcode
+SAVE_VARIABLE VARIABLE=last_load_slot VALUE='"slot1"'
+FLOW_RETRY
+```
+
+Slots are numbered from 0: `slot0` is 1A, `slot1` is 1B, and `slot4` is 2A. `FLOW_RETRY` heats the nozzle again and repeats the unload. Each time, `klippy.log` gets a `tltg_box_loaded_slot: Box unload has no loaded slot` line with the Box's state; include it when [reporting a problem](troubleshooting.md#reporting-a-problem).
+
 ## Box disconnects
 
 See [Fixes](fixes.md#qidi-box-disconnects) for what this project changes, and [Troubleshooting](troubleshooting.md#box-link-monitor) to record why a Box drops.
