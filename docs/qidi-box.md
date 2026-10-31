@@ -103,3 +103,14 @@ Slots are numbered from 0: `slot0` is 1A, `slot1` is 1B, and `slot4` is 2A. `FLO
 ## Box disconnects
 
 See [Fixes](fixes.md#qidi-box-disconnects) for what this project changes, and [Troubleshooting](troubleshooting.md#box-link-monitor) to record why a Box drops.
+
+## RS-485 Boxes
+
+QIDI's firmware `01.01.07.01` includes support for Boxes, buffers, and filament racks that connect over RS-485 through a USB adapter, alongside the USB Boxes that run Klipper. This project hasn't been tested with RS-485 hardware yet, so it watches for it:
+
+- **If you have RS-485 hardware,** the console asks you to open a [GitHub issue](https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/issues) once per Klipper start. Attach `tltg_box485_report.json` and `tltg_box485.log` from the `logs` folder in Fluidd. The log records what QIDI's code sends to and receives from each device, and the report summarizes the setup. Chip ids and USB serial numbers are replaced with codes that can't be traced back to your hardware. Nothing about how the hardware works is changed.
+- **To write the report yourself,** run `TLTG_RS_BOX_REPORT`. It says whether RS-485 hardware was found.
+- **Without RS-485 hardware,** nothing is written. QIDI's software looks for an RS-485 adapter every 2 seconds and logs `Can not find 485 device` each time. That's normal for USB Boxes; `klippy.log` now gets that line once an hour, with a count.
+
+> [!WARNING]
+> Don't put a USB Box's id from `box.cfg` into `[box485] serial_port` in `printer.cfg`. It stops the `Can not find 485 device` lines, but QIDI's RS-485 code then reads that Box's connection and takes Klipper's messages, so the Box drops. The optimized configuration keeps the RS-485 code from opening a Klipper port and says so in the console. Set `serial_port` back to `/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0`.

@@ -6,7 +6,7 @@
 
 - [Installing, updating, and uninstalling](install.md): dry run, OS optimizations, slicer start G-code, automatic updates
 - [Print start and end](print-start.md): what's faster, saved bed mesh, minimum chamber temperature, staggered heating, keeping filament loaded
-- [QIDI Box](qidi-box.md): load and unload speed, eject, stuck loads, Box heater, editing QIDI's filament list
+- [QIDI Box](qidi-box.md): load and unload speed, eject, stuck loads, Box heater, editing QIDI's filament list, RS-485 Boxes
 - [Fluidd](fluidd.md): installing this project's Fluidd build, the Printer screen service, restarting the touchscreen app. For using Fluidd itself, see [thelegendtubaguy/fluidd](https://github.com/thelegendtubaguy/fluidd).
 - [Tools](tools.md): load-cell check, probe and bed screw helpers, external spool runout sensor
 - [Settings and commands](settings.md): everything you can change, in one table
