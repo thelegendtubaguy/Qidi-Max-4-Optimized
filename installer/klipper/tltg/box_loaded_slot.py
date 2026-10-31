@@ -135,10 +135,13 @@ class BoxLoadedSlot:
         return inlets
 
     def toolhead_filament(self):
+        # QIDI's runout helper starts at False but stores the sensor's 0 or 1
+        # once it changes.
         sensor = self.printer.lookup_object(
             "filament_switch_sensor filament_switch_sensor", None)
-        return getattr(getattr(sensor, "runout_helper", None),
-                       "filament_present", None)
+        present = getattr(getattr(sensor, "runout_helper", None),
+                          "filament_present", None)
+        return None if present is None else bool(present)
 
     def idle(self):
         print_stats = self.printer.lookup_object("print_stats", None)
