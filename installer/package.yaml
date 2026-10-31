@@ -74,6 +74,7 @@ install:
       - "box_filament_guard.cfg"
       - "box_loaded_slot.cfg"
       - "box_slot_jog.cfg"
+      - "box_flow_recovery.cfg"
       - "box485_monitor.cfg"
       - "spoolman.cfg"
 
@@ -114,6 +115,9 @@ install:
     - id: box_slot_jog
       source: "klipper/tltg/box_slot_jog.py"
       destination: "klippy/extras/tltg_box_slot_jog.py"
+    - id: box_flow_recovery
+      source: "klipper/tltg/box_flow_recovery.py"
+      destination: "klippy/extras/tltg_box_flow_recovery.py"
     - id: box485_monitor
       source: "klipper/tltg/box485_monitor.py"
       destination: "klippy/extras/tltg_box485_monitor.py"
@@ -522,10 +526,10 @@ system_optimizations:
     service_worker: /home/qidi/fluidd/sw.js
   # The project's Fluidd fork release; the bundle builder downloads and verifies it.
   fluidd_build:
-    version: v1.37.7-tltg-60d9b9a
-    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-60d9b9a/fluidd.zip
+    version: v1.37.7-tltg-4fd1709
+    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-4fd1709/fluidd.zip
     archive: system/fluidd.zip
-    sha256: 8833b3ee74aca601a62f8e071fec13b33a264de7ec293f4a791fa483d3ab4003
+    sha256: 4b703f5cd1352d9b74c719ef96a1e0c40bf39a740b21e48435de74bf70059bff
   klipper_box_config:
     file: /home/qidi/klipper/klippy/extras/box_config.py
     restart_service: klipper.service

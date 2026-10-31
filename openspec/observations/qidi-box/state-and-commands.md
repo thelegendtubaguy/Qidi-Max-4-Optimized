@@ -192,6 +192,15 @@ Firmware `.04` fake-manager `_decide_flow_id()` results:
 
 `start_flow()` sets the flow ID, copies steps, initializes operation index `0`, and clears waiting/active-step state. Default-state `tick()` completed box-side flows `1`, `2`, `3`, and `5` but not extruder/mixed flows `6` through `9`; this is harness behavior, not live operation proof.
 
+### `.07.01` flow pause, stop, and retry
+
+- **Harness-recovered (2026-10-31, `TaskQueueManager` and `MultiColorController` with fake objects):** a step that returns `False` responds `Step <step> failed. Pausing flow.` and leaves `current_task` with `is_paused` true and `current_step` the failed step; the G-code command that started the flow returns then. `multi_color_controller.operation.active_slot` stays the flow's target slot while paused. Starting another flow while one is paused replaces it without a stop.
+- **Harness-recovered:** `cmd_FLOW_STOP` and the `multi_color_controller/flow_stop` endpoint call `TaskQueueManager.stop()`, which clears `current_task` (status `flow_id` `None`), sends `M104 S0` through its own `gcode` attribute with `run_script()` when `current_flow_temp` is set, whatever the print state, then responds `Flow stop requested.` It runs no completion script. With no flow it does nothing and says nothing.
+- **Config-confirmed (QIDI `klippy/gcode.py`):** `run_script()` takes the G-code mutex, which a command sent through Moonraker's `gcode/script` already holds, while `run_script_from_command()` does not. `FLOW_STOP` sent as G-code therefore waits on its own lock after clearing the flow, before `Flow stop requested.`; the harness reproduces this with a lock that refuses re-entry.
+- **Harness-recovered:** `cmd_FLOW_RETRY` sends `M109 S<current_flow_temp>` with `run_script_from_command()`, or nothing without a flow temperature, then reruns the paused step; with no paused flow it responds `No failed step to retry.` It does not take the G-code lock again.
+- **Static-recovered:** `box_extras.so` names no `stop` method; its only `stop` strings are log messages. No other vendor G-code command reached `TaskQueueManager.stop()` in the harness.
+- **Runtime-confirmed (operator `klippy.log` and `moonraker.log`, 2026-10-31, `.07.01`, two USB Boxes, package `26.10.29.1`):** after `Step BOX_LOAD failed. Pausing flow.` (06:56:21 UTC) the task showed flow `1`, `current_step` `BOX_LOAD`, `is_paused` true, with the nozzle at 240 °C. `FLOW_STOP` at 07:00:48 cleared the task to `flow_id` `None`, but its `gcode/script` request never returned, `Flow stop requested.` was never logged, the nozzle stayed at 240 °C, and toolhead print time stopped advancing. `UNLOAD_FILAMENT_CONTROL SLOT=1` (07:00:57), `EJECT_FILAMENT_CONTROL SLOT=1` (07:01:17), and fifteen `TLTG_BOX_SLOT_JOG` requests were each logged by Moonraker as `Request 'gcode/script' pending` 60 s after they were sent, with nothing in `klippy.log`, so none of them ran. Restarting `klipper.service` with the heater on left the THR board shut down (`Can not update MCU 'THR' config as it is shutdown`) until `FIRMWARE_RESTART`.
+
 ### `.07.01` load and unload with filament at the hub
 
 - **Harness-recovered (2026-10-30, USB `BoxAdapterV1`, fake objects):** `flow_decision_func(action, slot)` reads the toolhead `filament_switch_sensor`, `box1base.b_endstop_state` (hub, `0` = filament), and saved `last_load_slot` (default `slot16`). For slot 2:
@@ -233,6 +242,17 @@ Firmware `.04` fake-manager `_decide_flow_id()` results:
 - **Runtime-confirmed (2026-10-28, two USB Boxes, X and Y unhomed):** `EJECT_FILAMENT_CONTROL SLOT=2` with the toolhead sensor clear and `loaded_slot` `slot16` homed X and Y through `MOVE_TO_TRASH` in about 20 s, retracted slot 2, parked again, set the hotend target to 0, and disabled the extruder. Nothing heated or cut.
 - **Runtime-confirmed (2026-10-28):** `box_adapter` and `task_queue_manager.operation_adapter` were still `None` when a package module's `klippy:ready` handler and a reactor callback it scheduled ran, and `MultiColorController is ready.` was logged after them. Later both held the same `BoxAdapterV1`, and `task_queue_manager` stayed the same object. During flow `4`, `task_queue_manager.current_task.queue` was `['BOX_EJECT']` both when the eject step and when the completion script sent G-code.
 - **Unresolved:** live eject flows `5` and `11` were not exercised.
+
+### `.07.01` filament between the hub and the toolhead
+
+- **Harness-recovered (2026-10-31, `BoxExtruderStepper` methods on a fake `self`):** `extruder_load_single_func()` saves the slot state `3`, homes the slot toward the hub sensor (up to 3000 mm at 85 mm/s), and saves `last_load_slot` as that slot as soon as the hub stage succeeds, before the three-stage feed to the toolhead sensor. A failed hub stage saves the slot state `-2` and reports `QDE_004_006`; a failed toolhead stage takes a retry path that moves the toolhead and extruder.
+- **Runtime-confirmed (2026-10-31 incident):** the hub record logged 1B reaching the hub at 06:54:51, and a test module that follows the loaded slot logged `1B loaded` in the same second; the extruder then drew filament without it reaching the toolhead sensor, and `QDE_004_006` followed at 06:56:19. Saved state afterwards was `last_load_slot` `slot1`, `slot_sync` `slot-1`, `extrude_state` `2`, `slot1` `-2`, and `retained_slot` `slot1`, with the hub sensor `0` (filament) and the toolhead sensor empty. The operator had lengthened the tube from the hub to the toolhead without raising `FAST_LENGTH` (570).
+- **Harness-recovered:** with the toolhead sensor empty and filament at the hub, `UNLOAD_FILAMENT_CONTROL` gets flow `0`: no steps run, then the completion script sends `MOVE_TO_TRASH`, `M104 S0`, and the extruder disable and responds `Flow completed successfully.` `EJECT_FILAMENT_CONTROL` of `last_load_slot` gets flow `11`: `BOX_HEAT` heats the nozzle, and `BOX_UNLOAD` calls `extruder_unload_single_func()` on that slot.
+- **Harness-recovered:** `extruder_unload_single_func()` with the toolhead sensor empty and filament at the hub skips the extruder and saves the slot state `3`, then homes the slot back on the hub sensor (`-350` mm at 65 mm/s, then `-1150` mm at 85 mm/s, accel 100). When the hub clears it saves `last_load_slot` `slot16`, retracts 260 mm more at 80 mm/s, saves the slot state `1`, disables the slot motor, and sends `MOVE_TO_TRASH`. Otherwise it moves the toolhead and homes again up to 1500 mm with the extruder synced.
+- **Harness-recovered:** the eject step's `slot_unload_single_func()` saves the slot state `3` and homes the slot back up to 3000 mm at 100 mm/s until its inlet sensor clears; on failure it reports `QDE_004_003` and saves the slot state `-1`.
+- **Harness-recovered:** `BoxExtras.print_sensor_state_to_log()` sends its message to the console with `respond_raw('!! ' + message)` and logs it with a `last sensor state:` block. The block logged at the 2026-10-31 failure read `b_endstop_state = 1`, while the controller's hub field read `0` afterwards; which value the block prints is **unresolved**.
+- **Runtime-confirmed (2026-10-31):** `multi_color_controller` status also publishes `box_warning_info`, an empty list on an idle printer. What fills it is **unresolved**; the controller's strings include the Box heater-timeout and humidity-sensor warnings.
+- **Unresolved:** whether flow `11` would have cleared the hub on the printer; it never ran.
 
 ### `.07.01` tool change
 
@@ -335,7 +355,7 @@ MCB_AUTO_ABORT MCB_AUTO_START MCB_CONFIG MCB_QUERY SET_LIMIT_A
 
 ## Error surface
 
-No live `QDE_004_*` failure was captured; owner and message strings are static-recovered.
+Owner and message strings are static-recovered. `QDE_004_006` was seen live on 2026-10-19 and 2026-10-31; the console line is `!! Code:<code>; Message:<message>`.
 
 | Code | Owner | Message |
 |---|---|---|
