@@ -23,7 +23,7 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 
 | What | Change | Restarts |
 |---|---|---|
-| `klippy/extras/tltg_*.py` | Added modules for the Box link monitor, Box processor temperature, Box heater refresh, background mesh save, faster `SAVE_VARIABLE`, Box load/unload speed, Box eject, unknown Box filaments, stuck Box loads, the [RS-485 Box monitor](qidi-box.md#rs-485-boxes), and the load-cell check. | Klipper |
+| `klippy/extras/tltg_*.py` | Added modules for the Box link monitor, Box processor temperature, Box heater refresh, background mesh save, faster `SAVE_VARIABLE`, Box load/unload speed, Box eject, unknown Box filaments, stuck Box loads, Box slot jogs, the [RS-485 Box monitor](qidi-box.md#rs-485-boxes), and the load-cell check. | Klipper |
 | `klippy/extras/homing.py` | Replaced with this project's version of QIDI's homing code, for the faster homing. QIDI's closed-loop homing checks stay in place. | Klipper |
 | `klippy/extras/print_stats_manager.py` | Keeps the [real shutdown reason](fixes.md#the-real-error-instead-of-mcu-shutdown) on screen. | Klipper, once |
 | `klippy/extras/box_config.py` | Lets Fluidd set Box heater targets, capped at 65 °C. | Klipper, once |
