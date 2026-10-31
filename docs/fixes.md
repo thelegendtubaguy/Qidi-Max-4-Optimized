@@ -27,6 +27,14 @@ Loading a slot whose saved filament isn't in QIDI's list no longer shuts Klipper
 
 A Box load no longer stalls on every try when a slot's filament is at the Box hub but no slot is recorded as loaded. See [QIDI Box](qidi-box.md#stuck-box-loads).
 
+## `FLOW_STOP` hanging Klipper
+
+Stopping a failed Box load with `FLOW_STOP` no longer leaves every later command waiting and the nozzle hot until Klipper is restarted. See [QIDI Box](qidi-box.md#failed-box-loads-and-unloads).
+
+## Box filament stranded between the hub and the toolhead
+
+Unload and Eject now pull back a slot's filament that a failed load left between the Box hub and the toolhead. See [QIDI Box](qidi-box.md#filament-stopped-between-the-hub-and-the-toolhead).
+
 ## Multi-plate 3MF files
 
 A 3MF file started without a plate number, for example from Fluidd, a reprint, or the job queue, prints the plate it was sliced on instead of plate 1. Before, files exported from a plate other than plate 1 failed with `3MF processing error: [Errno 2] No such file or directory`.

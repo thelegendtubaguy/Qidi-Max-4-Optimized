@@ -77,7 +77,7 @@ The QIDI Box card in Fluidd has **In** and **Out** buttons that jog the selected
 
 - The slot moves whatever its sensors read and whatever the printer has recorded as loaded. QIDI's saved Box state, such as which slot is loaded, isn't changed.
 - The extruder doesn't turn during a jog, so jogging the filament that's in the extruder pushes or pulls against its gears.
-- A jog is refused while a print is running or paused or the Box is busy.
+- A jog is refused while a print is running or paused or the Box is busy, including while a failed Box step waits for `FLOW_RETRY` or `FLOW_STOP`.
 - Jogging out until the slot's inlet sensor no longer sees filament takes the filament out of the slot's feeder, and jogging in won't grab it again. Push it back into the inlet by hand, and the Box loads it as it does any newly inserted filament. With long tubes to the hub, that can take well over a meter of jogging.
 - A jog that brings filament to the Box hub, or clears it, updates the printer's record of which slot is at the hub, as for [stuck Box loads](#stuck-box-loads).
 
@@ -117,6 +117,28 @@ FLOW_RETRY
 ```
 
 Slots are numbered from 0: `slot0` is 1A, `slot1` is 1B, and `slot4` is 2A. `FLOW_RETRY` heats the nozzle again and repeats the unload. Each time, `klippy.log` gets a `tltg_box_loaded_slot: Box unload has no loaded slot` line with the Box's state; include it when [reporting a problem](troubleshooting.md#reporting-a-problem).
+
+## Failed Box loads and unloads
+
+When a step of a Box load, unload, or eject fails, QIDI pauses it with a line such as `Step BOX_LOAD failed. Pausing flow.`, usually after an error such as `Code:QDE_004_006; Message:Extruder loading failure.` The nozzle stays at the load temperature. The touchscreen offers no way out, but the QIDI Box card in Fluidd does, and so does the console:
+
+- **`FLOW_RETRY`** heats the nozzle again and repeats the failed step.
+- **`FLOW_STOP`** ends the paused flow. With no print running or paused, it also turns the nozzle off. During a print, the nozzle stays hot so the print can resume.
+
+With QIDI's own code, `FLOW_STOP` on a paused flow never finished: every later command waited behind it, and only restarting Klipper, followed by `FIRMWARE_RESTART`, got the printer back. It now finishes straight away.
+
+### Filament stopped between the hub and the toolhead
+
+A load that gets the filament to the Box hub but not to the toolhead, for example because the tube to the toolhead is longer than `FAST_LENGTH` allows for, leaves the filament in the tube between them. QIDI already counts that slot as loaded. Its Unload then does nothing but park the toolhead and report success, and its Eject heats the nozzle first.
+
+With no print running or paused, **Unload** and **Eject** of that slot now pull its filament back out of the hub, a paused flow is stopped first, and the nozzle isn't heated:
+
+- **Unload** pulls the filament back until the hub sensor clears, then about 220–260 mm further, which parks it in the Box as QIDI's unload does. The slot is then ready to load again.
+- **Eject** pulls it back until the hub sensor clears, then runs QIDI's eject, which pulls the filament out of the slot's feeder.
+
+The slot is the one that last fed filament to the hub, or the one QIDI last loaded, as long as its inlet sensor still detects filament. When neither tells, the only slot with filament is used. Otherwise, or when you ask for a different slot, nothing moves and the console says why. If the slot's filament leaves its inlet sensor while the hub sensor still detects filament, the filament at the hub isn't that slot's, or it broke. The pull stops there, and the console says so.
+
+Unload of a slot whose filament isn't past the hub doesn't run. The console says so, instead of QIDI parking the toolhead and reporting success.
 
 ## Box disconnects
 

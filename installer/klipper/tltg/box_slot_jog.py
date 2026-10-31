@@ -65,15 +65,21 @@ class BoxSlotJog:
             return "a print is %s" % state
         # Idle reports flow_id None with an empty queue and step.
         task = self._status("multi_color_controller").get("task")
+        if hasattr(task, "get") and task.get("is_paused"):
+            return ("a QIDI Box flow is paused at %s. FLOW_RETRY tries that "
+                    "step again and FLOW_STOP ends the flow"
+                    % (task.get("current_step") or "a failed step",))
         if hasattr(task, "get") and (task.get("flow_id") not in (None, 0)
                                      or task.get("current_queue")
                                      or task.get("current_step")):
             return "a QIDI Box task is running"
         return None
 
-    def _move(self, stepper, distance, speed):
-        """Move the slot motor DISTANCE mm; return False if QIDI's Box code
-        took the motor during the move."""
+    def _move(self, stepper, distance, speed, until=None, piece=None):
+        """Move the slot motor up to DISTANCE mm, in PIECE mm moves when
+        given, stopping after the first move that leaves UNTIL() true.
+        Return (mm moved, whether UNTIL() ended it, and False if QIDI's Box
+        code took the motor during the move)."""
         toolhead = self.printer.lookup_object("toolhead")
         toolhead.flush_step_generation()
         enable = self.printer.lookup_object("stepper_enable").lookup_enable(
@@ -91,6 +97,8 @@ class BoxSlotJog:
         if sensor is not None:
             sensor.sensor_enabled = False
         owned = True
+        moved = 0.
+        stopped = False
         try:
             # QIDI's stepper_enable switches a motor on ENABLE_LEAD before
             # the time it is given, so leave that much room ahead of it.
@@ -98,18 +106,33 @@ class BoxSlotJog:
             start = toolhead.get_last_move_time()
             enable.motor_enable(start)
             start += ENABLE_SETTLE
-            axis_r, accel_t, cruise_t, cruise_v = force_move.calc_move_time(
-                distance, speed, ACCEL)
-            self.trapq_append(self.trapq, start, accel_t, cruise_t, accel_t,
-                              0., 0., 0., axis_r, 0., 0.,
-                              0., cruise_v, ACCEL)
-            end = start + accel_t + cruise_t + accel_t
-            toolhead.note_mcu_movequeue_activity(end, set_step_gen_time=True)
-            toolhead.dwell(end - toolhead.get_last_move_time())
-            toolhead.flush_step_generation()
-            toolhead.wait_moves()
-            self.trapq_finalize_moves(self.trapq, end + 99999.9,
-                                      end + 99999.9)
+            step = abs(piece or distance)
+            while abs(distance - moved) >= 0.01:
+                if not (stepper.get_stepper_kinematics() == self.sk
+                        and stepper.get_trapq() == self.trapq):
+                    break
+                length = min(step, abs(distance - moved))
+                length = length if distance > 0 else -length
+                axis_r, accel_t, cruise_t, cruise_v = \
+                    force_move.calc_move_time(length, speed, ACCEL)
+                self.trapq_append(self.trapq, start, accel_t, cruise_t,
+                                  accel_t, moved, 0., 0., axis_r, 0., 0.,
+                                  0., cruise_v, ACCEL)
+                end = start + accel_t + cruise_t + accel_t
+                toolhead.note_mcu_movequeue_activity(end,
+                                                     set_step_gen_time=True)
+                toolhead.dwell(end - toolhead.get_last_move_time())
+                toolhead.flush_step_generation()
+                toolhead.wait_moves()
+                self.trapq_finalize_moves(self.trapq, end + 99999.9,
+                                          end + 99999.9)
+                moved += length
+                if until is not None:
+                    self.reactor.pause(self.reactor.monotonic() + HUB_SETTLE)
+                    if until():
+                        stopped = True
+                        break
+                start = toolhead.get_last_move_time()
         finally:
             try:
                 toolhead.flush_step_generation()
@@ -124,7 +147,47 @@ class BoxSlotJog:
             finally:
                 if sensor is not None:
                     sensor.sensor_enabled = sensor_enabled
-        return owned
+        return moved, stopped, owned
+
+    def blocker(self):
+        """Why a slot can't move now, or None."""
+        return self._blocker()
+
+    def move(self, slot, distance, speed=DEFAULT_SPEED, until=None,
+             piece=None):
+        """Move slot number SLOT as TLTG_BOX_SLOT_JOG does, optionally in
+        PIECE mm moves until UNTIL() is true, and update the hub record.
+        Return (mm moved, whether UNTIL() ended it). Raises a command error
+        if the slot is missing or QIDI's Box code takes the motor."""
+        name = "slot%d" % slot
+        stepper = getattr(self.printer.lookup_object("box_stepper " + name,
+                                                     None), "stepper", None)
+        if stepper is None or not hasattr(stepper, "set_stepper_kinematics"):
+            raise self.printer.command_error("No QIDI Box slot %s"
+                                             % slot_label(slot))
+        tracker = self.printer.lookup_object("tltg_box_loaded_slot", None)
+        before = None
+        if tracker is not None:
+            try:
+                before = tracker.hub_occupied()
+            except Exception:
+                logging.exception("tltg_box_slot_jog: hub check failed")
+        moved, stopped, owned = self._move(stepper, distance, speed, until,
+                                           piece)
+        if not owned:
+            logging.warning("tltg_box_slot_jog: %s motor was taken during "
+                            "the move", name)
+            raise self.printer.command_error(
+                "QIDI's Box code took slot %s's motor during the move. Run "
+                "FIRMWARE_RESTART before using the Box." % slot_label(slot))
+        if tracker is not None:
+            if until is None:
+                self.reactor.pause(self.reactor.monotonic() + HUB_SETTLE)
+            try:
+                tracker.record_motion(name, before)
+            except Exception:
+                logging.exception("tltg_box_slot_jog: hub record failed")
+        return moved, stopped
 
     def cmd_TLTG_BOX_SLOT_JOG(self, gcmd):
         slot = gcmd.get_int("SLOT", minval=0, maxval=15)
@@ -134,34 +197,14 @@ class BoxSlotJog:
                                maxval=MAX_SPEED)
         if abs(distance) < 0.01:
             raise gcmd.error("DISTANCE must not be 0")
-        name = "slot%d" % slot
-        stepper = getattr(self.printer.lookup_object("box_stepper " + name,
-                                                     None), "stepper", None)
+        stepper = getattr(self.printer.lookup_object(
+            "box_stepper slot%d" % slot, None), "stepper", None)
         if stepper is None or not hasattr(stepper, "set_stepper_kinematics"):
             raise gcmd.error("No QIDI Box slot %s" % slot_label(slot))
         blocker = self._blocker()
         if blocker is not None:
             raise gcmd.error("Box slot not moved: %s" % blocker)
-        tracker = self.printer.lookup_object("tltg_box_loaded_slot", None)
-        before = None
-        if tracker is not None:
-            try:
-                before = tracker.hub_occupied()
-            except Exception:
-                logging.exception("tltg_box_slot_jog: hub check failed")
-        owned = self._move(stepper, distance, speed)
-        if not owned:
-            logging.warning("tltg_box_slot_jog: %s motor was taken during "
-                            "the move", name)
-            raise gcmd.error(
-                "QIDI's Box code took slot %s's motor during the move. Run "
-                "FIRMWARE_RESTART before using the Box." % slot_label(slot))
-        if tracker is not None:
-            self.reactor.pause(self.reactor.monotonic() + HUB_SETTLE)
-            try:
-                tracker.record_motion(name, before)
-            except Exception:
-                logging.exception("tltg_box_slot_jog: hub record failed")
+        self.move(slot, distance, speed)
         gcmd.respond_info("Box slot %s moved %s %.1f mm"
                           % (slot_label(slot), "in" if distance > 0 else "out",
                              abs(distance)))

@@ -1,9 +1,11 @@
 # QIDI Box loaded-slot recovery for QIDI Max 4 Optimized.
 #
-# QIDI saves the slot whose filament runs past the Box hub as last_load_slot
-# only when a load reaches the toolhead. Filament can reach the hub sensor
-# without that: inserting filament runs an automatic slot load up to the hub
-# sensor, and a Box that disconnects partway leaves the filament there. A Box
+# QIDI saves a slot as last_load_slot as soon as a Box load brings its
+# filament to the Box hub sensor, before the filament reaches the toolhead,
+# so a load that stops short of the toolhead still names that slot. Filament
+# can also reach the hub without any load: inserting filament runs an
+# automatic slot load up to the hub sensor, and a Box that disconnects
+# partway leaves the filament there with last_load_slot still slot16. A Box
 # load with the toolhead empty and the hub occupied runs QIDI's BOX_UNLOAD
 # step first, and that step refuses with 无法识别到已进料耗材 ("can't
 # identify the loaded filament") while last_load_slot is slot16 or missing,
@@ -104,11 +106,11 @@ class BoxLoadedSlot:
         logging.info("tltg_box_loaded_slot: checking Box unloads")
 
     # ----------------------------------------------------------------- state
-    def _variables(self):
+    def variables(self):
         save_vars = self.printer.lookup_object("save_variables", None)
         return getattr(save_vars, "allVariables", None) or {}
 
-    def _save(self, name, value):
+    def save(self, name, value):
         save_vars = self.printer.lookup_object("save_variables")
         gcmd = self.gcode.create_gcode_command(
             "SAVE_VARIABLE", "SAVE_VARIABLE",
@@ -124,7 +126,7 @@ class BoxLoadedSlot:
             return None
         return not state
 
-    def _inlets(self):
+    def inlets(self):
         """Each slot's inlet sensor: True with filament, None if unknown."""
         inlets = {}
         for slot, obj in self.slots.items():
@@ -132,13 +134,13 @@ class BoxLoadedSlot:
             inlets[slot] = None if state is None else not state
         return inlets
 
-    def _toolhead_filament(self):
+    def toolhead_filament(self):
         sensor = self.printer.lookup_object(
             "filament_switch_sensor filament_switch_sensor", None)
         return getattr(getattr(sensor, "runout_helper", None),
                        "filament_present", None)
 
-    def _idle(self):
+    def idle(self):
         print_stats = self.printer.lookup_object("print_stats", None)
         if print_stats is None:
             return False
@@ -177,9 +179,9 @@ class BoxLoadedSlot:
             value = ""
         else:
             return
-        if self._variables().get(HUB_SLOT_VARIABLE, "") == value:
+        if self.variables().get(HUB_SLOT_VARIABLE, "") == value:
             return
-        self._save(HUB_SLOT_VARIABLE, value)
+        self.save(HUB_SLOT_VARIABLE, value)
         if value:
             logging.info("tltg_box_loaded_slot: %s (%s) fed filament to the "
                          "Box hub", slot, slot_label(slot))
@@ -207,13 +209,13 @@ class BoxLoadedSlot:
 
     def _before_unload(self):
         """Name the hub's slot if QIDI would refuse; True if it still will."""
-        variables = self._variables()
+        variables = self.variables()
         if not self.hub_occupied() \
                 or variables.get("last_load_slot", EXTERNAL_SLOT) \
                 != EXTERNAL_SLOT:
             return False
         recorded = variables.get(HUB_SLOT_VARIABLE, "")
-        inlets = self._inlets()
+        inlets = self.inlets()
         task = getattr(self.manager, "current_task", None)
         logging.info(
             "tltg_box_loaded_slot: Box unload has no loaded slot: hub "
@@ -221,7 +223,7 @@ class BoxLoadedSlot:
             "filament=%r inlet filament=%s flow=%r target_load_slot=%r "
             "target_unload_slot=%r",
             variables.get("last_load_slot"), variables.get("slot_sync"),
-            HUB_SLOT_VARIABLE, recorded, self._toolhead_filament(),
+            HUB_SLOT_VARIABLE, recorded, self.toolhead_filament(),
             ", ".join("%s:%s" % (s, inlets[s])
                       for s in sorted(inlets, key=_slot_number)),
             getattr(task, "queue", None),
@@ -234,7 +236,7 @@ class BoxLoadedSlot:
             slot, reason = loaded[0], "the only slot with filament"
         else:
             return True
-        self._save("last_load_slot", slot)
+        self.save("last_load_slot", slot)
         message = ("Box: no slot was recorded as loaded, but filament is at "
                    "the Box hub. Unloading %s, %s." % (slot_label(slot),
                                                        reason))
@@ -243,7 +245,7 @@ class BoxLoadedSlot:
         return False
 
     def _after_refusal(self):
-        loaded = sorted((s for s, present in self._inlets().items()
+        loaded = sorted((s for s, present in self.inlets().items()
                          if present), key=_slot_number)
         example = loaded[0] if loaded else min(self.slots, key=_slot_number)
         lines = [
@@ -259,7 +261,7 @@ class BoxLoadedSlot:
         if loaded:
             lines.append("Slots with filament: %s."
                          % ", ".join(slot_label(s) for s in loaded))
-        if self._idle():
+        if self.idle():
             self.gcode.run_script_from_command("M104 S0")
             lines.append("The nozzle is off until then; FLOW_RETRY heats it "
                          "again.")

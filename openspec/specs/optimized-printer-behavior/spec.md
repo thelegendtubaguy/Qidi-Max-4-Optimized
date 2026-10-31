@@ -486,8 +486,9 @@ Optimized configuration SHALL provide a console command that moves one USB QIDI 
 - **AND** saved vendor Box state is unchanged and no runout pause runs
 
 #### Scenario: A jog while the printer or Box is busy
-- **WHEN** a print is running or paused, or a vendor Box task is running
+- **WHEN** a print is running or paused, or a vendor Box task is running or paused at a failed step
 - **THEN** the command refuses without moving the slot
+- **AND** for a paused Box task the console names the failed step and says that `FLOW_RETRY` retries it and `FLOW_STOP` ends it
 
 #### Scenario: A jog changes the hub sensor
 - **WHEN** a jog starts with the hub sensor clear and ends with filament at it, or ends with it clear
@@ -497,6 +498,61 @@ Optimized configuration SHALL provide a console command that moves one USB QIDI 
 - **WHEN** the vendor Box code takes the slot motor before the jog ends
 - **THEN** the motor is left with the vendor code
 - **AND** the console reports an error that says to run `FIRMWARE_RESTART` before using the Box
+
+### Requirement: QIDI Box flow stop
+Optimized configuration SHALL let a vendor Box flow stop, from `FLOW_STOP` or the vendor's flow-stop endpoint, end the flow and return without blocking later G-code, SHALL turn the hotend off after stopping a flow only when no print is running or paused, and SHALL leave `FLOW_RETRY` unchanged.
+
+#### Scenario: Stopping a paused flow while idle
+- **WHEN** `FLOW_STOP` runs while a vendor Box flow is paused at a failed step and no print is running or paused
+- **THEN** the flow ends, the command returns, and later commands run
+- **AND** the hotend target is set to 0 and the console says the flow stopped and the heater is off
+
+#### Scenario: Stopping a flow during a print
+- **WHEN** a vendor Box flow is stopped while a print is running or paused
+- **THEN** the flow ends and the command returns
+- **AND** the hotend target is unchanged and the console says the nozzle stays hot for the print
+
+#### Scenario: Stopping with no flow
+- **WHEN** `FLOW_STOP` runs with no vendor Box flow running or paused
+- **THEN** nothing changes and the console says there is nothing to stop
+
+#### Scenario: Stopping from the vendor endpoint
+- **WHEN** the vendor flow-stop endpoint stops a flow
+- **THEN** its G-code waits for any running G-code command as the vendor stop does, and the heater rule above applies
+
+### Requirement: QIDI Box filament stranded between the hub and the toolhead
+When the USB Box hub sensor detects filament, the toolhead filament sensor does not, and no print is running or paused, optimized configuration SHALL make `UNLOAD_FILAMENT_CONTROL` and `EJECT_FILAMENT_CONTROL` of the hub's slot pull that slot's filament back until the hub sensor clears, without heating the hotend and after stopping a paused vendor Box flow. Whenever neither the vendor command nor this recovery would move filament, the console SHALL say why.
+
+#### Scenario: Naming the hub's slot
+- **WHEN** an unload or eject runs in that state
+- **THEN** the hub's slot is the recorded hub slot or `last_load_slot`, or else the only slot holding filament, each only while that slot's inlet detects filament, never a guess among several
+
+#### Scenario: Unload of the stranded slot
+- **WHEN** the operator unloads the hub's slot in that state
+- **THEN** the slot retracts until the hub sensor clears, then far enough to park the filament in the Box, as the vendor's slot unload does
+- **AND** `last_load_slot` becomes `slot16` if it named that slot, the slot's vendor state becomes loaded-in-Box, the hub record clears, and the console says the slot was unloaded
+
+#### Scenario: Eject of the stranded slot
+- **WHEN** the operator ejects the hub's slot in that state
+- **THEN** the slot retracts until the hub sensor clears, then the vendor eject runs as its eject step alone
+
+#### Scenario: The slot cannot be told, or another slot is requested
+- **WHEN** the rules name no slot, name two different slots, or name a slot other than the requested one
+- **THEN** nothing moves and the console gives the reason, the slots with filament or the slot to unload first, and how to proceed
+- **AND** a paused vendor Box flow is stopped as `FLOW_STOP` would
+
+#### Scenario: The hub filament is not the slot's
+- **WHEN** the slot's inlet sensor clears before the hub sensor does, or the hub sensor still detects filament after 1500 mm
+- **THEN** the retraction stops, saved slot state is unchanged, and the console reports an error that says to remove the filament by hand
+
+#### Scenario: Unload with nothing past the hub
+- **WHEN** a slot is unloaded with the hub and toolhead sensors both clear
+- **THEN** nothing moves, instead of the vendor flow that runs no steps and parks the toolhead, and the console says the filament is already in the Box
+- **AND** with no print running or paused, a paused vendor Box flow is stopped as `FLOW_STOP` would
+
+#### Scenario: Prints, loaded toolheads, and unrecognized controllers are unchanged
+- **WHEN** a print is running or paused, the toolhead sensor detects filament, a vendor Box flow is running, the Box adapter is not the USB adapter, or QIDI's Box controller lacks the traced flow structure
+- **THEN** the vendor command runs unchanged, except that an unload with nothing past the hub does not run, as above, and an unload of stranded filament during a print does not run and the console says to resume or cancel the print first
 
 ### Requirement: QIDI Box processor temperature
 Optimized configuration SHALL provide a temperature sensor named `BoxN_MCU` for the processor of each USB QIDI Box Klipper is configured with, numbered as that Box's MCU, and none when no Box is configured. These sensors SHALL set no temperature limits.

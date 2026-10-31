@@ -74,6 +74,7 @@ install:
       - "box_filament_guard.cfg"
       - "box_loaded_slot.cfg"
       - "box_slot_jog.cfg"
+      - "box_flow_recovery.cfg"
       - "box485_monitor.cfg"
 
   ensure_lines:
@@ -113,6 +114,9 @@ install:
     - id: box_slot_jog
       source: "klipper/tltg/box_slot_jog.py"
       destination: "klippy/extras/tltg_box_slot_jog.py"
+    - id: box_flow_recovery
+      source: "klipper/tltg/box_flow_recovery.py"
+      destination: "klippy/extras/tltg_box_flow_recovery.py"
     - id: box485_monitor
       source: "klipper/tltg/box485_monitor.py"
       destination: "klippy/extras/tltg_box485_monitor.py"
