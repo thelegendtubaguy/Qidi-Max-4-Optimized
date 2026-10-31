@@ -9,6 +9,13 @@
 # the lock, keeps run_script. Either way the nozzle is turned off after a stop
 # only when no print is running or paused; a print keeps its heat for resume.
 #
+# A Box flow step that raises, such as a Box motor move ending with
+# "Communication timeout during homing", escapes QIDI's flow runner and
+# leaves the flow running, not paused, with the nozzle hot: FLOW_RETRY
+# refuses it, and Fluidd shows a busy Box with no way out. Such a flow is
+# paused on the failed step, as QIDI pauses a step that fails, before the
+# error goes on to the command that ran it.
+#
 # Filament stranded between the Box hub and the toolhead: a load that reaches
 # the hub but not the toolhead leaves the hub sensor occupied and the toolhead
 # sensor empty. QIDI's unload then runs no steps and reports success, and its
@@ -114,6 +121,10 @@ class BoxFlowRecovery:
         self.controller = controller
         self.manager = manager
         manager.stop = self._wrap_stop(manager.stop)
+        for name in ("start_flow", "retry"):
+            if callable(getattr(manager, name, None)):
+                setattr(manager, name,
+                        self._wrap_flow_runner(getattr(manager, name)))
         for name, handler in (
                 ("FLOW_STOP", self.cmd_FLOW_STOP),
                 ("UNLOAD_FILAMENT_CONTROL", self.cmd_UNLOAD_FILAMENT_CONTROL),
@@ -144,6 +155,33 @@ class BoxFlowRecovery:
     def _tracker(self):
         tracker = self.printer.lookup_object("tltg_box_loaded_slot", None)
         return tracker if getattr(tracker, "slots", None) else None
+
+    # ------------------------------------------------------- failed steps
+    def _wrap_flow_runner(self, original):
+        def run(*args, **kwargs):
+            try:
+                return original(*args, **kwargs)
+            except Exception as e:
+                try:
+                    self._pause_after_error(e)
+                except Exception:
+                    logging.exception("tltg_box_flow_recovery: pausing the "
+                                      "flow after a step error failed")
+                raise
+        return run
+
+    def _pause_after_error(self, error):
+        task = self._task()
+        step = getattr(task, "current_step", None)
+        if task is None or not step or self.printer.is_shutdown() \
+                or getattr(task, "is_paused", False) \
+                or getattr(task, "is_cancelled", False):
+            return
+        task.is_paused = True
+        logging.info("tltg_box_flow_recovery: step %s raised %s: %s; flow "
+                     "paused", step, type(error).__name__, error)
+        # QIDI's own words for a failed step, which Fluidd's Box card reads.
+        self.gcode.respond_info("Step %s failed. Pausing flow." % (step,))
 
     # -------------------------------------------------------------- flow stop
     def _wrap_stop(self, original):
