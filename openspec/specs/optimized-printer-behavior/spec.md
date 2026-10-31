@@ -502,6 +502,31 @@ The optional QIDI Box link monitor SHALL stay inert until its saved variable ena
 - **WHEN** the monitor's saved variable is absent or false
 - **THEN** no monitor log is written and printing is unaffected
 
+### Requirement: QIDI RS-485 device evidence
+The optimized configuration SHALL detect QIDI RS-485 Boxes, buffers, and racks, and evidence that one was attached, without changing how QIDI's code talks to them. Once detected, it SHALL record RS-485 frames in both directions, QIDI's RS-485 log lines, and status changes outside `klippy.log`, keep a shareable report current, and ask once per Klipper start for an issue. Chip ids and USB serial numbers SHALL be salted hashes. `TLTG_RS_BOX_REPORT` SHALL write the report on demand.
+
+#### Scenario: Printer without RS-485 hardware
+- **WHEN** no RS-485 adapter, device, or saved RS-485 Box id is present
+- **THEN** no RS-485 log, report, or salt file is written unless `TLTG_RS_BOX_REPORT` runs
+
+#### Scenario: RS-485 hardware is attached
+- **WHEN** QIDI's RS-485 code opens its adapter or an RS-485 device or saved RS-485 Box id appears
+- **THEN** every frame in both directions is recorded with its time, address, command, and payload, identical repeats are counted rather than repeated, and the console asks once for an issue with the report and log
+
+### Requirement: QIDI RS-485 code stays off Klipper MCU ports
+The optimized configuration SHALL keep QIDI's RS-485 code from opening a serial port that belongs to a Klipper MCU, and SHALL say in the console how to fix `[box485] serial_port`.
+
+#### Scenario: `[box485]` points at a Klipper MCU
+- **WHEN** `[box485] serial_port` resolves to the port of a configured `[mcu]` or names a Klipper USB device
+- **THEN** QIDI's RS-485 code never opens it, Klipper keeps that MCU's connection, and the console names the MCU and the stock `serial_port` value
+
+### Requirement: Missing RS-485 adapter is logged hourly
+QIDI's `Can not find 485 device` SHALL reach `klippy.log` at most once an hour, with the number of lines held back since the last one.
+
+#### Scenario: No RS-485 adapter is attached
+- **WHEN** QIDI's RS-485 code looks for its adapter every 2 seconds and doesn't find it
+- **THEN** `klippy.log` gains one `Can not find 485 device` line an hour, the later ones with a repeat count
+
 ### Requirement: Print-start mesh save does not block Klipper
 When optimized print start calibrates a fresh adaptive mesh, it SHALL save the pending configuration to `printer.cfg` for power-loss recovery without blocking Klipper's main thread for the read, parse, and write. The saved file SHALL match what QIDI's `SAVE_CONFIG_QD` writes for the same pending values, `printer.cfg` SHALL exist at every moment of the save, and `SAVE_CONFIG` or `SAVE_CONFIG_QD` issued during the save SHALL wait for it to finish.
 
