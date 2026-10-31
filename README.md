@@ -41,6 +41,11 @@ On firmware `01.01.07.01`, the installer first asks whether to flash a fix for t
 
 [QIDI Box →](docs/qidi-box.md)
 
+### Spoolman
+- Each QIDI Box slot can have its own Spoolman spool, and filament use is charged to the loaded slot's spool.
+
+[Spoolman →](docs/spoolman.md)
+
 ### Current Fluidd
 - [This project's build of current Fluidd](https://github.com/thelegendtubaguy/fluidd), replacing QIDI's 1.30.5, which QIDI no longer updates. Your settings carry over.
 - A redesigned QIDI Box card, a live view of the touchscreen, and a restart button for a frozen touchscreen.

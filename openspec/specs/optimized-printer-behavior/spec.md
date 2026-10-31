@@ -554,6 +554,27 @@ When the USB Box hub sensor detects filament, the toolhead filament sensor does 
 - **WHEN** a print is running or paused, the toolhead sensor detects filament, a vendor Box flow is running, the Box adapter is not the USB adapter, or QIDI's Box controller lacks the traced flow structure
 - **THEN** the vendor command runs unchanged, except that an unload with nothing past the hub does not run, as above, and an unload of stranded filament during a print does not run and the console says to resume or cancel the print first
 
+### Requirement: Spoolman spools follow the loaded QIDI Box slot
+Optimized configuration SHALL keep an operator-assigned Spoolman spool for each QIDI Box slot and the external spool, and SHALL make the loaded slot's spool Moonraker's active spool whenever the slot recorded as loaded changes.
+
+#### Scenario: A slot is loaded
+- **WHEN** at least one slot has a spool and the slot recorded as loaded changes
+- **THEN** that slot's spool becomes the active spool, or no spool is active when that slot has none
+- **AND** the external spool's spool applies when no Box slot is loaded or the Box is disabled
+
+#### Scenario: No slot spools are assigned
+- **WHEN** no slot has a spool
+- **THEN** the active spool is never changed
+
+#### Scenario: Moonraker is unavailable
+- **WHEN** Moonraker is not connected or has no Spoolman section
+- **THEN** the change is applied once Moonraker accepts it, without console errors
+
+#### Scenario: Assigning spools
+- **WHEN** the operator runs `TLTG_SPOOLMAN_SLOT` with a slot number and spool ID, with only a spool ID, or with `RESET=1`
+- **THEN** the named slot, the loaded slot, or every slot is assigned or cleared, the assignment is saved, and the active spool is updated immediately
+- **AND** without parameters the command lists the assignments and the loaded slot, and names a missing Moonraker Spoolman connection
+
 ### Requirement: QIDI Box processor temperature
 Optimized configuration SHALL provide a temperature sensor named `BoxN_MCU` for the processor of each USB QIDI Box Klipper is configured with, numbered as that Box's MCU, and none when no Box is configured. These sensors SHALL set no temperature limits.
 

@@ -23,11 +23,12 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 
 | What | Change | Restarts |
 |---|---|---|
-| `klippy/extras/tltg_*.py` | Added modules for the Box link monitor, Box processor temperature, Box heater refresh, background mesh save, faster `SAVE_VARIABLE`, Box load/unload speed, Box eject, unknown Box filaments, stuck Box loads, Box slot jogs, Box flow stop and stranded-filament recovery, the [RS-485 Box monitor](qidi-box.md#rs-485-boxes), and the load-cell check. | Klipper |
+| `klippy/extras/tltg_*.py` | Added modules for the Box link monitor, Box processor temperature, Box heater refresh, background mesh save, faster `SAVE_VARIABLE`, Box load/unload speed, Box eject, unknown Box filaments, stuck Box loads, Box slot jogs, Box flow stop and stranded-filament recovery, [Spoolman spools for each slot](spoolman.md), the [RS-485 Box monitor](qidi-box.md#rs-485-boxes), and the load-cell check. | Klipper |
 | `klippy/extras/homing.py` | Replaced with this project's version of QIDI's homing code, for the faster homing. QIDI's closed-loop homing checks stay in place. | Klipper |
 | `klippy/extras/print_stats_manager.py` | Keeps the [real shutdown reason](fixes.md#the-real-error-instead-of-mcu-shutdown) on screen. | Klipper, once |
 | `klippy/extras/box_config.py` | Lets Fluidd set Box heater targets, capped at 65 °C. | Klipper, once |
 | Moonraker `file_manager.py` and `metadata.py` | The [3MF metadata cache and plate fix](fixes.md#multi-plate-3mf-files). | Moonraker, when the patch changes |
+| Moonraker `spoolman.py` | Charges the new spool from the start of each filament change, keeps the Spoolman connection from dropping, and passes a spool picked in Fluidd to the [loaded slot](spoolman.md). | Moonraker, once |
 
 ## Fluidd and the web server
 
