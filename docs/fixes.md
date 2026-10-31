@@ -23,6 +23,10 @@ For a Box that still drops, the optional [Box firmware fix](firmware.md#qidi-box
 
 Loading a slot whose saved filament isn't in QIDI's list no longer shuts Klipper down. See [QIDI Box](qidi-box.md#filaments-missing-from-qidis-list).
 
+## Box loads stuck at `无法识别到已进料耗材`
+
+A Box load no longer stalls on every try when a slot's filament is at the Box hub but no slot is recorded as loaded. See [QIDI Box](qidi-box.md#stuck-box-loads).
+
 ## Multi-plate 3MF files
 
 A 3MF file started without a plate number, for example from Fluidd, a reprint, or the job queue, prints the plate it was sliced on instead of plate 1. Before, files exported from a plate other than plate 1 failed with `3MF processing error: [Errno 2] No such file or directory`.

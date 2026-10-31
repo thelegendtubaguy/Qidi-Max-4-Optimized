@@ -192,6 +192,27 @@ Firmware `.04` fake-manager `_decide_flow_id()` results:
 
 `start_flow()` sets the flow ID, copies steps, initializes operation index `0`, and clears waiting/active-step state. Default-state `tick()` completed box-side flows `1`, `2`, `3`, and `5` but not extruder/mixed flows `6` through `9`; this is harness behavior, not live operation proof.
 
+### `.07.01` load and unload with filament at the hub
+
+- **Harness-recovered (2026-10-30, USB `BoxAdapterV1`, fake objects):** `flow_decision_func(action, slot)` reads the toolhead `filament_switch_sensor`, `box1base.b_endstop_state` (hub, `0` = filament), and saved `last_load_slot` (default `slot16`). For slot 2:
+
+  | Action | Toolhead | Hub | `last_load_slot` | Flow |
+  |---|---|---|---|---:|
+  | `LOAD` | empty | filament | any | `10` |
+  | `LOAD` | empty | clear | any | `1` |
+  | `LOAD` | filament | any | `slot16` or missing | `8` |
+  | `LOAD` | filament | filament | another slot | `2` |
+  | `LOAD` | filament | clear | another slot | `-1` |
+  | `UNLOAD` | filament | any | `slot16` or missing | `7` |
+  | `UNLOAD` | filament | filament | another slot | `3` |
+  | `UNLOAD` | filament | clear | another slot | `-1` |
+  | `UNLOAD` | empty | any | any | `0` |
+
+- **Harness-recovered:** `BoxAdapterV1.unload_filament()` sends `MOVE_TO_TRASH`, then returns `True` with nothing else when the hub is clear. With filament at the hub and `last_load_slot` `slot16` or missing, it responds `无法识别到已进料耗材` ("can't identify the loaded filament") and returns `False`, so the flow pauses with `Step BOX_UNLOAD failed. Pausing flow.` Otherwise it sends `M109 S<current_flow_temp>` and calls `extruder_unload_single_func()` on `box_stepper <target_unload_slot>`, or on `last_load_slot` when `target_unload_slot` is empty, as it is in flow `10`.
+- **Harness-recovered:** `BoxAdapterV1.init_steps_method(task_queue_manager)` sets `box1base` to the `box_extras` object and stores the adapter's step functions in `task_queue_manager.method_map`, which `start_flow()` runs; replacing an adapter attribute afterward does not change a flow. `cmd_FLOW_RETRY` passes `RETRY` (default `0`) as `can_next`. `retry()` sends `M109 S<current_flow_temp>`, then reruns the paused step, or skips it when `can_next` is set.
+- **Harness-recovered:** `BoxExtruderStepper.get_status()` publishes `r_endstop_state` as `runout_button`. `BoxExtras.update_b_endstop()` drives the hub LED from `b_endstop_state`. `BoxExtras.cmd_INIT_BOX_STATE` clears a saved `slot_sync` when the hub is clear and resynchronizes it otherwise; it does not change `last_load_slot`.
+- **Runtime-confirmed (operator `klippy.log`, 2026-10-30, package `26.10.28.3`, one USB Box):** with the Box heater off and no G-code running, slot 1 (1B) moved at 18:00:59, consistent with the automatic slot load on insertion. 12 s later Klipper logged `Got EOF when reading from device`, then `Lost communication with MCU 'mcu_box1'`. After restarting, three insertion loads of 1B failed with `1B did not recognize the filament` and `QDE_004_001`, and a later request failed with `QDE_004_011`. Over the next three hours, across several restarts and with the nozzle heated to 240–280 °C, `BOX_UNLOAD` refused ten times with `无法识别到已进料耗材`; none passed that step, and the operator reported the hotend staying hot. The saved `last_load_slot` was not captured. A Box reset partway through the automatic slot load, leaving 1B's filament at the hub, fits the vendor predicate above but is not proven.
+
 ### `.07.01` eject
 
 - **Harness-recovered (2026-10-28, fake objects):** `cmd_EJECT_FILAMENT_CONTROL` reads `SLOT`, asks `box_adapter.flow_decision_func("EJECT", slot)` for the flow, and calls `task_queue_manager.start_flow(flow_id, self.normal_complete_script)`. `BoxAdapterV1.flow_decision_func` reads the toolhead `filament_switch_sensor`, saved `last_load_slot`, and `box1base.b_endstop_state`. For an eject of slot 2 it returned:
