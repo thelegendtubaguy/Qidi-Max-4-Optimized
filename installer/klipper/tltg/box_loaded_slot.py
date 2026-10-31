@@ -115,7 +115,7 @@ class BoxLoadedSlot:
             {"VARIABLE": name, "VALUE": repr(value)})
         save_vars.cmd_SAVE_VARIABLE(gcmd)
 
-    def _hub_occupied(self):
+    def hub_occupied(self):
         # QIDI's Box adapter reads the hub filament sensor from box_extras;
         # 0 means filament is at the hub.
         extras = self.printer.lookup_object("box_extras", None)
@@ -151,23 +151,24 @@ class BoxLoadedSlot:
         def motion(*args, **kwargs):
             before = None
             try:
-                before = self._hub_occupied()
+                before = self.hub_occupied()
             except Exception:
                 logging.exception("tltg_box_loaded_slot: hub check failed")
             try:
                 return original(*args, **kwargs)
             finally:
                 try:
-                    self._record_motion(slot, before)
+                    self.record_motion(slot, before)
                 except Exception:
                     logging.exception("tltg_box_loaded_slot: hub record "
                                       "failed")
         return motion
 
-    def _record_motion(self, slot, before):
+    def record_motion(self, slot, before):
+        # Also called by tltg_box_slot_jog, whose moves bypass QIDI's methods.
         if self.printer.is_shutdown():
             return
-        after = self._hub_occupied()
+        after = self.hub_occupied()
         if after is None:
             return
         if after and before is False:
@@ -207,7 +208,7 @@ class BoxLoadedSlot:
     def _before_unload(self):
         """Name the hub's slot if QIDI would refuse; True if it still will."""
         variables = self._variables()
-        if not self._hub_occupied() \
+        if not self.hub_occupied() \
                 or variables.get("last_load_slot", EXTERNAL_SLOT) \
                 != EXTERNAL_SLOT:
             return False

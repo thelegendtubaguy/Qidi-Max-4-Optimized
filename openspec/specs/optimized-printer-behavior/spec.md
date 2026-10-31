@@ -476,6 +476,28 @@ Optimized configuration SHALL record which QIDI Box slot's own motion brought fi
 - **WHEN** the hub is clear, `last_load_slot` names a Box slot, the Box adapter is not the USB adapter, or QIDI's Box controller lacks the traced flow structure
 - **THEN** the vendor unload runs unchanged
 
+### Requirement: Manual QIDI Box slot jog
+Optimized configuration SHALL provide a console command that moves one USB QIDI Box slot's filament a requested distance toward the toolhead or back toward the spool regardless of the slot, hub, and toolhead sensors and of saved Box state, and SHALL refuse it while a print is running or paused or a vendor Box task is running.
+
+#### Scenario: An idle jog
+- **WHEN** the printer is idle and the command names a configured slot, a distance, and optionally a speed
+- **THEN** that slot's motor moves the distance, positive toward the toolhead, with the extruder still
+- **AND** the motor is handed back to the vendor Box code afterwards, disabled again if it was disabled
+- **AND** saved vendor Box state is unchanged and no runout pause runs
+
+#### Scenario: A jog while the printer or Box is busy
+- **WHEN** a print is running or paused, or a vendor Box task is running
+- **THEN** the command refuses without moving the slot
+
+#### Scenario: A jog changes the hub sensor
+- **WHEN** a jog starts with the hub sensor clear and ends with filament at it, or ends with it clear
+- **THEN** the hub record updates as it does for the slot's own vendor motion
+
+#### Scenario: The vendor takes the motor during a jog
+- **WHEN** the vendor Box code takes the slot motor before the jog ends
+- **THEN** the motor is left with the vendor code
+- **AND** the console reports an error that says to run `FIRMWARE_RESTART` before using the Box
+
 ### Requirement: QIDI Box processor temperature
 Optimized configuration SHALL provide a temperature sensor named `BoxN_MCU` for the processor of each USB QIDI Box Klipper is configured with, numbered as that Box's MCU, and none when no Box is configured. These sensors SHALL set no temperature limits.
 

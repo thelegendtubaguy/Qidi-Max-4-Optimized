@@ -73,6 +73,7 @@ install:
       - "box_eject.cfg"
       - "box_filament_guard.cfg"
       - "box_loaded_slot.cfg"
+      - "box_slot_jog.cfg"
       - "box485_monitor.cfg"
 
   ensure_lines:
@@ -109,6 +110,9 @@ install:
     - id: box_loaded_slot
       source: "klipper/tltg/box_loaded_slot.py"
       destination: "klippy/extras/tltg_box_loaded_slot.py"
+    - id: box_slot_jog
+      source: "klipper/tltg/box_slot_jog.py"
+      destination: "klippy/extras/tltg_box_slot_jog.py"
     - id: box485_monitor
       source: "klipper/tltg/box485_monitor.py"
       destination: "klippy/extras/tltg_box485_monitor.py"

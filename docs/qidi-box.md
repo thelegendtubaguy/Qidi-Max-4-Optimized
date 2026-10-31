@@ -63,6 +63,22 @@ If a setting saved with `SAVE_VARIABLE` is invalid, the affected load or unload 
 
 QIDI's eject parks the toolhead over the waste chute before and after the Box pulls the filament back, so it homes X and Y on a printer that isn't homed. When the eject only needs the Box to pull filament back, because nothing is fed past the Box hub or another slot's filament is loaded, the toolhead now stays where it is. An eject that first has to heat and unload filament from the toolhead still parks the way QIDI does. Either way the eject turns the hotend off and disables the extruder motor afterward.
 
+## Moving a slot by hand
+
+`TLTG_BOX_SLOT_JOG` moves a slot's filament toward the toolhead or back toward the spool, for example to back filament off the Box hub or work a tangle loose:
+
+```gcode
+TLTG_BOX_SLOT_JOG SLOT=1 DISTANCE=-10
+```
+
+`DISTANCE` is in mm, positive toward the toolhead, up to 1500 either way. `SPEED` is optional: 20 mm/s by default, up to 100. Slots are numbered from 0, so 1B is slot 1.
+
+- The slot moves whatever its sensors read and whatever the printer has recorded as loaded. QIDI's saved Box state, such as which slot is loaded, isn't changed.
+- The extruder doesn't turn during a jog, so jogging the filament that's in the extruder pushes or pulls against its gears.
+- A jog is refused while a print is running or paused or the Box is busy.
+- Jogging out until the slot's inlet sensor no longer sees filament takes the filament out of the slot's feeder, and jogging in won't grab it again. Push it back into the inlet by hand, and the Box loads it as it does any newly inserted filament. With long tubes to the hub, that can take well over a meter of jogging.
+- A jog that brings filament to the Box hub, or clears it, updates the printer's record of which slot is at the hub, as for [stuck Box loads](#stuck-box-loads).
+
 ## Editing QIDI's filament list
 
 On firmware `01.01.07.01`, the Vendor and Filament lists on the touchscreen and in Fluidd come from QIDI's filament files. The installer adds a `qidi_filament_config` folder to Fluidd's configuration files that opens them:
