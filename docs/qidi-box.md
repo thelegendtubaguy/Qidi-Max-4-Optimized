@@ -71,6 +71,8 @@ QIDI's eject parks the toolhead over the waste chute before and after the Box pu
 TLTG_BOX_SLOT_JOG SLOT=1 DISTANCE=-10
 ```
 
+The QIDI Box card in Fluidd has **In** and **Out** buttons that jog the selected slot 10 mm.
+
 `DISTANCE` is in mm, positive toward the toolhead, up to 1500 either way. `SPEED` is optional: 20 mm/s by default, up to 100. Slots are numbered from 0, so 1B is slot 1.
 
 - The slot moves whatever its sensors read and whatever the printer has recorded as loaded. QIDI's saved Box state, such as which slot is loaded, isn't changed.
