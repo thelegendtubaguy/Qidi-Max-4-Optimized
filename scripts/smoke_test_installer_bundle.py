@@ -194,7 +194,7 @@ def main(argv: list[str] | None = None) -> int:
                          "box_heater_refresh", "save_variables_fast",
                          "box_feed_motion", "box_eject", "box_filament_guard", "box_loaded_slot",
                          "box_slot_jog",
-                         "box485_monitor", "probe_test")
+                         "box485_monitor", "spoolman", "probe_test")
         }
         for module_target, module_source in module_targets.items():
             if not module_target.is_file():

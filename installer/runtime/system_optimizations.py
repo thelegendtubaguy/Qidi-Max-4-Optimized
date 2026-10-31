@@ -30,6 +30,7 @@ from .fluidd_filament_config import OPERATION as FILAMENT_CONFIG_OPERATION
 from .moonraker_file_manager import OPERATION as MOONRAKER_CACHE_OPERATION, patch_file_manager
 from . import moonraker_klippy_apis
 from . import moonraker_allowed_services
+from . import moonraker_spoolman
 from . import remote_screen
 from .auto_update import current_auto_update_checksum
 from .errors import InstallerError
@@ -121,6 +122,14 @@ GUARDED_FILE_PATCHES = {
         file=lambda spec: moonraker_klippy_apis.FILE,
         patch=moonraker_klippy_apis.patch_klippy_apis,
         restart_service=moonraker_klippy_apis.RESTART_SERVICE,
+        missing_message=None,
+        skip_unrecognized=True,
+    ),
+    moonraker_spoolman.OPERATION: _GuardedFilePatch(
+        label="Moonraker spoolman.py",
+        file=lambda spec: moonraker_spoolman.FILE,
+        patch=moonraker_spoolman.patch_spoolman,
+        restart_service=moonraker_spoolman.RESTART_SERVICE,
         missing_message=None,
         skip_unrecognized=True,
     ),
@@ -2417,6 +2426,7 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         MOONRAKER_METADATA_OPERATION,
         MOONRAKER_CACHE_OPERATION,
         moonraker_klippy_apis.OPERATION,
+        moonraker_spoolman.OPERATION,
         moonraker_allowed_services.OPERATION,
         KLIPPER_BOX_OPERATION,
         KLIPPER_PRINT_STATS_OPERATION,
@@ -2482,7 +2492,7 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
         return {"path": spec.fluidd_filament_config.link, "target": spec.fluidd_filament_config.target}
     if operation_id == FLUIDD_BUILD_OPERATION:
         return {"path": fluidd_build.DESTINATION, "version": spec.fluidd_build.version, "archive_sha256": spec.fluidd_build.sha256}
-    if operation_id in (moonraker_klippy_apis.OPERATION, moonraker_allowed_services.OPERATION, remote_screen.UNIT_OPERATION, remote_screen.SERVER_OPERATION, remote_screen.NGINX_OPERATION):
+    if operation_id in (moonraker_klippy_apis.OPERATION, moonraker_spoolman.OPERATION, moonraker_allowed_services.OPERATION, remote_screen.UNIT_OPERATION, remote_screen.SERVER_OPERATION, remote_screen.NGINX_OPERATION):
         guarded = GUARDED_FILE_PATCHES[operation_id]
         return {"path": guarded.file(spec), "restart_service": guarded.restart_service}
     if operation_id == MOONRAKER_METADATA_OPERATION:
@@ -2934,6 +2944,7 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             MOONRAKER_METADATA_OPERATION,
             MOONRAKER_CACHE_OPERATION,
             moonraker_klippy_apis.OPERATION,
+            moonraker_spoolman.OPERATION,
             moonraker_allowed_services.OPERATION,
             FLUIDD_BOX_OPERATION,
             FLUIDD_SERVICE_WORKER_OPERATION,

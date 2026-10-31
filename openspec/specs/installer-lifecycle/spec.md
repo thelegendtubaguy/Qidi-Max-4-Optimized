@@ -577,6 +577,27 @@ Normal install and update SHALL let Fluidd's service controls restart, stop, and
 - **THEN** it is left unchanged and recorded without failing other host patches
 - **AND** uninstall restores an unchanged list to its original content and restarts Moonraker
 
+### Requirement: Moonraker Spoolman accounting for QIDI Box changes
+Normal install and update SHALL patch QIDI's Moonraker Spoolman component, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches.
+
+#### Scenario: A newly active spool is charged from the current extruder position
+- **WHEN** the active spool changes, including after Klipper restarts and before the toolhead reports a move
+- **THEN** the new spool is charged for extrusion past the extruder position at the change, not past the furthest position the previous spool reached
+
+#### Scenario: The Spoolman connection is not pinged on older Tornado
+- **WHEN** Moonraker runs with Tornado older than 6.5
+- **THEN** its Spoolman websocket is opened without keepalive pings
+
+#### Scenario: A spool picked in Fluidd is the loaded slot's spool
+- **WHEN** a client sets the active spool through Moonraker's Spoolman endpoint and Klipper reports a loaded slot through `tltg_spoolman`
+- **THEN** Moonraker passes the spool to `TLTG_SPOOLMAN_SLOT` for that slot without delaying the response
+- **AND** nothing is sent to Klipper when it has no `tltg_spoolman` object or no loaded slot
+
+#### Scenario: Unrecognized Spoolman sources are preserved
+- **WHEN** Moonraker's Spoolman component is missing or does not contain the reviewed source
+- **THEN** it is left unchanged and recorded without failing other host patches
+- **AND** uninstall restores an unchanged patched file and restarts Moonraker
+
 ### Requirement: Box firmware runs only through its dedicated script
 The installer bundle SHALL provide `box-firmware.sh` with `status`, `install`, `restore`, and `rescue` actions, and `status` SHALL be read-only. Install, update, uninstall, restore, and automatic updates MUST NOT flash Box firmware or offer to, and `--yes` MUST NOT authorize it.
 
