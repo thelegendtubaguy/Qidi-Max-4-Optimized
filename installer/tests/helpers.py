@@ -162,6 +162,8 @@ def fake_system_root(
         )
         klippy_apis = moonraker.parent.parent / "klippy_apis.py"
         klippy_apis.write_bytes((REPO_ROOT / "installer/tests/fixtures/moonraker_klippy_apis.py").read_bytes().replace(b"\n", b"\r\n"))
+        spoolman = moonraker.parent.parent / "spoolman.py"
+        spoolman.write_bytes((REPO_ROOT / "installer/tests/fixtures/moonraker_spoolman.py").read_bytes().replace(b"\n", b"\r\n"))
     (root / "mounts").mkdir()
     (root / "mounts/root.options").write_text("rw,relatime,sync\n", encoding="utf-8")
     return root

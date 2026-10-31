@@ -75,6 +75,7 @@ install:
       - "box_loaded_slot.cfg"
       - "box_slot_jog.cfg"
       - "box485_monitor.cfg"
+      - "spoolman.cfg"
 
   ensure_lines:
     - id: include_optimized_macros
@@ -116,6 +117,9 @@ install:
     - id: box485_monitor
       source: "klipper/tltg/box485_monitor.py"
       destination: "klippy/extras/tltg_box485_monitor.py"
+    - id: spoolman
+      source: "klipper/tltg/spoolman.py"
+      destination: "klippy/extras/tltg_spoolman.py"
     - id: probe_test
       source: "klipper/tltg/probe_test.py"
       destination: "klippy/extras/tltg_probe_test.py"
