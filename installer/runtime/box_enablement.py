@@ -141,13 +141,20 @@ def maybe_initialize_filament_retention(
 # setting exists. A setting saved as None (QIDI's value) counts as present.
 BOX_MOTION_DEFAULTS = {
     "tltg_box_load_fast_length": "950",
-    "tltg_box_load_fast_speed_1": "120",
-    "tltg_box_load_fast_speed_2": "100",
+    "tltg_box_load_fast_speed_1": "85",
+    "tltg_box_load_fast_speed_2": "65",
     "tltg_box_load_approach_speed": "15",
-    "tltg_box_unload_speed_1": "115",
-    "tltg_box_unload_speed_2": "120",
+    "tltg_box_unload_speed_1": "65",
+    "tltg_box_unload_speed_2": "85",
     "tltg_box_unload_extruder_length": "50",
 }
+# Speed pairs earlier releases saved as defaults. Update lowers a pair the
+# operator left at those values to the current defaults; a pair with either
+# speed changed is the operator's.
+PREVIOUS_BOX_MOTION_SPEED_DEFAULTS = (
+    {"tltg_box_load_fast_speed_1": "120", "tltg_box_load_fast_speed_2": "100"},
+    {"tltg_box_unload_speed_1": "115", "tltg_box_unload_speed_2": "120"},
+)
 BOX_MOTION_SETTINGS = frozenset(BOX_MOTION_DEFAULTS) | {
     "tltg_box_load_accel",
     "tltg_box_unload_accel",
@@ -163,8 +170,9 @@ def maybe_initialize_box_motion(
     urlopen: UrlOpenFn = urllib.request.urlopen,
 ) -> bool:
     if read_live_saved_variable_names(paths, urlopen=urlopen) & BOX_MOTION_SETTINGS:
-        reporter.debug(event="box_motion_defaults.preserved")
-        return False
+        return _lower_previous_box_motion_speeds(
+            paths=paths, reporter=reporter, written=written, urlopen=urlopen
+        )
     saved = save_live_variables(
         paths,
         BOX_MOTION_DEFAULTS,
@@ -177,6 +185,24 @@ def maybe_initialize_box_motion(
         reporter.debug(event="box_motion_defaults.preserved")
         return False
     reporter.line(messages.BOX_MOTION_DEFAULTS_SAVED)
+    return True
+
+
+def _lower_previous_box_motion_speeds(*, paths, reporter, written, urlopen) -> bool:
+    variables = read_live_saved_variables(paths, urlopen=urlopen)
+    lowered = {
+        name: BOX_MOTION_DEFAULTS[name]
+        for pair in PREVIOUS_BOX_MOTION_SPEED_DEFAULTS
+        if all(variables.get(name) == value for name, value in pair.items())
+        for name in pair
+    }
+    saved = save_live_variables(paths, lowered, urlopen=urlopen)
+    if written is not None:
+        written.update(saved)
+    if not saved:
+        reporter.debug(event="box_motion_defaults.preserved")
+        return False
+    reporter.line(messages.BOX_MOTION_SPEEDS_LOWERED)
     return True
 
 

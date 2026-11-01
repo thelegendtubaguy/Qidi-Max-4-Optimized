@@ -500,7 +500,7 @@ Optimized configuration SHALL provide a console command that moves one USB QIDI 
 - **AND** the console reports an error that says to run `FIRMWARE_RESTART` before using the Box
 
 ### Requirement: QIDI Box flow stop
-Optimized configuration SHALL let a vendor Box flow stop, from `FLOW_STOP` or the vendor's flow-stop endpoint, end the flow and return without blocking later G-code, SHALL turn the hotend off after stopping a flow only when no print is running or paused, and SHALL leave `FLOW_RETRY` unchanged.
+Optimized configuration SHALL let a vendor Box flow stop, from `FLOW_STOP` or the vendor's flow-stop endpoint, end the flow and return without blocking later G-code, SHALL turn the hotend off after stopping a flow only when no print is running or paused, and SHALL leave `FLOW_RETRY` unchanged. A vendor Box flow step that raises an error instead of failing SHALL leave the flow paused on that step, as a failed step does, so `FLOW_RETRY` and `FLOW_STOP` apply.
 
 #### Scenario: Stopping a paused flow while idle
 - **WHEN** `FLOW_STOP` runs while a vendor Box flow is paused at a failed step and no print is running or paused
@@ -519,6 +519,11 @@ Optimized configuration SHALL let a vendor Box flow stop, from `FLOW_STOP` or th
 #### Scenario: Stopping from the vendor endpoint
 - **WHEN** the vendor flow-stop endpoint stops a flow
 - **THEN** its G-code waits for any running G-code command as the vendor stop does, and the heater rule above applies
+
+#### Scenario: A step raises an error
+- **WHEN** a vendor Box flow step raises an error, such as `Communication timeout during homing` from a Box motor move
+- **THEN** the flow is paused on that step with the hotend target unchanged, the console says `Step <step> failed. Pausing flow.`, and the error still reaches the command that ran the flow
+- **AND** `FLOW_RETRY` reruns the step and `FLOW_STOP` ends the flow as for any paused flow
 
 ### Requirement: QIDI Box filament stranded between the hub and the toolhead
 When the USB Box hub sensor detects filament, the toolhead filament sensor does not, and no print is running or paused, optimized configuration SHALL make `UNLOAD_FILAMENT_CONTROL` and `EJECT_FILAMENT_CONTROL` of the hub's slot pull that slot's filament back until the hub sensor clears, without heating the hotend and after stopping a paused vendor Box flow. Whenever neither the vendor command nor this recovery would move filament, the console SHALL say why.

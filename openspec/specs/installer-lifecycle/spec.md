@@ -487,7 +487,7 @@ Fluidd SHALL provide a dashboard card that shows every QIDI Box slot at once: th
 - **THEN** the card is hidden
 
 ### Requirement: QIDI Box motion release defaults
-The installer SHALL save the release Box motion profile only when no Box motion setting exists in Klipper saved variables.
+The installer SHALL save the release Box motion profile only when no Box motion setting exists in Klipper saved variables, and SHALL lower a load or unload speed pair that is still at an earlier release's defaults to the current release defaults.
 
 #### Scenario: Printers without motion settings receive the release profile
 - **WHEN** install, update, or idle automatic-update repair finds none of the Box motion settings
@@ -495,8 +495,13 @@ The installer SHALL save the release Box motion profile only when no Box motion 
 
 #### Scenario: Operator motion settings are preserved
 - **WHEN** any Box motion setting exists, including one saved as `None` to use the vendor value
-- **THEN** no motion setting is written
+- **THEN** no motion setting is written, except a speed pair lowered as below
 - **AND** uninstall does not remove or reset the settings
+
+#### Scenario: Earlier faster speed defaults are lowered
+- **WHEN** install, update, or idle automatic-update repair finds both fast load speeds at 120 and 100 mm/s, or both unload speeds at 115 and 120 mm/s
+- **THEN** it saves that pair as the release defaults, 85 and 65 mm/s or 65 and 85 mm/s, and verifies the live values
+- **AND** a pair with either speed changed, and every other motion setting, is left unchanged
 
 ### Requirement: Printer screen in Fluidd
 Normal install and update SHALL provide a Fluidd dashboard card that shows and operates the live touchscreen, served by a package-owned screen service and a Fluidd nginx route, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches. The package build provides the card; while QIDI's bundled Fluidd is served, the recognized bundle is patched to add it.

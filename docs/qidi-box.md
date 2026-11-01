@@ -20,16 +20,16 @@ Each Box's processor temperature shows in Fluidd's temperature card as **Box1 MC
 
 A load pushes filament fast for most of the way, then approaches slowly until the toolhead filament sensor trips. An unload has the extruder pull the filament back before the Box retracts it.
 
-The installer saves faster defaults, unless you've already saved any of these settings, in which case all of yours are kept. Change them in Fluidd's QIDI Box card, or with `TLTG_BOX_MOTION` in the console. Run `TLTG_BOX_MOTION` with no parameters to see the current settings and each slot's profile.
+The installer saves this project's defaults, unless you've already saved any of these settings, in which case all of yours are kept. The fast and unload speeds match QIDI's; the shorter extruder pull-back and the faster approach save time. Earlier versions saved faster speeds, 120/100 mm/s for the fast push and 115/120 mm/s for the unload. Updating lowers either pair to QIDI's speeds if both of its speeds are still at those values, and keeps a pair you've changed. Change them in Fluidd's QIDI Box card, or with `TLTG_BOX_MOTION` in the console. Run `TLTG_BOX_MOTION` with no parameters to see the current settings and each slot's profile.
 
 | Parameter | What it sets | This project | QIDI | Allowed |
 |---|---|---|---|---|
 | `FAST_LENGTH` | How far the fast push goes, in mm | 950 | 930 | 100–2000 |
-| `FAST_SPEED_1` | Speed of the first fast stage, in mm/s | 120 | 85 | 10–150 |
-| `FAST_SPEED_2` | Speed of the second fast stage, in mm/s | 100 | 65 | 10–150 |
+| `FAST_SPEED_1` | Speed of the first fast stage, in mm/s | 85 | 85 | 10–150 |
+| `FAST_SPEED_2` | Speed of the second fast stage, in mm/s | 65 | 65 | 10–150 |
 | `APPROACH_SPEED` | Speed for the rest of the way to the toolhead sensor, in mm/s | 15 | 10 | 2–40, below both fast speeds |
 | `LOAD_ACCEL` | Load acceleration | QIDI's | 100 | 20–400 |
-| `UNLOAD_SPEED_1`, `UNLOAD_SPEED_2` | Speeds of the two unload stages, in mm/s | 115, 120 | 65, 85 | 10–150, must differ |
+| `UNLOAD_SPEED_1`, `UNLOAD_SPEED_2` | Speeds of the two unload stages, in mm/s | 65, 85 | 65, 85 | 10–150, must differ |
 | `UNLOAD_ACCEL` | Unload acceleration | QIDI's | 100 | 20–400 |
 | `UNLOAD_EXTRUDER_LENGTH` | How far the extruder pulls filament back before the Box takes over, in mm. All slots only. | 50 | 120 | 20–300 |
 
@@ -126,6 +126,8 @@ When a step of a Box load, unload, or eject fails, QIDI pauses it with a line su
 - **`FLOW_STOP`** ends the paused flow. With no print running or paused, it also turns the nozzle off. During a print, the nozzle stays hot so the print can resume.
 
 With QIDI's own code, `FLOW_STOP` on a paused flow never finished: every later command waited behind it, and only restarting Klipper, followed by `FIRMWARE_RESTART`, got the printer back. It now finishes straight away.
+
+A step can also end with an error instead of failing, such as `Error during homing e_endstop: Communication timeout during homing` from a Box motor move. QIDI then left the flow running with the nozzle hot, and neither the card nor `FLOW_RETRY` could do anything with it. The flow is now paused on that step, with `Step BOX_LOAD failed. Pausing flow.` before the error, so Retry and Stop work as for any failed step.
 
 ### Filament stopped between the hub and the toolhead
 
