@@ -33,6 +33,12 @@ def printer_info_url(moonraker_url: str) -> str:
     return urllib.parse.urlunsplit((parts.scheme, parts.netloc, f"{prefix}/printer/info", "", ""))
 
 
+def server_info_url(moonraker_url: str) -> str:
+    parts = urllib.parse.urlsplit(moonraker_url)
+    prefix = parts.path.removesuffix("/printer/objects/query")
+    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, f"{prefix}/server/info", "", ""))
+
+
 def service_restart_url(moonraker_url: str) -> str:
     parts = urllib.parse.urlsplit(moonraker_url)
     prefix = parts.path.removesuffix("/printer/objects/query")

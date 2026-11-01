@@ -169,6 +169,14 @@ The installer SHALL apply host OS optimizations only under explicit persisted po
 - **AND** declined restoration or explicit keep policy leaves optional OS optimizations unchanged
 - **AND** before its idle check and pending Klipper restart, uninstall, like install, waits a bounded time for Moonraker to report printer state again, since restoring Moonraker source restarts it
 
+#### Scenario: Changed services restart once
+- **WHEN** an install, update, uninstall, or host recovery changes files that a running service loads
+- **THEN** every change in the operation is in place before any service restarts, and each changed service restarts once
+- **AND** a failed restart that a change requires fails the operation like any other host-operation failure
+- **AND** after restarting Moonraker, the installer waits a bounded time for Moonraker to answer and then restarts QIDI's touchscreen app, so the app does not keep showing a Moonraker outage
+- **AND** a Klipper restart already pending for source activation stands in for the host change's own Klipper restart
+- **AND** a step that rollback cannot undo, such as retiring QIDI bundle patches once the package Fluidd is served, runs only after the restarts before it succeed
+
 #### Scenario: Reconciliation retains bounded recovery state
 - **WHEN** repeated checks find host optimizations already current
 - **THEN** installer recovery-state size and restoration-backup count do not grow with the number of checks
@@ -581,6 +589,20 @@ Normal install and update SHALL let Fluidd's service controls restart, stop, and
 - **WHEN** the allowed-services list is missing, is not a plain list of service names, or was modified after installation
 - **THEN** it is left unchanged and recorded without failing other host patches
 - **AND** uninstall restores an unchanged list to its original content and restarts Moonraker
+
+### Requirement: Klipper and Moonraker come back after exiting outside systemd
+Normal install and update SHALL make systemd start Klipper and Moonraker again when their processes exit without systemd stopping them, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches.
+
+#### Scenario: A process that exits outside systemd comes back
+- **WHEN** Klipper's or Moonraker's process exits, including cleanly, without systemd stopping it
+- **THEN** systemd starts it again after the unit's restart delay instead of reporting the unit active with no process
+- **AND** applying or removing this behavior does not restart either service
+- **AND** stopping the service through systemd still leaves it stopped
+
+#### Scenario: Operator unit changes are preserved
+- **WHEN** a file already exists at the package's drop-in path without the package marker
+- **THEN** install and update leave it unchanged and report it
+- **AND** uninstall removes only an unchanged package drop-in
 
 ### Requirement: Moonraker Spoolman accounting for QIDI Box changes
 Normal install and update SHALL patch QIDI's Moonraker Spoolman component, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches.

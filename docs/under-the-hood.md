@@ -8,6 +8,7 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 - **Your changes win.** A setting you changed from QIDI's value is kept. A file you change after installing is kept and reported by uninstall.
 - **Everything is backed up first.** See [Restore a backup](troubleshooting.md#restore-a-backup).
 - **The printer must be idle** for any change that restarts Klipper or Moonraker.
+- **Each service restarts once.** Changes are made first, then each changed service restarts once at the end. After Moonraker restarts, the installer waits for it to answer, then restarts the touchscreen app, `qidi-client`, so it reconnects.
 
 ## Klipper configuration
 
@@ -19,7 +20,7 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 | `saved_variables.cfg` | Adds missing defaults for [this project's settings](settings.md) and repairs missing QIDI Box tool mappings. Existing values are kept. |
 | `config/qidi_filament_config` | A link to QIDI's filament files, for [editing them in Fluidd](qidi-box.md#editing-qidis-filament-list). Firmware `01.01.07.01` only. |
 
-## Klipper and Moonraker source
+## Klipper and Moonraker source and services
 
 | What | Change | Restarts |
 |---|---|---|
@@ -29,6 +30,7 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 | `klippy/extras/box_config.py` | Lets Fluidd set Box heater targets, capped at 65 °C. | Klipper, once |
 | Moonraker `file_manager.py` and `metadata.py` | The [3MF metadata cache and plate fix](fixes.md#multi-plate-3mf-files). | Moonraker, when the patch changes |
 | Moonraker `spoolman.py` | Charges the new spool from the start of each filament change, keeps the Spoolman connection from dropping, and passes a spool picked in Fluidd to the [loaded slot](spoolman.md). | Moonraker, once |
+| `/etc/systemd/system/{moonraker,klipper}.service.d/tltg-restart-on-exit.conf` | Turns off `RemainAfterExit` in QIDI's Moonraker and Klipper services, so systemd starts them again 10 seconds after they stop without systemd stopping them. Before, they stayed down until a restart or reboot while still reported as running. | None |
 
 ## Fluidd and the web server
 
@@ -38,7 +40,7 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 | `~/fluidd` | QIDI's Fluidd, left untouched as the fallback. |
 | Fluidd's nginx configuration | Serves `~/tltg-fluidd` instead of `~/fluidd`, and adds a `/tltg-screen/` route for the Printer screen card. |
 | `tltg-remote-screen` service | Streams the touchscreen to the [Printer screen](fluidd.md#printer-screen) card, sending a new image only when the screen changes. It only listens on the printer itself, and Moonraker checks every connection. |
-| `~/printer_data/moonraker.asvc` | Adds `qidi-client`, so Fluidd can [restart the touchscreen app](fluidd.md#restart-the-touchscreen-app). Moonraker restarts once. |
+| `~/printer_data/moonraker.asvc` | Adds `qidi-client`, so Fluidd can [restart the touchscreen app](fluidd.md#restart-the-touchscreen-app). Moonraker restarts. |
 
 ## System
 
@@ -51,6 +53,6 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 
 ## What uninstall does
 
-Uninstall removes the optimized macros and added modules, restores every QIDI file above, points the web server back at QIDI's Fluidd, removes `~/tltg-fluidd`, the Printer screen service, and the filament folder link, and restores Moonraker's service list. It asks before undoing the OS optimizations. Files you changed after installing are kept and listed.
+Uninstall removes the optimized macros and added modules, restores every QIDI file above, points the web server back at QIDI's Fluidd, removes `~/tltg-fluidd`, the Printer screen service, the Moonraker and Klipper restart-on-exit settings, and the filament folder link, and restores Moonraker's service list. It asks before undoing the OS optimizations. Files you changed after installing are kept and listed.
 
 Firmware is never changed by install, update, or uninstall unless you [ask for it](firmware.md).
