@@ -83,17 +83,17 @@ The QIDI Box card in Fluidd has **In** and **Out** buttons that jog the selected
 
 ## Editing QIDI's filament list
 
-On firmware `01.01.07.01`, the Vendor and Filament lists on the touchscreen and in Fluidd come from QIDI's filament files. The installer adds a `qidi_filament_config` folder to Fluidd's configuration files that opens them:
+On firmware `01.01.07.01`, the Vendor and Filament lists on the touchscreen and in Fluidd come from QIDI's filament files. Fluidd's **Filaments** page in the sidebar edits the list for the 0.4 mm nozzle, `filament-0.4.json`, the one Klipper and the touchscreen read:
 
-- `filament-0.4.json` is the list for the 0.4 mm nozzle; the other files cover the other nozzle sizes. Right-click a file and choose **Edit**.
-- **To add a filament,** copy an entry of the same material and give it a new name, an unused `filament_id`, and the vendor to list it under. A new vendor name adds that vendor to the pickers.
-- **Keep the material letter** of the copied entry's `filament_id`: the letter after `QF` is `A` for PLA, `B` for ABS and ASA, `C` for PC, `G` for PETG, `N` for PA, `U` for TPU, and so on. For example, a new PLA could use `QFA93` if no other entry has it.
-- **Keep it valid JSON.** A missing comma or bracket can break the touchscreen's filament list.
-- **After saving,** restart Klipper so the Box and Fluidd pick up the change, and restart `qidi-client` from Fluidd's power menu, or reboot the printer, so the touchscreen does too.
-- If you change the `filament_id` of a filament a Box slot is set to, choose that filament for the slot again.
+- **Add** or **Duplicate** a filament, then set its vendor, name, type, nozzle temperatures, Box heating limit, chamber temperature, and whether it's a support material. A new vendor name adds that vendor to the pickers. The new filament gets the next free ID and takes its drying and other settings from the filament you duplicated, or else from Generic's filament of the same type.
+- **Edit** changes the same fields of any filament. Its ID stays as it is, because Box slots refer to filaments by ID. **Remove** names any Box slot set to the filament before deleting it.
+- Each change is saved to the printer straight away. Klipper, the Box, and the touchscreen use it once Klipper and `qidi-client` restart: choose **Restart Klipper and touchscreen** on the page, or reboot the printer.
+- **Export** downloads the list, and **Import** puts filaments from an exported file back. Import selects the filaments missing from the list, and leaves unselected the ones that differ from it, as the difference may be QIDI's.
+
+The installer makes this possible by adding a `qidi_filament_config` folder to Fluidd's configuration files, linked to QIDI's filament files. The other nozzle sizes' files are there too, and any of them can be edited by hand: right-click a file and choose **Edit**. Keep it valid JSON, as a missing comma or bracket can break the touchscreen's filament list.
 
 > [!WARNING]
-> These are QIDI's own files, not copies. Firmware updates replace them, so keep a copy of any entries you add. They aren't part of the installer's backups, and deleting one in Fluidd deletes it from the printer.
+> These are QIDI's own files, not copies. Firmware updates replace them and remove your changes, so **Export** the list before updating and **Import** it afterwards. They aren't part of the installer's backups.
 
 If `qidi_filament_config` already exists, the installer leaves it alone. Uninstall removes the link but never your edits.
 
