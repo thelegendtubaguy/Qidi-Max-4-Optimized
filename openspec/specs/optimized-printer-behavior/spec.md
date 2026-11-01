@@ -235,6 +235,13 @@ Optimized cut, purge, cooldown, cleaning, calibration, and cancel helpers SHALL 
 - **AND** the optimized macros recognize a slicer filament change from print state, so slicer G-code passes no tool-change parameter
 - **AND** the same slicer G-code remains correct with older supported firmware
 
+#### Scenario: Slicer filament change that keeps the loaded Box slot skips the reheat
+- **WHEN** an optimized slicer filament change runs during a print under the vendor tool-change flow
+- **AND** the Box slot loaded before the change is still loaded, with filament at the toolhead, when the slicer's filament-change heat wait runs
+- **THEN** the nozzle returns to its pre-change target instead of waiting at the filament-change temperature
+- **AND** the chute visit, purge, wipe, and the slicer's later temperature commands run unchanged
+- **AND** a change that loads another slot, a direct-feed spool change, a stale record from an earlier change, and older firmware keep the slicer's heat wait
+
 #### Scenario: Optimized cut keeps the vendor reliability sequence
 - **WHEN** the optimized filament cut or the stock-named cutter macro used by vendor flows runs
 - **THEN** the extruder stepper is released and allowed to settle before the cutter strike
@@ -416,3 +423,256 @@ Optimized configuration SHALL keep the toolhead still during a QIDI Box eject th
 #### Scenario: Other flows and unrecognized controllers are unchanged
 - **WHEN** a Box load, unload, or other vendor flow runs, or QIDI's Box controller lacks the traced flow structure
 - **THEN** its G-code runs unchanged
+
+### Requirement: Unknown QIDI Box filament IDs do not shut Klipper down
+Optimized configuration SHALL let a QIDI Box load, unload, or swap proceed when a saved filament ID is missing from the vendor filament database, using QIDI PLA Basic (`QFA00`) temperatures for that ID as the vendor does for saved IDs that are not strings, and SHALL refuse an external-spool filament update whose filament and vendor the database does not know, as the vendor does for a Box slot.
+
+#### Scenario: A saved filament ID the database doesn't know
+- **WHEN** a Box operation compares the temperatures of a saved filament ID that is missing from the vendor filament database, such as `filament_slot16 = 'None'`
+- **THEN** the operation proceeds with QIDI PLA Basic temperatures for that ID instead of shutting Klipper down
+- **AND** the console names the ID and says to set the slot's filament
+
+#### Scenario: Known filament IDs are unchanged
+- **WHEN** both compared filament IDs are in the vendor filament database
+- **THEN** the vendor temperature comparison runs unchanged
+
+#### Scenario: An unknown external-spool filament is refused
+- **WHEN** the external spool's filament is set to a filament and vendor missing from the vendor filament database
+- **THEN** neither its filament nor its color is saved
+- **AND** the console says the external spool filament was not changed and names the filament
+
+#### Scenario: Known external-spool filaments and Box slots are unchanged
+- **WHEN** the external spool's filament is set to a known filament, or a Box slot's filament is set
+- **THEN** the vendor update runs unchanged
+
+#### Scenario: Unrecognized controllers are unchanged
+- **WHEN** QIDI's Box controller lacks the traced filament database or external spool adapter
+- **THEN** the corresponding vendor behavior is unchanged
+
+### Requirement: QIDI Box unload of hub filament with no recorded slot
+Optimized configuration SHALL record which QIDI Box slot's own motion brought filament to the Box hub sensor, so that record survives a Box disconnect or Klipper restart. When the vendor Box unload would refuse because filament is at the hub while `last_load_slot` is `slot16` or missing, it SHALL log the Box state to `klippy.log` and SHALL name the hub's slot only from that record or from the only slot holding filament, never by guessing among several.
+
+#### Scenario: A slot motion brings filament to the hub
+- **WHEN** a slot's own motion starts with the hub sensor clear and ends with filament at it, such as the automatic slot load on insertion or a load
+- **THEN** that slot is saved as `tltg_box_hub_slot`
+- **AND** a slot motion that ends with the hub clear clears it
+
+#### Scenario: The recorded slot still has filament
+- **WHEN** the vendor Box unload would refuse with `无法识别到已进料耗材`, and the recorded slot's inlet sensor detects filament
+- **THEN** that slot is saved as `last_load_slot` before the vendor unload runs, so the vendor unload retracts it and the flow continues
+- **AND** the console names the slot
+
+#### Scenario: Only one slot holds filament
+- **WHEN** the vendor Box unload would refuse, nothing usable is recorded, and every slot inlet sensor reports, with exactly one detecting filament
+- **THEN** that slot is saved as `last_load_slot` and the vendor unload retracts it
+
+#### Scenario: The slot cannot be told
+- **WHEN** the vendor Box unload would refuse and neither rule above names a slot
+- **THEN** the vendor refusal and flow pause are unchanged
+- **AND** the console explains how to save the slot as `last_load_slot` and continue with `FLOW_RETRY`, and lists the slots with filament
+- **AND** when no print is running or paused, the hotend target is set to 0
+
+#### Scenario: Other unloads and unrecognized controllers are unchanged
+- **WHEN** the hub is clear, `last_load_slot` names a Box slot, the Box adapter is not the USB adapter, or QIDI's Box controller lacks the traced flow structure
+- **THEN** the vendor unload runs unchanged
+
+### Requirement: Manual QIDI Box slot jog
+Optimized configuration SHALL provide a console command that moves one USB QIDI Box slot's filament a requested distance toward the toolhead or back toward the spool regardless of the slot, hub, and toolhead sensors and of saved Box state, and SHALL refuse it while a print is running or paused or a vendor Box task is running.
+
+#### Scenario: An idle jog
+- **WHEN** the printer is idle and the command names a configured slot, a distance, and optionally a speed
+- **THEN** that slot's motor moves the distance, positive toward the toolhead, with the extruder still
+- **AND** the motor is handed back to the vendor Box code afterwards, disabled again if it was disabled
+- **AND** saved vendor Box state is unchanged and no runout pause runs
+
+#### Scenario: A jog while the printer or Box is busy
+- **WHEN** a print is running or paused, or a vendor Box task is running or paused at a failed step
+- **THEN** the command refuses without moving the slot
+- **AND** for a paused Box task the console names the failed step and says that `FLOW_RETRY` retries it and `FLOW_STOP` ends it
+
+#### Scenario: A jog changes the hub sensor
+- **WHEN** a jog starts with the hub sensor clear and ends with filament at it, or ends with it clear
+- **THEN** the hub record updates as it does for the slot's own vendor motion
+
+#### Scenario: The vendor takes the motor during a jog
+- **WHEN** the vendor Box code takes the slot motor before the jog ends
+- **THEN** the motor is left with the vendor code
+- **AND** the console reports an error that says to run `FIRMWARE_RESTART` before using the Box
+
+### Requirement: QIDI Box flow stop
+Optimized configuration SHALL let a vendor Box flow stop, from `FLOW_STOP` or the vendor's flow-stop endpoint, end the flow and return without blocking later G-code, SHALL turn the hotend off after stopping a flow only when no print is running or paused, and SHALL leave `FLOW_RETRY` unchanged. A vendor Box flow step that raises an error instead of failing SHALL leave the flow paused on that step, as a failed step does, so `FLOW_RETRY` and `FLOW_STOP` apply.
+
+#### Scenario: Stopping a paused flow while idle
+- **WHEN** `FLOW_STOP` runs while a vendor Box flow is paused at a failed step and no print is running or paused
+- **THEN** the flow ends, the command returns, and later commands run
+- **AND** the hotend target is set to 0 and the console says the flow stopped and the heater is off
+
+#### Scenario: Stopping a flow during a print
+- **WHEN** a vendor Box flow is stopped while a print is running or paused
+- **THEN** the flow ends and the command returns
+- **AND** the hotend target is unchanged and the console says the nozzle stays hot for the print
+
+#### Scenario: Stopping with no flow
+- **WHEN** `FLOW_STOP` runs with no vendor Box flow running or paused
+- **THEN** nothing changes and the console says there is nothing to stop
+
+#### Scenario: Stopping from the vendor endpoint
+- **WHEN** the vendor flow-stop endpoint stops a flow
+- **THEN** its G-code waits for any running G-code command as the vendor stop does, and the heater rule above applies
+
+#### Scenario: A step raises an error
+- **WHEN** a vendor Box flow step raises an error, such as `Communication timeout during homing` from a Box motor move
+- **THEN** the flow is paused on that step with the hotend target unchanged, the console says `Step <step> failed. Pausing flow.`, and the error still reaches the command that ran the flow
+- **AND** `FLOW_RETRY` reruns the step and `FLOW_STOP` ends the flow as for any paused flow
+
+### Requirement: QIDI Box filament stranded between the hub and the toolhead
+When the USB Box hub sensor detects filament, the toolhead filament sensor does not, and no print is running or paused, optimized configuration SHALL make `UNLOAD_FILAMENT_CONTROL` and `EJECT_FILAMENT_CONTROL` of the hub's slot pull that slot's filament back until the hub sensor clears, without heating the hotend and after stopping a paused vendor Box flow. Whenever neither the vendor command nor this recovery would move filament, the console SHALL say why.
+
+#### Scenario: Naming the hub's slot
+- **WHEN** an unload or eject runs in that state
+- **THEN** the hub's slot is the recorded hub slot or `last_load_slot`, or else the only slot holding filament, each only while that slot's inlet detects filament, never a guess among several
+
+#### Scenario: Unload of the stranded slot
+- **WHEN** the operator unloads the hub's slot in that state
+- **THEN** the slot retracts until the hub sensor clears, then far enough to park the filament in the Box, as the vendor's slot unload does
+- **AND** `last_load_slot` becomes `slot16` if it named that slot, the slot's vendor state becomes loaded-in-Box, the hub record clears, and the console says the slot was unloaded
+
+#### Scenario: Eject of the stranded slot
+- **WHEN** the operator ejects the hub's slot in that state
+- **THEN** the slot retracts until the hub sensor clears, then the vendor eject runs as its eject step alone
+
+#### Scenario: The slot cannot be told, or another slot is requested
+- **WHEN** the rules name no slot, name two different slots, or name a slot other than the requested one
+- **THEN** nothing moves and the console gives the reason, the slots with filament or the slot to unload first, and how to proceed
+- **AND** a paused vendor Box flow is stopped as `FLOW_STOP` would
+
+#### Scenario: The hub filament is not the slot's
+- **WHEN** the slot's inlet sensor clears before the hub sensor does, or the hub sensor still detects filament after 1500 mm
+- **THEN** the retraction stops, saved slot state is unchanged, and the console reports an error that says to remove the filament by hand
+
+#### Scenario: Unload with nothing past the hub
+- **WHEN** a slot is unloaded with the hub and toolhead sensors both clear
+- **THEN** nothing moves, instead of the vendor flow that runs no steps and parks the toolhead, and the console says the filament is already in the Box
+- **AND** with no print running or paused, a paused vendor Box flow is stopped as `FLOW_STOP` would
+
+#### Scenario: Prints, loaded toolheads, and unrecognized controllers are unchanged
+- **WHEN** a print is running or paused, the toolhead sensor detects filament, a vendor Box flow is running, the Box adapter is not the USB adapter, or QIDI's Box controller lacks the traced flow structure
+- **THEN** the vendor command runs unchanged, except that an unload with nothing past the hub does not run, as above, and an unload of stranded filament during a print does not run and the console says to resume or cancel the print first
+
+### Requirement: Spoolman spools follow the loaded QIDI Box slot
+Optimized configuration SHALL keep an operator-assigned Spoolman spool for each QIDI Box slot and the external spool, and SHALL make the loaded slot's spool Moonraker's active spool whenever the slot recorded as loaded changes.
+
+#### Scenario: A slot is loaded
+- **WHEN** at least one slot has a spool and the slot recorded as loaded changes
+- **THEN** that slot's spool becomes the active spool, or no spool is active when that slot has none
+- **AND** the external spool's spool applies when no Box slot is loaded or the Box is disabled
+
+#### Scenario: No slot spools are assigned
+- **WHEN** no slot has a spool
+- **THEN** the active spool is never changed
+
+#### Scenario: Moonraker is unavailable
+- **WHEN** Moonraker is not connected or has no Spoolman section
+- **THEN** the change is applied once Moonraker accepts it, without console errors
+
+#### Scenario: Assigning spools
+- **WHEN** the operator runs `TLTG_SPOOLMAN_SLOT` with a slot number and spool ID, with only a spool ID, or with `RESET=1`
+- **THEN** the named slot, the loaded slot, or every slot is assigned or cleared, the assignment is saved, and the active spool is updated immediately
+- **AND** without parameters the command lists the assignments and the loaded slot, and names a missing Moonraker Spoolman connection
+
+### Requirement: QIDI Box processor temperature
+Optimized configuration SHALL provide a temperature sensor named `BoxN_MCU` for the processor of each USB QIDI Box Klipper is configured with, numbered as that Box's MCU, and none when no Box is configured. These sensors SHALL set no temperature limits.
+
+#### Scenario: One sensor per configured Box
+- **WHEN** Klipper starts with zero to four USB Boxes configured
+- **THEN** Fluidd's temperature card and graph show one `BoxN_MCU` sensor for each of them and no others
+
+#### Scenario: A Box processor temperature never stops a print
+- **WHEN** a Box processor temperature reads unusually high or low
+- **THEN** the reading is reported and no shutdown or print error results from it
+
+### Requirement: Optional QIDI Box link monitor evidence
+The optional QIDI Box link monitor SHALL stay inert until its saved variable enables it. While enabled, it SHALL record each Box's reset reason labeled with the Box that reported it, link counters and print, heater, and Box processor temperature context for up to four Boxes, and, at the first link-failure line in `klippy.log`, each Box's recent sent and received messages with their times together with the kernel USB lines.
+
+#### Scenario: Reset reasons name the reporting Box
+- **WHEN** the monitor is enabled on a printer with two or more Boxes and Klipper connects
+- **THEN** each Box's reset reason is recorded under that Box's name
+
+#### Scenario: A link failure records what preceded it
+- **WHEN** the monitor is enabled and `klippy.log` reports `Got EOF when reading from device`, `Timeout with MCU`, or `shutdown:`
+- **THEN** the monitor log gains, once per Klipper connection, each Box's recent message history with host times, a clock reference for aligning them with kernel times, and the recent kernel USB lines
+
+#### Scenario: Disabled monitor records nothing
+- **WHEN** the monitor's saved variable is absent or false
+- **THEN** no monitor log is written and printing is unaffected
+
+### Requirement: QIDI RS-485 device evidence
+The optimized configuration SHALL detect QIDI RS-485 Boxes, buffers, and racks, and evidence that one was attached, without changing how QIDI's code talks to them. Once detected, it SHALL record RS-485 frames in both directions, QIDI's RS-485 log lines, and status changes outside `klippy.log`, keep a shareable report current, and ask once per Klipper start for an issue. Chip ids and USB serial numbers SHALL be salted hashes. `TLTG_RS_BOX_REPORT` SHALL write the report on demand.
+
+#### Scenario: Printer without RS-485 hardware
+- **WHEN** no RS-485 adapter, device, or saved RS-485 Box id is present
+- **THEN** no RS-485 log, report, or salt file is written unless `TLTG_RS_BOX_REPORT` runs
+
+#### Scenario: RS-485 hardware is attached
+- **WHEN** QIDI's RS-485 code opens its adapter or an RS-485 device or saved RS-485 Box id appears
+- **THEN** every frame in both directions is recorded with its time, address, command, and payload, identical repeats are counted rather than repeated, and the console asks once for an issue with the report and log
+
+### Requirement: QIDI RS-485 code stays off Klipper MCU ports
+The optimized configuration SHALL keep QIDI's RS-485 code from opening a serial port that belongs to a Klipper MCU, and SHALL say in the console how to fix `[box485] serial_port`.
+
+#### Scenario: `[box485]` points at a Klipper MCU
+- **WHEN** `[box485] serial_port` resolves to the port of a configured `[mcu]` or names a Klipper USB device
+- **THEN** QIDI's RS-485 code never opens it, Klipper keeps that MCU's connection, and the console names the MCU and the stock `serial_port` value
+
+### Requirement: Missing RS-485 adapter is logged hourly
+QIDI's `Can not find 485 device` SHALL reach `klippy.log` at most once an hour, with the number of lines held back since the last one.
+
+#### Scenario: No RS-485 adapter is attached
+- **WHEN** QIDI's RS-485 code looks for its adapter every 2 seconds and doesn't find it
+- **THEN** `klippy.log` gains one `Can not find 485 device` line an hour, the later ones with a repeat count
+
+### Requirement: Print-start mesh save does not block Klipper
+When optimized print start calibrates a fresh adaptive mesh, it SHALL save the pending configuration to `printer.cfg` for power-loss recovery without blocking Klipper's main thread for the read, parse, and write. The saved file SHALL match what QIDI's `SAVE_CONFIG_QD` writes for the same pending values, `printer.cfg` SHALL exist at every moment of the save, and `SAVE_CONFIG` or `SAVE_CONFIG_QD` issued during the save SHALL wait for it to finish.
+
+#### Scenario: Fresh mesh saved in the background
+- **WHEN** optimized print start calibrates a fresh `kamp` mesh
+- **THEN** the mesh and `profile_name` are saved for power-loss recovery
+- **AND** print start continues while the file is written, with no Klipper stall from the save
+
+#### Scenario: Background save fails
+- **WHEN** the background save cannot write `printer.cfg` or a pending value conflicts with an included file
+- **THEN** `printer.cfg` is left unchanged and the console reports the failure
+- **AND** the print continues
+
+#### Scenario: Config save during a background save
+- **WHEN** `SAVE_CONFIG` or `SAVE_CONFIG_QD` runs while a background save is writing
+- **THEN** it starts only after the background save finishes
+
+### Requirement: Fast variable saves
+Optimized configuration SHALL make `SAVE_VARIABLE` leave `saved_variables.cfg` and the saved values Klipper reports exactly as QIDI's handler would, while skipping the write when the stored value would not change and not re-reading the file after a write. A completed write SHALL replace the file whole, so it is never left partly written. Names and values whose round trip through the file is not exact SHALL use QIDI's handler unchanged.
+
+#### Scenario: Unchanged value
+- **WHEN** `SAVE_VARIABLE` stores the value a variable already has, such as print end resetting retained-filament state that is already reset
+- **THEN** the file is not rewritten and the saved values are unchanged
+
+#### Scenario: Changed value
+- **WHEN** `SAVE_VARIABLE` stores a new value
+- **THEN** the file contents and the saved values Klipper reports match what QIDI's handler produces
+
+### Requirement: QIDI Box heater refresh
+Optimized configuration SHALL make each USB QIDI Box heater resend an unchanged output at most about one second after the last one it sent, so that a Klipper main-loop stall of up to about three seconds does not let the Box MCU's 5 s heater limit expire. Other heaters, heater limits, and heater verification SHALL be unchanged.
+
+#### Scenario: Steady Box heater through a host stall
+- **WHEN** a Box heater holds a steady output, including full power, and Klipper's main loop stalls for up to about three seconds
+- **THEN** the Box heater output is refreshed before its MCU limit expires and the Box stays connected
+
+#### Scenario: Other heaters keep Klipper's timing
+- **WHEN** the extruder, bed, or chamber heater holds a steady output
+- **THEN** it is resent on Klipper's normal schedule
+
+### Requirement: Box heater sensors stop polling after a shutdown
+Once Klipper has shut down, a failed read of a Box heater's AHT20 SHALL stop that sensor's polling instead of raising, so Klipper stays in its shutdown state with the original reason. While Klipper is not shut down, sensor read errors SHALL propagate unchanged.
+
+#### Scenario: Box stays connected through a shutdown
+- **WHEN** Klipper shuts down while a Box running the shutdown-fix firmware stays connected and refuses sensor reads
+- **THEN** Klipper remains in its shutdown state showing the original reason and does not restart itself

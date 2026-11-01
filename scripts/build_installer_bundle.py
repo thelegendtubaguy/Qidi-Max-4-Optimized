@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -15,6 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from installer.runtime import fluidd_build
 from installer.runtime.compatibility import load_supported_upgrade_sources, validate_manifest_compatibility
 from installer.runtime.manifest import load_manifest
 from installer.runtime.naming import BUNDLE_NAME_PREFIX, BUNDLE_ROOT_NAME
@@ -26,10 +28,15 @@ ALLOWED_FILES = [
     "installer/release/install.sh",
     "installer/release/restore.sh",
     "installer/release/auto-update.sh",
+    "installer/release/box-firmware.sh",
     "scripts/flash_thr_firmware.py",
     "scripts/thr_bootloaders.py",
     "scripts/build_thr_firmware.py",
     "firmware/max4-thr-lis2dw-fifo-v1.json",
+    "scripts/flash_box_firmware.py",
+    "scripts/build_box_firmware.py",
+    "firmware/max4-box-shutdown-fix-v1.json",
+    "firmware/BOX_FIRMWARE.md",
     "firmware/FLASHING.md",
 ]
 ALLOWED_DIRECTORIES = [
@@ -41,6 +48,8 @@ ALLOWED_DIRECTORIES = [
     "installer/stock",
     "installer/system",
 ]
+# Release downloads are cached by checksum outside the bundled tree.
+DOWNLOAD_CACHE = REPO_ROOT / "build/downloads"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -57,6 +66,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     validate_manifest_compatibility(manifest, compatibility)
     validate_source_payloads(manifest)
+    fluidd_archive = fetch_fluidd_build(manifest)
 
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -74,11 +84,13 @@ def main(argv: list[str] | None = None) -> int:
     shutil.copy2(REPO_ROOT / "installer/release/install.sh", bundle_root / "install.sh")
     shutil.copy2(REPO_ROOT / "installer/release/restore.sh", bundle_root / "restore.sh")
     shutil.copy2(REPO_ROOT / "installer/release/auto-update.sh", bundle_root / "auto-update.sh")
+    shutil.copy2(REPO_ROOT / "installer/release/box-firmware.sh", bundle_root / "box-firmware.sh")
     ignore = shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo")
     for directory in ALLOWED_DIRECTORIES:
         source = REPO_ROOT / directory
         destination = bundle_root / directory
         shutil.copytree(source, destination, ignore=ignore)
+    shutil.copy2(fluidd_archive, bundle_root / "installer" / manifest.system_optimizations.fluidd_build.archive)
 
     (bundle_root / "RELEASE_METADATA.yaml").write_text(
         render_release_metadata(manifest.package.version, args.channel, args.build_id),
@@ -135,6 +147,24 @@ def validate_source_payloads(manifest) -> None:
                     f"{patch.id} for {variant.firmware} stock "
                     f"{variant.expected_sha256}"
                 )
+
+
+def fetch_fluidd_build(manifest) -> Path:
+    """Return the pinned Fluidd release archive, downloading it once and verifying it against the manifest."""
+    build = manifest.system_optimizations.fluidd_build
+    cached = DOWNLOAD_CACHE / f"fluidd-{build.sha256}.zip"
+    if not cached.is_file():
+        print(f"Downloading Fluidd {build.version} from {build.url}", file=sys.stderr)
+        with urllib.request.urlopen(build.url, timeout=120) as response:
+            data = response.read()
+        if hashlib.sha256(data).hexdigest() != build.sha256:
+            raise ValueError(f"Fluidd {build.version} from {build.url} does not match the pinned sha256.")
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        partial = cached.with_name(cached.name + ".partial")
+        partial.write_bytes(data)
+        partial.replace(cached)
+    fluidd_build.archive_files(cached, build.sha256)
+    return cached
 
 
 def bundle_names(*, channel: str, package_version: str, build_id: str | None) -> tuple[str, str]:

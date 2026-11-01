@@ -44,6 +44,7 @@ from .system_optimizations import (
 )
 from .uninstall import run_uninstall
 from .thr_firmware import flash_thr_firmware, validate_thr_firmware_request
+from .box_firmware import run_box_firmware
 
 DEFAULT_PRINTER_DATA_ROOT = Path("/home/qidi/printer_data")
 DEFAULT_FIRMWARE_MANIFEST = Path("/home/qidi/update/firmware_manifest.json")
@@ -104,7 +105,22 @@ def main(
             )
             return 0
 
-        safety.ensure_no_pending_thr_firmware(paths.recovery_sentinel_path)
+        if args.mode == "box-firmware":
+            if args.box_action == "status":
+                return run_box_firmware(paths=paths, reporter=reporter, action="status", environ=env)
+            with acquire(paths.lock_path):
+                rc = run_box_firmware(
+                    paths=paths,
+                    reporter=reporter,
+                    action=args.box_action,
+                    boxes=args.box,
+                    input_stream=input_stream,
+                    environ=env,
+                )
+            reporter.debug(event="cli.complete", mode=args.mode, return_code=rc)
+            return rc
+
+        safety.ensure_no_pending_firmware(paths.recovery_sentinel_path)
         if args.flash_thr_fifo:
             validate_thr_firmware_request(paths=paths, environ=env)
 
@@ -253,7 +269,7 @@ def main(
                     lock_path=paths.lock_path,
                 )
                 manifest = load_manifest(paths.installer_root / "package.yaml")
-                safety.ensure_no_pending_thr_firmware(paths.recovery_sentinel_path)
+                safety.ensure_no_pending_firmware(paths.recovery_sentinel_path)
                 removed = clear_recovery_sentinel(
                     paths.recovery_sentinel_path,
                     printer_data_root=paths.printer_data_root,
@@ -263,7 +279,6 @@ def main(
                         for patch in manifest.install.source_patches
                     },
                     install_label_prefix=manifest.backup.label_prefix,
-                    known_package_versions=manifest.package.known_versions,
                 )
                 reporter.emit_clear_recovery_sentinel(removed)
                 reporter.debug(
@@ -287,7 +302,7 @@ def main(
                     mode=args.mode,
                     lock_path=paths.lock_path,
                 )
-                safety.ensure_no_pending_thr_firmware(paths.recovery_sentinel_path)
+                safety.ensure_no_pending_firmware(paths.recovery_sentinel_path)
                 rc = run_restore_helper(
                     paths,
                     manifest,
@@ -303,10 +318,7 @@ def main(
             paths.installer_root / "supported_upgrade_sources.yaml"
         )
         validate_manifest_compatibility(manifest, compatibility)
-        reporter.debug(
-            event="cli.compatibility.validated",
-            known_versions=len(manifest.package.known_versions),
-        )
+        reporter.debug(event="cli.compatibility.validated")
 
         lock_inherited = _lock_inherited(args.mode, env)
         with nullcontext() if lock_inherited else acquire(paths.lock_path):
@@ -502,8 +514,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "enable-auto-updates",
             "disable-auto-updates",
             "complete-host-reboot",
+            "box-firmware",
         ],
     )
+    parser.add_argument("box_action", nargs="?", choices=["status", "install", "restore", "rescue"], help="box-firmware action: status, install, restore, or rescue.")
+    parser.add_argument("--box", type=int, action="append", metavar="N", help="box-firmware: limit install or restore to Box N (repeatable); rescue needs exactly one.")
     parser.add_argument("-v", "--version", dest="show_version", action="store_true", help="Show the installer package version and exit.")
     parser.add_argument("--plain", action="store_true", help="Use plain text output instead of the rich terminal UI.")
     parser.add_argument("--debug", action="store_true", help="Print debug events and tracebacks on failure.")
@@ -515,7 +530,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--skip-system-optimizations", action="store_true", help="Skip DNS, APT, qidiclient GIF, Rockchip root-mount, VPN, Bluetooth, and AI service changes.")
     parser.add_argument("--disable-ai-detection", action="store_true", help="Disable the QIDI AI detection backend service when system optimizations run.")
     parser.add_argument("--keep-ai-detection", action="store_true", help="Keep the QIDI AI detection backend service enabled when system optimizations run.")
-    parser.add_argument("--keep-system-optimizations", action="store_true", help="During uninstall, leave installer-managed system settings in place.")
+    parser.add_argument("--keep-system-optimizations", action="store_true", help="During uninstall, keep the DNS, APT, qidiclient GIF, Rockchip root-mount, VPN, Bluetooth, and AI service changes.")
     parser.add_argument("--reboot-host", action="store_true", help="Authorize a pending managed host OS reboot after successful install or uninstall.")
     parser.add_argument("--uninstall", action="store_true", help="Compatibility alias for the uninstall mode.")
     parser.add_argument("--clear-recovery-sentinel", action="store_true", help="Compatibility alias for the clear-recovery-sentinel mode.")
@@ -563,6 +578,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--keep-system-optimizations is only supported with uninstall.")
     if args.flash_thr_fifo and args.mode != "install":
         parser.error("--flash-thr-fifo is only supported with install.")
+    if (args.mode == "box-firmware") != (args.box_action is not None):
+        parser.error("box-firmware needs one of status, install, restore, or rescue; other modes take no action.")
+    if args.box and args.mode != "box-firmware":
+        parser.error("--box is only supported with box-firmware.")
     if args.reboot_host and args.mode not in {"install", "uninstall"}:
         parser.error("--reboot-host is only supported with install and uninstall.")
     return args

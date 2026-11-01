@@ -8,13 +8,17 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import time
+import urllib.request
 import uuid
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
 from . import messages
+from . import fluidd_build
 from . import fluidd_filament_config as filament_config
 from .fluidd_box_filaments import (
     OPERATION as FLUIDD_BOX_OPERATION,
@@ -26,7 +30,11 @@ from .klipper_box_config import OPERATION as KLIPPER_BOX_OPERATION, patch_box_co
 from .klipper_print_stats_manager import OPERATION as KLIPPER_PRINT_STATS_OPERATION, patch_print_stats_manager
 from .fluidd_filament_config import OPERATION as FILAMENT_CONFIG_OPERATION
 from .moonraker_file_manager import OPERATION as MOONRAKER_CACHE_OPERATION, patch_file_manager
+from . import moonraker_klippy_apis
+from . import moonraker_allowed_services
+from . import moonraker_spoolman
 from . import remote_screen
+from . import restart_on_exit
 from .auto_update import current_auto_update_checksum
 from .errors import InstallerError
 from .fs_atomic import atomic_delete, atomic_write_text
@@ -41,6 +49,7 @@ from .models import (
     SystemRockchipRootSyncSpec,
 )
 from .path_safety import ensure_runtime_path_has_no_symlink_components
+from .process_restart import server_info_url
 from .state_file import StateValidationError, load_installed_state, write_installed_state
 from .sudo import authenticate_sudo, run_sudo, run_sudo_ignore_failure, run_sudo_or_raise
 
@@ -75,6 +84,22 @@ MOONRAKER_METADATA_PATCH_MARKER = "def _3mf_selected_plate_index(xml_data: str) 
 ROCKCHIP_ROOT_SYNC_OPERATION = "rockchip_root_sync"
 ROCKCHIP_UNSUPPORTED = frozenset({"unsupported", "conflicting_dropin", "unsafe_path"})
 ROCKCHIP_ALREADY_CURRENT = frozenset({"already_current_owned", "already_current_unowned"})
+FLUIDD_BUILD_OPERATION = fluidd_build.OPERATION
+# Policy and the uninstall prompt cover only these and the service operations; uninstall always undoes every other
+# host change, because install makes them regardless of policy.
+OPTIONAL_OPERATIONS = frozenset({"dns", "apt_sources", "qidiclient_static_gifs", ROCKCHIP_ROOT_SYNC_OPERATION})
+# QIDI's bundle is patched only while nginx serves it; serving the package build retires these patches.
+FLUIDD_BUNDLE_OPERATIONS = (FLUIDD_BOX_OPERATION, FLUIDD_SERVICE_WORKER_OPERATION)
+# The build is only ever installed where nothing existed or over an earlier package build, so restoration is removal.
+FLUIDD_BUILD_PREIMAGE = {"path": fluidd_build.DESTINATION, "exists": False}
+FLUIDD_BUILD_UPDATE_PREIMAGE = {"path": fluidd_build.DESTINATION, "exists": True, "previous": fluidd_build.PREVIOUS}
+MOONRAKER_SERVICE = "moonraker.service"
+KLIPPER_SERVICE = "klipper.service"
+QIDICLIENT_SERVICE = "qidi-client.service"
+# nginx goes first so it never serves a removed Fluidd build while Moonraker comes back. The touchscreen app goes
+# last so it reconnects to the restarted Moonraker.
+RESTART_ORDER = ("nginx.service", MOONRAKER_SERVICE, KLIPPER_SERVICE, remote_screen.UNIT, QIDICLIENT_SERVICE)
+MOONRAKER_READY_TIMEOUT_SECONDS = 120
 
 
 @dataclass(frozen=True)
@@ -91,6 +116,8 @@ class _GuardedFilePatch:
     required: bool = False
     # The file is this systemd unit: apply enables it, restore disables it before removal.
     service_unit: str | None = None
+    # The file is a systemd drop-in that takes effect on daemon-reload, without restarting the service.
+    reloads_units: bool = False
 
 
 # Patches admit only reviewed vendor sources; patch(text) returns text unchanged once applied.
@@ -102,6 +129,30 @@ GUARDED_FILE_PATCHES = {
         restart_service="moonraker.service",
         missing_message="Moonraker file_manager.py is missing; cache patch was not applied.",
         skip_unrecognized=False,
+    ),
+    moonraker_klippy_apis.OPERATION: _GuardedFilePatch(
+        label="Moonraker klippy_apis.py",
+        file=lambda spec: moonraker_klippy_apis.FILE,
+        patch=moonraker_klippy_apis.patch_klippy_apis,
+        restart_service=moonraker_klippy_apis.RESTART_SERVICE,
+        missing_message=None,
+        skip_unrecognized=True,
+    ),
+    moonraker_spoolman.OPERATION: _GuardedFilePatch(
+        label="Moonraker spoolman.py",
+        file=lambda spec: moonraker_spoolman.FILE,
+        patch=moonraker_spoolman.patch_spoolman,
+        restart_service=moonraker_spoolman.RESTART_SERVICE,
+        missing_message=None,
+        skip_unrecognized=True,
+    ),
+    moonraker_allowed_services.OPERATION: _GuardedFilePatch(
+        label="Moonraker allowed services list",
+        file=lambda spec: moonraker_allowed_services.FILE,
+        patch=moonraker_allowed_services.patch_allowed_services,
+        restart_service="moonraker.service",
+        missing_message=None,
+        skip_unrecognized=True,
     ),
     FLUIDD_BOX_OPERATION: _GuardedFilePatch(
         label="Fluidd box bundle",
@@ -135,7 +186,27 @@ GUARDED_FILE_PATCHES = {
         missing_message=None,
         skip_unrecognized=True,
     ),
-    # Unit before server: restore removes the server first, so its restart stops the service.
+    restart_on_exit.MOONRAKER_OPERATION: _GuardedFilePatch(
+        label="Moonraker restart-on-exit drop-in",
+        file=lambda spec: restart_on_exit.FILES[restart_on_exit.MOONRAKER_OPERATION],
+        patch=restart_on_exit.patch_dropin(restart_on_exit.FILES[restart_on_exit.MOONRAKER_OPERATION]),
+        restart_service=None,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+        reloads_units=True,
+    ),
+    restart_on_exit.KLIPPER_OPERATION: _GuardedFilePatch(
+        label="Klipper restart-on-exit drop-in",
+        file=lambda spec: restart_on_exit.FILES[restart_on_exit.KLIPPER_OPERATION],
+        patch=restart_on_exit.patch_dropin(restart_on_exit.FILES[restart_on_exit.KLIPPER_OPERATION]),
+        restart_service=None,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+        reloads_units=True,
+    ),
+    # Unit before server: restore handles the server first, so disabling the unit drops the server's pending restart.
     remote_screen.UNIT_OPERATION: _GuardedFilePatch(
         label="Printer screen service unit",
         file=lambda spec: remote_screen.UNIT_FILE,
@@ -194,6 +265,7 @@ def maybe_apply_system_optimizations(
     environ: dict[str, str],
     auto_update_child: bool,
     run=subprocess.run,
+    urlopen=urllib.request.urlopen,
 ) -> InstalledState:
     spec = manifest.system_optimizations
     if spec is None:
@@ -224,6 +296,7 @@ def maybe_apply_system_optimizations(
             source="auto_update_child" if auto_update_child else "yes_install" if input_stream is None else "interactive_install",
             package_version=manifest.package.version,
             run=run,
+            urlopen=urlopen,
         )
     except SystemOptimizationRecoveryError as exc:
         recovery_ledger = exc.ledger or ledger
@@ -249,6 +322,7 @@ def recover_pending_system_optimization(
     input_stream,
     environ: dict[str, str],
     run=subprocess.run,
+    urlopen=urllib.request.urlopen,
 ) -> bool:
     if not _journal_path(paths).exists() or not _system_root_allowed(paths=paths, environ=environ):
         return False
@@ -276,6 +350,7 @@ def recover_pending_system_optimization(
             validate_system_ledger(ledger, manifest=manifest, paths=paths)
     except StateValidationError as exc:
         raise SystemOptimizationRecoveryError("System optimization recovery state is invalid.", ledger) from exc
+    restarts = _ServiceRestarts(paths=paths, root=root, sudo_password=sudo_password, run=run, urlopen=urlopen)
     _recover_pending_host_journal(
         paths=paths,
         root=root,
@@ -283,7 +358,9 @@ def recover_pending_system_optimization(
         run=run,
         ledger=ledger,
         spec=manifest.system_optimizations,
+        restarts=restarts,
     )
+    restarts.flush()
     recovered = before and not _journal_path(paths).exists()
     if recovered:
         reporter.line("Pending Rockchip system transaction recovered.")
@@ -297,6 +374,7 @@ def maybe_reconcile_system_optimizations(
     reporter,
     environ: dict[str, str],
     run=subprocess.run,
+    urlopen=urllib.request.urlopen,
 ) -> None:
     if manifest.system_optimizations is None:
         return
@@ -327,6 +405,7 @@ def maybe_reconcile_system_optimizations(
             source="auto_update_reconcile",
             package_version=manifest.package.version,
             run=run,
+            urlopen=urlopen,
         )
     except SystemOptimizationRecoveryError:
         raise
@@ -361,6 +440,31 @@ def maybe_emit_system_dry_run(
     if policy.get("system_optimizations") != "enabled":
         reporter.line("  - optional OS optimizations skipped by policy")
     for operation_id in _selected_operation_ids(manifest.system_optimizations, policy):
+        if operation_id in FLUIDD_BUNDLE_OPERATIONS and _system_root_allowed(paths=paths, environ=environ):
+            if _fluidd_build_served(manifest.system_optimizations, _system_root(environ)):
+                prior_preimages = (prior_ledger or {}).get("restore_preimages")
+                if isinstance(prior_preimages, dict) and operation_id in prior_preimages:
+                    reporter.line(f"  - would restore QIDI's original {GUARDED_FILE_PATCHES[operation_id].label}")
+                else:
+                    reporter.line(f"  - {operation_id}: not needed while the package Fluidd is served")
+                continue
+        if operation_id == FLUIDD_BUILD_OPERATION and _system_root_allowed(paths=paths, environ=environ):
+            spec = manifest.system_optimizations
+            if not _fluidd_build_archive(spec).is_file():
+                reporter.line(f"  - {operation_id}: the package has no Fluidd build")
+                continue
+            try:
+                state = _fluidd_build_state(spec, _system_root(environ))
+            except InstallerError as exc:
+                reporter.line(f"  - would fail {operation_id}: {getattr(exc, 'message', str(exc))}")
+                continue
+            reporter.line({
+                fluidd_build.ABSENT: f"  - would install Fluidd {spec.fluidd_build.version} at {fluidd_build.DESTINATION}",
+                fluidd_build.OUTDATED: f"  - would replace {fluidd_build.DESTINATION} with Fluidd {spec.fluidd_build.version}",
+                fluidd_build.CURRENT: f"  - {operation_id}: already current",
+                fluidd_build.FOREIGN: f"  - would preserve existing {fluidd_build.DESTINATION}",
+            }[state])
+            continue
         if operation_id in GUARDED_FILE_PATCHES and _system_root_allowed(paths=paths, environ=environ):
             guarded = GUARDED_FILE_PATCHES[operation_id]
             root = _system_root(environ)
@@ -430,7 +534,8 @@ def maybe_prompt_restore_system_optimizations(
     input_stream,
     cli_options: SystemOptimizationCliOptions,
 ) -> bool:
-    if not _has_restore_preimages(state.system_ledger):
+    preimages = (state.system_ledger or {}).get("restore_preimages")
+    if not isinstance(preimages, dict) or not any(_is_optional_operation(operation_id) for operation_id in preimages):
         return False
     if cli_options.keep_system_optimizations:
         return False
@@ -463,6 +568,79 @@ def _filament_config_state(paths: RuntimePaths, spec: SystemOptimizationsSpec, r
 def _restore_filament_config_link(paths: RuntimePaths, spec: SystemOptimizationsSpec) -> None:
     if not filament_config.remove_link(_filament_config_link(paths, spec), target=spec.fluidd_filament_config.target):
         raise SystemOptimizationRecoveryError("QIDI filament config link changed during the transaction; preserving it for recovery.")
+
+
+def _fluidd_build_archive(spec: SystemOptimizationsSpec) -> Path:
+    return Path(__file__).resolve().parents[1] / spec.fluidd_build.archive
+
+
+def _fluidd_build_state(spec: SystemOptimizationsSpec, root: Path) -> str:
+    """Raises FluiddBuildError when the package archive is missing or invalid."""
+    build = spec.fluidd_build
+    destination = _map_path(root, fluidd_build.DESTINATION)
+    _reject_parent_symlink_path(destination, root=root)
+    hashes = fluidd_build.archive_files(_fluidd_build_archive(spec), build.sha256)
+    return fluidd_build.state(destination, hashes=hashes, sha256=build.sha256)
+
+
+def _fluidd_build_current(spec: SystemOptimizationsSpec, root: Path) -> bool:
+    try:
+        return _fluidd_build_state(spec, root) == fluidd_build.CURRENT
+    except InstallerError:
+        return False
+
+
+def _nginx_serves_fluidd_build(root: Path) -> bool:
+    site = _map_path(root, remote_screen.NGINX_SITE)
+    try:
+        return not site.is_symlink() and site.is_file() and remote_screen.serves_fluidd_build(site.read_bytes().decode("utf-8", "replace"))
+    except OSError:
+        return False
+
+
+def _fluidd_build_served(spec: SystemOptimizationsSpec, root: Path) -> bool:
+    return _nginx_serves_fluidd_build(root) and _fluidd_build_current(spec, root)
+
+
+def _restore_fluidd_build(preimage: dict[str, Any], *, root: Path) -> None:
+    destination = _map_path(root, fluidd_build.DESTINATION)
+    previous = _map_path(root, fluidd_build.PREVIOUS)
+    removing = _map_path(root, fluidd_build.REMOVING)
+    for path in (destination, previous, removing):
+        _reject_parent_symlink_path(path, root=root)
+    try:
+        if preimage.get("exists"):
+            # Without a moved-aside build, the replaced build is still in place.
+            if previous.is_symlink() or not previous.is_dir():
+                return
+            if destination.exists() or destination.is_symlink():
+                fluidd_build.remove(destination, removing)
+            previous.rename(destination)
+        elif destination.exists() or destination.is_symlink():
+            fluidd_build.remove(destination, removing)
+    except fluidd_build.FluiddBuildError as exc:
+        raise SystemOptimizationRecoveryError(exc.message) from exc
+
+
+def _retire_fluidd_bundle_patch(
+    operation_id: str,
+    *,
+    paths: RuntimePaths,
+    spec: SystemOptimizationsSpec,
+    root: Path,
+    sudo_password: str | None,
+    run,
+    restore_preimages: dict[str, Any],
+    outcomes: dict[str, Any],
+    restarts: _ServiceRestarts,
+) -> None:
+    """Restore an unchanged patched QIDI bundle file and give up its ownership; a changed file is left as it is."""
+    preimage = restore_preimages[operation_id]
+    if not _guarded_file_has_drift(operation_id, spec, root, restore_preimages, outcomes) and not _file_matches_preimage(preimage, root=root):
+        _write_host_journal(paths, operation_id=operation_id, transaction_id=uuid.uuid4().hex, phase="restore", preimage=preimage)
+        _restore_guarded_file(GUARDED_FILE_PATCHES[operation_id], preimage, paths=paths, root=root, sudo_password=sudo_password, run=run, restarts=restarts)
+        atomic_delete(_journal_path(paths))
+    del restore_preimages[operation_id]
 
 
 def _outcome_file_sha256(outcome: dict[str, Any]) -> str | None:
@@ -501,12 +679,22 @@ def restore_system_optimizations(
     reporter,
     input_stream,
     environ: dict[str, str],
+    include_optional: bool,
     run=subprocess.run,
+    urlopen=urllib.request.urlopen,
 ) -> None:
+    """Undo the package's host changes, and the optional OS optimizations when include_optional is set."""
     ledger = state.system_ledger or {}
     validate_system_ledger(ledger, manifest=manifest, paths=paths)
     preimages = ledger.get("restore_preimages")
-    if not isinstance(preimages, dict) or not preimages:
+    if not isinstance(preimages, dict):
+        return
+    preimages = {
+        operation_id: preimage
+        for operation_id, preimage in preimages.items()
+        if include_optional or not _is_optional_operation(operation_id)
+    }
+    if not preimages:
         return
     if not _system_root_allowed(paths=paths, environ=environ):
         reporter.debug(event="system_optimizations.restore.skipped", reason="non-default-system-root")
@@ -517,91 +705,112 @@ def restore_system_optimizations(
     )
     rockchip_restored = False
     outcomes = ledger.get("outcomes") if isinstance(ledger.get("outcomes"), dict) else {}
-    for operation_id in reversed(list(preimages.keys())):
-        preimage = preimages[operation_id]
-        outcome = outcomes.get(operation_id) if isinstance(outcomes.get(operation_id), dict) else None
-        if outcome is None or outcome.get("status") == "legacy_unproven":
-            reporter.line(f"System optimization {operation_id} has legacy ownership uncertainty and was preserved.")
-            continue
-        guarded = GUARDED_FILE_PATCHES.get(operation_id)
-        if guarded is not None and _path_has_symlink_component(_map_path(root, guarded.file(manifest.system_optimizations)), root=root):
-            reporter.line(f"{guarded.label} was modified after install and was preserved.")
-            continue
-        if _operation_matches_preimage(operation_id, preimage=preimage, spec=manifest.system_optimizations, paths=paths, root=root, run=run):
-            continue
-        if guarded is not None:
-            target = _map_path(root, guarded.file(manifest.system_optimizations))
-            expected = _outcome_file_sha256(outcome)
-            if _path_has_symlink_component(target, root=root) or not target.is_file() or hashlib.sha256(target.read_bytes()).hexdigest() != expected:
+    # The Fluidd build goes last, after nginx stops serving it.
+    order = [operation_id for operation_id in reversed(list(preimages)) if operation_id != FLUIDD_BUILD_OPERATION]
+    order.extend(operation_id for operation_id in preimages if operation_id == FLUIDD_BUILD_OPERATION)
+    restarts = _ServiceRestarts(paths=paths, root=root, sudo_password=sudo_password, run=run, urlopen=urlopen)
+    try:
+        for operation_id in order:
+            preimage = preimages[operation_id]
+            outcome = outcomes.get(operation_id) if isinstance(outcomes.get(operation_id), dict) else None
+            if outcome is None or outcome.get("status") == "legacy_unproven":
+                reporter.line(f"System optimization {operation_id} has legacy ownership uncertainty and was preserved.")
+                continue
+            guarded = GUARDED_FILE_PATCHES.get(operation_id)
+            if guarded is not None and _path_has_symlink_component(_map_path(root, guarded.file(manifest.system_optimizations)), root=root):
                 reporter.line(f"{guarded.label} was modified after install and was preserved.")
                 continue
-        if operation_id == FILAMENT_CONFIG_OPERATION:
-            if _filament_config_state(paths, manifest.system_optimizations, root) != filament_config.CURRENT:
-                reporter.line(f"{manifest.system_optimizations.fluidd_filament_config.link} was modified after install and was preserved.")
+            if _operation_matches_preimage(operation_id, preimage=preimage, spec=manifest.system_optimizations, paths=paths, root=root, run=run):
                 continue
-        elif operation_id != ROCKCHIP_ROOT_SYNC_OPERATION and guarded is None and _operation_needs_apply(
-            operation_id, spec=manifest.system_optimizations, root=root, run=run
-        ):
-            reporter.line(f"System optimization {operation_id} was modified after install and was preserved.")
-            continue
-        if operation_id == ROCKCHIP_ROOT_SYNC_OPERATION:
-            if manifest.system_optimizations is None:
-                raise SystemOptimizationError("Manifest has no Rockchip restore specification.")
-            rockchip = manifest.system_optimizations.rockchip_root_sync
-            dropin = _map_path(root, rockchip.dropin)
-            if (
-                dropin.is_symlink()
-                or not dropin.is_file()
-                or dropin.read_text(encoding="utf-8") != rockchip.dropin_content
-                or tuple(_root_mount_options(spec=rockchip, root=root, run=run)) != _outcome_mount_options(outcome)
+            if guarded is not None:
+                target = _map_path(root, guarded.file(manifest.system_optimizations))
+                expected = _outcome_file_sha256(outcome)
+                if _path_has_symlink_component(target, root=root) or not target.is_file() or hashlib.sha256(target.read_bytes()).hexdigest() != expected:
+                    reporter.line(f"{guarded.label} was modified after install and was preserved.")
+                    continue
+            if operation_id == FILAMENT_CONFIG_OPERATION:
+                if _filament_config_state(paths, manifest.system_optimizations, root) != filament_config.CURRENT:
+                    reporter.line(f"{manifest.system_optimizations.fluidd_filament_config.link} was modified after install and was preserved.")
+                    continue
+            elif operation_id == FLUIDD_BUILD_OPERATION:
+                if _nginx_serves_fluidd_build(root):
+                    reporter.line(f"{fluidd_build.DESTINATION} was kept because nginx still serves it.")
+                    continue
+                if fluidd_build.installed_sha256(_map_path(root, fluidd_build.DESTINATION)) is None:
+                    reporter.line(f"{fluidd_build.DESTINATION} was replaced after install and was preserved.")
+                    continue
+            elif operation_id != ROCKCHIP_ROOT_SYNC_OPERATION and guarded is None and _operation_needs_apply(
+                operation_id, spec=manifest.system_optimizations, root=root, run=run
             ):
-                reporter.line("Rockchip system state was modified after install and was preserved.")
+                reporter.line(f"System optimization {operation_id} was modified after install and was preserved.")
                 continue
-        _write_host_journal(
-            paths,
-            operation_id=operation_id,
-            transaction_id=uuid.uuid4().hex,
-            phase="restore",
-            preimage=preimage,
-        )
-        if operation_id == "dns":
-            for item in reversed(preimage.get("files", [])):
-                _restore_file_preimage(item, paths=paths, root=root, sudo_password=sudo_password, run=run)
-            if not _is_fake_root(root):
-                run_sudo_ignore_failure(["resolvconf", "-u"], run=run, password=sudo_password or "")
-        elif operation_id == "apt_sources":
-            _restore_file_preimage(preimage["file"], paths=paths, root=root, sudo_password=sudo_password, run=run)
-        elif operation_id.startswith("service_"):
-            _restore_service(preimage, root=root, sudo_password=sudo_password, run=run)
-        elif operation_id == "qidiclient_static_gifs":
-            _restore_gifs(preimage, root=root, sudo_password=sudo_password, run=run)
-        elif operation_id == MOONRAKER_METADATA_OPERATION:
-            _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
-            _restart_service("moonraker.service", root=root, sudo_password=sudo_password, run=run)
-        elif operation_id == FILAMENT_CONFIG_OPERATION:
-            _restore_filament_config_link(paths, manifest.system_optimizations)
-        elif guarded is not None:
-            _restore_guarded_file(guarded, preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
-        elif operation_id == ROCKCHIP_ROOT_SYNC_OPERATION:
-            restored = _restore_rockchip(
-                preimage,
-                spec=manifest.system_optimizations.rockchip_root_sync,
-                paths=paths,
-                root=root,
-                sudo_password=sudo_password,
-                run=run,
-                require_desired_live=True,
-                last_applied_mount_options=_outcome_mount_options(outcome),
+            if operation_id == ROCKCHIP_ROOT_SYNC_OPERATION:
+                if manifest.system_optimizations is None:
+                    raise SystemOptimizationError("Manifest has no Rockchip restore specification.")
+                rockchip = manifest.system_optimizations.rockchip_root_sync
+                dropin = _map_path(root, rockchip.dropin)
+                if (
+                    dropin.is_symlink()
+                    or not dropin.is_file()
+                    or dropin.read_text(encoding="utf-8") != rockchip.dropin_content
+                    or tuple(_root_mount_options(spec=rockchip, root=root, run=run)) != _outcome_mount_options(outcome)
+                ):
+                    reporter.line("Rockchip system state was modified after install and was preserved.")
+                    continue
+            _write_host_journal(
+                paths,
+                operation_id=operation_id,
+                transaction_id=uuid.uuid4().hex,
+                phase="restore",
+                preimage=preimage,
             )
-            if restored:
-                rockchip_restored = True
-            else:
-                reporter.line("Rockchip system state was modified after install and was preserved.")
-                continue
-        atomic_delete(_journal_path(paths))
+            if operation_id == "dns":
+                for item in reversed(preimage.get("files", [])):
+                    _restore_file_preimage(item, paths=paths, root=root, sudo_password=sudo_password, run=run)
+                if not _is_fake_root(root):
+                    run_sudo_ignore_failure(["resolvconf", "-u"], run=run, password=sudo_password or "")
+            elif operation_id == "apt_sources":
+                _restore_file_preimage(preimage["file"], paths=paths, root=root, sudo_password=sudo_password, run=run)
+            elif operation_id.startswith("service_"):
+                _restore_service(preimage, root=root, sudo_password=sudo_password, run=run)
+            elif operation_id == "qidiclient_static_gifs":
+                _restore_gifs(preimage, root=root, sudo_password=sudo_password, run=run, restarts=restarts)
+            elif operation_id == MOONRAKER_METADATA_OPERATION:
+                _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
+                restarts.request(MOONRAKER_SERVICE)
+            elif operation_id == FILAMENT_CONFIG_OPERATION:
+                _restore_filament_config_link(paths, manifest.system_optimizations)
+            elif operation_id == FLUIDD_BUILD_OPERATION:
+                _restore_fluidd_build(preimage, root=root)
+            elif guarded is not None:
+                _restore_guarded_file(guarded, preimage, paths=paths, root=root, sudo_password=sudo_password, run=run, restarts=restarts)
+            elif operation_id == ROCKCHIP_ROOT_SYNC_OPERATION:
+                restored = _restore_rockchip(
+                    preimage,
+                    spec=manifest.system_optimizations.rockchip_root_sync,
+                    paths=paths,
+                    root=root,
+                    sudo_password=sudo_password,
+                    run=run,
+                    require_desired_live=True,
+                    last_applied_mount_options=_outcome_mount_options(outcome),
+                )
+                if restored:
+                    rockchip_restored = True
+                else:
+                    reporter.line("Rockchip system state was modified after install and was preserved.")
+                    continue
+            atomic_delete(_journal_path(paths))
+    except BaseException:
+        # Services whose files were already restored still restart before the error is reported.
+        with suppress(Exception):
+            restarts.flush()
+        raise
+    restarts.flush()
     if rockchip_restored:
         clear_host_reboot_marker(paths)
-    reporter.line(messages.SYSTEM_RESTORE_COMPLETE)
+    if include_optional:
+        reporter.line(messages.SYSTEM_RESTORE_COMPLETE)
 
 
 def resolve_policy(
@@ -654,11 +863,13 @@ def apply_system_optimizations(
     source: str,
     package_version: str = "unknown",
     run=subprocess.run,
+    urlopen=urllib.request.urlopen,
 ) -> dict[str, Any]:
     root = _system_root(environ)
     sudo_password = None if _is_fake_root(root) else _sudo_password(
         reporter=reporter, input_stream=input_stream, environ=environ, run=run
     )
+    restarts = _ServiceRestarts(paths=paths, root=root, sudo_password=sudo_password, run=run, urlopen=urlopen)
     actions = list(ledger.get("actions", [])) if isinstance(ledger.get("actions"), list) else []
     restore_preimages = dict(ledger.get("restore_preimages", {})) if isinstance(ledger.get("restore_preimages"), dict) else {}
     initial_restore_preimages = dict(restore_preimages)
@@ -670,6 +881,7 @@ def apply_system_optimizations(
         run=run,
         ledger=ledger,
         spec=spec,
+        restarts=restarts,
     )
     selected_ids = _selected_operation_ids(spec, policy)
     if "qidiclient_static_gifs" in selected_ids:
@@ -680,10 +892,47 @@ def apply_system_optimizations(
         for operation_id in selected_ids:
             started_at = _now()
             guarded = GUARDED_FILE_PATCHES.get(operation_id)
+            if operation_id in FLUIDD_BUNDLE_OPERATIONS and _fluidd_build_served(spec, root):
+                if operation_id in restore_preimages:
+                    # Retirement is outside rollback, so the changes before it must restart cleanly first.
+                    restarts.flush()
+                    _retire_fluidd_bundle_patch(
+                        operation_id, paths=paths, spec=spec, root=root, sudo_password=sudo_password, run=run,
+                        restore_preimages=restore_preimages, outcomes=ledger.get("outcomes", {}), restarts=restarts,
+                    )
+                    actions.append(
+                        _action_record(
+                            operation_id=operation_id,
+                            status="retired",
+                            started_at=started_at,
+                            preimage=None,
+                            desired=_desired(operation_id, spec),
+                            postflight={"path": guarded.file(spec)},
+                            source=source,
+                            reconciled=source in {"auto_update_child", "auto_update_reconcile"},
+                        )
+                    )
+                    applied_any = True
+                continue
             if guarded is not None and _guarded_file_has_drift(operation_id, spec, root, restore_preimages, ledger.get("outcomes", {})):
                 if guarded.required:
                     raise SystemOptimizationError(f"Required {guarded.label} was modified and was preserved.")
                 reporter.line(f"{guarded.label} was modified after install and was preserved.")
+                continue
+            if operation_id == remote_screen.NGINX_OPERATION and not _fluidd_build_current(spec, root):
+                reporter.line(f"{guarded.label} was left unchanged because the package Fluidd is not installed.")
+                actions.append(
+                    _action_record(
+                        operation_id=operation_id,
+                        status="skipped",
+                        started_at=started_at,
+                        preimage=None,
+                        desired=_desired(operation_id, spec),
+                        postflight={"path": guarded.file(spec)},
+                        source=source,
+                        reconciled=False,
+                    )
+                )
                 continue
             if guarded is not None and guarded.skip_unrecognized:
                 try:
@@ -750,6 +999,73 @@ def apply_system_optimizations(
                     )
                 )
                 restore_preimages.setdefault(operation_id, preimage)
+                atomic_delete(_journal_path(paths))
+                applied_any = True
+                continue
+            if operation_id == FLUIDD_BUILD_OPERATION:
+                build = spec.fluidd_build
+                archive = _fluidd_build_archive(spec)
+                if not archive.is_file():
+                    state = "missing"
+                    reporter.line("The package has no Fluidd build; QIDI's Fluidd stays in use.")
+                else:
+                    state = _fluidd_build_state(spec, root)
+                if state == fluidd_build.FOREIGN:
+                    reporter.line(f"{fluidd_build.DESTINATION} already exists and was preserved; QIDI's Fluidd stays in use.")
+                if state in {"missing", fluidd_build.FOREIGN, fluidd_build.CURRENT}:
+                    if state == fluidd_build.CURRENT and operation_id in restore_preimages:
+                        continue
+                    actions.append(
+                        _action_record(
+                            operation_id=operation_id,
+                            status={"missing": "missing", fluidd_build.FOREIGN: "preserved"}.get(state, "already_current"),
+                            started_at=started_at,
+                            preimage=None,
+                            desired=_desired(operation_id, spec),
+                            postflight={"path": fluidd_build.DESTINATION, "state": state},
+                            source=source,
+                            reconciled=False,
+                        )
+                    )
+                    if state == fluidd_build.CURRENT:
+                        # The marker shows a package build, so its restoration is removal.
+                        restore_preimages.setdefault(operation_id, dict(FLUIDD_BUILD_PREIMAGE))
+                    continue
+                destination = _map_path(root, fluidd_build.DESTINATION)
+                staging = _map_path(root, fluidd_build.STAGING)
+                previous = _map_path(root, fluidd_build.PREVIOUS)
+                for leftover in (staging, previous):
+                    _reject_parent_symlink_path(leftover, root=root)
+                    fluidd_build.discard(leftover)
+                fluidd_build.extract(archive, build.sha256, staging)
+                preimage = dict(FLUIDD_BUILD_PREIMAGE if state == fluidd_build.ABSENT else FLUIDD_BUILD_UPDATE_PREIMAGE)
+                current_preimages[operation_id] = preimage
+                _write_host_journal(
+                    paths,
+                    operation_id=operation_id,
+                    transaction_id=uuid.uuid4().hex,
+                    phase="apply",
+                    preimage=preimage,
+                    preimages=current_preimages,
+                )
+                if state == fluidd_build.OUTDATED:
+                    destination.rename(previous)
+                staging.rename(destination)
+                if _fluidd_build_state(spec, root) != fluidd_build.CURRENT:
+                    raise SystemOptimizationError("Fluidd build failed postflight.")
+                actions.append(
+                    _action_record(
+                        operation_id=operation_id,
+                        status="applied",
+                        started_at=started_at,
+                        preimage=preimage,
+                        desired=_desired(operation_id, spec),
+                        postflight={"path": fluidd_build.DESTINATION, "state": fluidd_build.CURRENT, "version": build.version},
+                        source=source,
+                        reconciled=source in {"auto_update_child", "auto_update_reconcile"},
+                    )
+                )
+                restore_preimages.setdefault(operation_id, dict(FLUIDD_BUILD_PREIMAGE))
                 atomic_delete(_journal_path(paths))
                 applied_any = True
                 continue
@@ -961,6 +1277,7 @@ def apply_system_optimizations(
                 sudo_password=sudo_password,
                 run=run,
                 preimage=preimage,
+                restarts=restarts,
             )
             postflight = _postflight_operation(
                 operation_id,
@@ -1009,6 +1326,7 @@ def apply_system_optimizations(
                     reconciled=False,
                 )
             )
+        restarts.flush()
     except BaseException as exc:
         if current_preimages:
             last_id = next(reversed(current_preimages))
@@ -1021,7 +1339,9 @@ def apply_system_optimizations(
                 root=root,
                 sudo_password=sudo_password,
                 run=run,
+                restarts=restarts,
             )
+            restarts.flush()
         except Exception as rollback_exc:
             recovery_ledger = _compact_host_ledger(
                 ledger,
@@ -1041,6 +1361,11 @@ def apply_system_optimizations(
             restore_preimages=initial_restore_preimages,
         )
         raise SystemOptimizationApplyError(getattr(exc, "message", str(exc)), partial) from exc
+    # The replaced Fluidd build is kept only while the transaction can still roll back.
+    with suppress(OSError, InstallerError):
+        previous = _map_path(root, fluidd_build.PREVIOUS)
+        _reject_parent_symlink_path(previous, root=root)
+        fluidd_build.discard(previous)
     if source in {"auto_update_child", "auto_update_reconcile"}:
         reporter.line(
             "System optimizations reconciled."
@@ -1162,7 +1487,7 @@ def _capture_operation_preimage(operation_id: str, *, paths: RuntimePaths, spec:
 
 
 
-def _apply_operation(operation_id: str, *, paths: RuntimePaths, spec: SystemOptimizationsSpec, root: Path, sudo_password: str | None, run, preimage: dict[str, Any]) -> None:
+def _apply_operation(operation_id: str, *, paths: RuntimePaths, spec: SystemOptimizationsSpec, root: Path, sudo_password: str | None, run, preimage: dict[str, Any], restarts: _ServiceRestarts) -> None:
     if operation_id == "dns":
         _apply_dns(paths=paths, spec=spec, root=root, sudo_password=sudo_password, run=run)
         return
@@ -1170,13 +1495,13 @@ def _apply_operation(operation_id: str, *, paths: RuntimePaths, spec: SystemOpti
         _apply_apt(spec=spec, root=root, sudo_password=sudo_password, run=run)
         return
     if operation_id == "qidiclient_static_gifs":
-        _apply_gifs(paths=paths, spec=spec, root=root, sudo_password=sudo_password, run=run, preimage=preimage)
+        _apply_gifs(paths=paths, spec=spec, root=root, sudo_password=sudo_password, run=run, preimage=preimage, restarts=restarts)
         return
     if operation_id in GUARDED_FILE_PATCHES:
-        _apply_guarded_file_patch(operation_id, spec=spec, root=root, sudo_password=sudo_password, run=run, preimage=preimage)
+        _apply_guarded_file_patch(operation_id, spec=spec, root=root, sudo_password=sudo_password, run=run, preimage=preimage, restarts=restarts)
         return
     if operation_id == MOONRAKER_METADATA_OPERATION:
-        _apply_moonraker_metadata_patch(spec=spec, root=root, sudo_password=sudo_password, run=run, preimage=preimage)
+        _apply_moonraker_metadata_patch(spec=spec, root=root, sudo_password=sudo_password, run=run, preimage=preimage, restarts=restarts)
         return
     if operation_id == ROCKCHIP_ROOT_SYNC_OPERATION:
         _apply_rockchip(
@@ -1231,7 +1556,7 @@ def _apply_service(service: str, *, root: Path, sudo_password: str | None, run, 
 
 
 
-def _apply_guarded_file_patch(operation_id: str, *, spec: SystemOptimizationsSpec, root: Path, sudo_password: str | None, run, preimage: dict[str, Any]) -> None:
+def _apply_guarded_file_patch(operation_id: str, *, spec: SystemOptimizationsSpec, root: Path, sudo_password: str | None, run, preimage: dict[str, Any], restarts: _ServiceRestarts) -> None:
     guarded = GUARDED_FILE_PATCHES[operation_id]
     path = guarded.file(spec)
     target = _map_path(root, path)
@@ -1266,8 +1591,10 @@ def _apply_guarded_file_patch(operation_id: str, *, spec: SystemOptimizationsSpe
     if guarded.service_unit:
         run_sudo_or_raise(["systemctl", "daemon-reload"], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
         run_sudo_or_raise(["systemctl", "enable", guarded.service_unit], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
+    if guarded.reloads_units:
+        restarts.reload_units()
     if guarded.restart_service:
-        _restart_service(guarded.restart_service, root=root, sudo_password=sudo_password, run=run, required=True)
+        restarts.request(guarded.restart_service, required=True)
 
 
 def _apply_moonraker_metadata_patch(
@@ -1277,13 +1604,14 @@ def _apply_moonraker_metadata_patch(
     sudo_password: str | None,
     run,
     preimage: dict[str, Any],
+    restarts: _ServiceRestarts,
 ) -> None:
     path = spec.moonraker_metadata_3mf.file
     mapped = _map_path(root, path)
     _reject_symlink_path(mapped, root=root)
     patched = _patched_moonraker_metadata_text(mapped.read_text(encoding="utf-8"))
     _write_file_preserving_preimage(path, patched, preimage=preimage, root=root, sudo_password=sudo_password, run=run)
-    _restart_service(spec.moonraker_metadata_3mf.restart_service, root=root, sudo_password=sudo_password, run=run)
+    restarts.request(spec.moonraker_metadata_3mf.restart_service)
 
 
 
@@ -1360,7 +1688,7 @@ def _capture_gifs_preimage(*, paths: RuntimePaths, spec: SystemOptimizationsSpec
 
 
 
-def _apply_gifs(*, paths: RuntimePaths, spec: SystemOptimizationsSpec, root: Path, sudo_password: str | None, run, preimage: dict[str, Any]) -> None:
+def _apply_gifs(*, paths: RuntimePaths, spec: SystemOptimizationsSpec, root: Path, sudo_password: str | None, run, preimage: dict[str, Any], restarts: _ServiceRestarts) -> None:
     archive_path = paths.installer_root / spec.qidiclient_static_gifs.archive
     destination = _map_path(root, spec.qidiclient_static_gifs.destination)
     replaced = list(preimage.get("replaced", []))
@@ -1390,7 +1718,7 @@ def _apply_gifs(*, paths: RuntimePaths, spec: SystemOptimizationsSpec, root: Pat
                         run_sudo_or_raise(["chown", f"{file_metadata['uid']}:{file_metadata['gid']}", target], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
             finally:
                 shutil.rmtree(tmp, ignore_errors=True)
-    _restart_service(spec.qidiclient_static_gifs.restart_service, root=root, sudo_password=sudo_password, run=run)
+    restarts.request(spec.qidiclient_static_gifs.restart_service)
 
 
 def _apply_fake_gif_metadata(*, destination: Path, replaced: list[str], metadata: dict[str, Any]) -> None:
@@ -1401,7 +1729,7 @@ def _apply_fake_gif_metadata(*, destination: Path, replaced: list[str], metadata
             (destination / relative).chmod(int(str(mode), 8))
 
 
-def _restore_preimage_map(preimages: dict[str, Any], *, paths: RuntimePaths, spec: SystemOptimizationsSpec, root: Path, sudo_password: str | None, run) -> None:
+def _restore_preimage_map(preimages: dict[str, Any], *, paths: RuntimePaths, spec: SystemOptimizationsSpec, root: Path, sudo_password: str | None, run, restarts: _ServiceRestarts) -> None:
     for operation_id in reversed(list(preimages.keys())):
         preimage = preimages[operation_id]
         if operation_id == "dns":
@@ -1412,14 +1740,16 @@ def _restore_preimage_map(preimages: dict[str, Any], *, paths: RuntimePaths, spe
         elif operation_id.startswith("service_"):
             _restore_service(preimage, root=root, sudo_password=sudo_password, run=run)
         elif operation_id == "qidiclient_static_gifs":
-            _restore_gifs(preimage, root=root, sudo_password=sudo_password, run=run)
+            _restore_gifs(preimage, root=root, sudo_password=sudo_password, run=run, restarts=restarts)
         elif operation_id in GUARDED_FILE_PATCHES:
-            _restore_guarded_file_preimage(operation_id, preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
+            _restore_guarded_file_preimage(operation_id, preimage, paths=paths, root=root, sudo_password=sudo_password, run=run, restarts=restarts)
         elif operation_id == FILAMENT_CONFIG_OPERATION:
             _restore_filament_config_link(paths, spec)
+        elif operation_id == FLUIDD_BUILD_OPERATION:
+            _restore_fluidd_build(preimage, root=root)
         elif operation_id == MOONRAKER_METADATA_OPERATION:
             _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
-            _restart_service("moonraker.service", root=root, sudo_password=sudo_password, run=run)
+            restarts.request(MOONRAKER_SERVICE)
         elif operation_id == ROCKCHIP_ROOT_SYNC_OPERATION:
             _restore_rockchip(
                 preimage,
@@ -1434,7 +1764,7 @@ def _restore_preimage_map(preimages: dict[str, Any], *, paths: RuntimePaths, spe
 
 
 
-def _restore_guarded_file_preimage(operation_id: str, preimage: dict[str, Any], *, paths: RuntimePaths, root: Path, sudo_password: str | None, run) -> None:
+def _restore_guarded_file_preimage(operation_id: str, preimage: dict[str, Any], *, paths: RuntimePaths, root: Path, sudo_password: str | None, run, restarts: _ServiceRestarts) -> None:
     guarded = GUARDED_FILE_PATCHES[operation_id]
     target = _map_path(root, preimage["path"])
     _reject_symlink_path(target, root=root)
@@ -1444,17 +1774,20 @@ def _restore_guarded_file_preimage(operation_id: str, preimage: dict[str, Any], 
     expected = guarded.patch((original or b"").decode("utf-8")).encode("utf-8")
     if not target.is_file() or target.read_bytes() not in (original, expected):
         raise SystemOptimizationRecoveryError(f"{guarded.label} changed during the transaction; preserving it for recovery.")
-    _restore_guarded_file(guarded, preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
+    _restore_guarded_file(guarded, preimage, paths=paths, root=root, sudo_password=sudo_password, run=run, restarts=restarts)
 
 
-def _restore_guarded_file(guarded: _GuardedFilePatch, preimage: dict[str, Any], *, paths: RuntimePaths, root: Path, sudo_password: str | None, run) -> None:
+def _restore_guarded_file(guarded: _GuardedFilePatch, preimage: dict[str, Any], *, paths: RuntimePaths, root: Path, sudo_password: str | None, run, restarts: _ServiceRestarts) -> None:
     if guarded.service_unit:
         run_sudo_ignore_failure(["systemctl", "disable", "--now", guarded.service_unit], run=run, password=sudo_password or "")
+        restarts.discard(guarded.service_unit)
     _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
     if guarded.service_unit:
         run_sudo_ignore_failure(["systemctl", "daemon-reload"], run=run, password=sudo_password or "")
     elif guarded.restart_service:
-        _restart_service(guarded.restart_service, root=root, sudo_password=sudo_password, run=run, required=True)
+        restarts.request(guarded.restart_service, required=True)
+    if guarded.reloads_units:
+        restarts.reload_units()
 
 
 def _file_matches_preimage(preimage: dict[str, Any], *, root: Path) -> bool:
@@ -1485,6 +1818,12 @@ def _operation_matches_preimage(
     if operation_id == FILAMENT_CONFIG_OPERATION:
         link = paths.printer_data_root / str(preimage.get("path", ""))
         return not link.exists() and not link.is_symlink()
+    if operation_id == FLUIDD_BUILD_OPERATION:
+        destination = _map_path(root, fluidd_build.DESTINATION)
+        if preimage.get("exists"):
+            previous = _map_path(root, fluidd_build.PREVIOUS)
+            return not previous.exists() and not previous.is_symlink() and fluidd_build.installed_sha256(destination) is not None
+        return not destination.exists() and not destination.is_symlink()
     if operation_id in {"apt_sources", MOONRAKER_METADATA_OPERATION, *GUARDED_FILE_PATCHES}:
         item = preimage.get("file", preimage)
         return isinstance(item, dict) and _file_matches_preimage(item, root=root)
@@ -1566,7 +1905,7 @@ def _restore_service(preimage: dict[str, Any], *, root: Path, sudo_password: str
         run_sudo_or_raise(["systemctl", "stop", service], messages.SYSTEM_RESTORE_FAILED, run=run, password=sudo_password or "")
 
 
-def _restore_gifs(preimage: dict[str, Any], *, root: Path, sudo_password: str | None, run) -> None:
+def _restore_gifs(preimage: dict[str, Any], *, root: Path, sudo_password: str | None, run, restarts: _ServiceRestarts) -> None:
     backup_dir = Path(preimage["backup_dir"])
     destination = _map_path(root, preimage["destination"])
     metadata = preimage.get("files", {}) if isinstance(preimage.get("files"), dict) else {}
@@ -1597,7 +1936,7 @@ def _restore_gifs(preimage: dict[str, Any], *, root: Path, sudo_password: str | 
             _reject_parent_symlink_path(target, root=root)
             run_sudo_or_raise(["rm", "-f", f"{preimage['destination'].rstrip('/')}/{relative}"], messages.SYSTEM_RESTORE_FAILED, run=run, password=sudo_password or "")
     if preimage.get("restart_service"):
-        _restart_service(str(preimage["restart_service"]), root=root, sudo_password=sudo_password, run=run)
+        restarts.request(str(preimage["restart_service"]))
 
 
 def _capture_file(path: str, *, paths: RuntimePaths, root: Path) -> dict[str, Any]:
@@ -1711,6 +2050,61 @@ def _restart_service(service: str, *, root: Path, sudo_password: str | None, run
         run_sudo_or_raise(["systemctl", "restart", service], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
     else:
         run_sudo_ignore_failure(["systemctl", "restart", service], run=run, password=sudo_password or "")
+
+
+class _ServiceRestarts:
+    """Restarts each requested service once, after every host change in the transaction is in place."""
+
+    def __init__(self, *, paths: RuntimePaths, root: Path, sudo_password: str | None, run, urlopen) -> None:
+        self._paths = paths
+        self._root = root
+        self._sudo_password = sudo_password
+        self._run = run
+        self._urlopen = urlopen
+        self._pending: dict[str, bool] = {}
+        self._reload = False
+
+    def request(self, service: str, *, required: bool = False) -> None:
+        self._pending[service] = self._pending.get(service, False) or required
+
+    def discard(self, service: str) -> None:
+        self._pending.pop(service, None)
+
+    def reload_units(self) -> None:
+        self._reload = True
+
+    def flush(self) -> None:
+        pending, self._pending = self._pending, {}
+        reload, self._reload = self._reload, False
+        if reload:
+            run_sudo_or_raise(["systemctl", "daemon-reload"], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=self._run, password=self._sudo_password or "")
+        if MOONRAKER_SERVICE in pending:
+            # QIDI's touchscreen app reports "Printer service failed to start" after about 50 s
+            # without Moonraker and keeps showing it until the app restarts.
+            pending.setdefault(QIDICLIENT_SERVICE, False)
+        for service in sorted(pending, key=_restart_rank):
+            # A pending Klipper source activation restarts Klipper after this transaction.
+            if service == KLIPPER_SERVICE and self._paths.restart_marker_path.exists():
+                continue
+            _restart_service(service, root=self._root, sudo_password=self._sudo_password, run=self._run, required=pending[service])
+            if service == MOONRAKER_SERVICE and not self._moonraker_answers() and pending[service]:
+                raise SystemOptimizationError("Moonraker did not answer after its restart.")
+
+    def _moonraker_answers(self) -> bool:
+        deadline = time.monotonic() + MOONRAKER_READY_TIMEOUT_SECONDS
+        while True:
+            try:
+                with self._urlopen(server_info_url(self._paths.moonraker_url), timeout=5) as response:
+                    response.read()
+                return True
+            except (OSError, ValueError):
+                if time.monotonic() >= deadline:
+                    return False
+            time.sleep(1)
+
+
+def _restart_rank(service: str) -> int:
+    return RESTART_ORDER.index(service) if service in RESTART_ORDER else len(RESTART_ORDER)
 
 
 def _reject_operation_unsafe_for_compare(operation_id: str, *, spec: SystemOptimizationsSpec, root: Path) -> None:
@@ -2142,26 +2536,37 @@ def _path_has_symlink_component(path: Path, *, root: Path) -> bool:
     return path.is_symlink()
 
 
+def _is_optional_operation(operation_id: str) -> bool:
+    """Whether the operation is an optional OS optimization rather than a change every install makes."""
+    return operation_id in OPTIONAL_OPERATIONS or operation_id.startswith("service_")
+
+
 def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any]) -> tuple[str, ...]:
+    # nginx switches to the package Fluidd only after it is installed.
     ids = [
         MOONRAKER_METADATA_OPERATION,
         MOONRAKER_CACHE_OPERATION,
-        FLUIDD_BOX_OPERATION,
-        FLUIDD_SERVICE_WORKER_OPERATION,
+        moonraker_klippy_apis.OPERATION,
+        moonraker_spoolman.OPERATION,
+        moonraker_allowed_services.OPERATION,
         KLIPPER_BOX_OPERATION,
         KLIPPER_PRINT_STATS_OPERATION,
+        restart_on_exit.MOONRAKER_OPERATION,
+        restart_on_exit.KLIPPER_OPERATION,
         FILAMENT_CONFIG_OPERATION,
+        FLUIDD_BUILD_OPERATION,
         remote_screen.UNIT_OPERATION,
         remote_screen.SERVER_OPERATION,
         remote_screen.NGINX_OPERATION,
     ]
-    if policy.get("system_optimizations") != "enabled":
-        return tuple(ids)
-    ids.extend(["dns", "apt_sources", "qidiclient_static_gifs"])
-    ids.extend(f"service_{service}" for service in spec.services.disable)
-    if policy.get("ai_detection") == "disable":
-        ids.extend(f"service_{item.service}" for item in spec.services.optional_disable)
-    ids.append(ROCKCHIP_ROOT_SYNC_OPERATION)
+    if policy.get("system_optimizations") == "enabled":
+        ids.extend(["dns", "apt_sources", "qidiclient_static_gifs"])
+        ids.extend(f"service_{service}" for service in spec.services.disable)
+        if policy.get("ai_detection") == "disable":
+            ids.extend(f"service_{item.service}" for item in spec.services.optional_disable)
+        ids.append(ROCKCHIP_ROOT_SYNC_OPERATION)
+    # QIDI's bundle goes last: restoring it after nginx serves the build is outside transaction rollback.
+    ids.extend(FLUIDD_BUNDLE_OPERATIONS)
     return tuple(ids)
 
 
@@ -2208,7 +2613,9 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
         return {"path": spec.klipper_print_stats_manager.file, "restart_service": spec.klipper_print_stats_manager.restart_service}
     if operation_id == FILAMENT_CONFIG_OPERATION:
         return {"path": spec.fluidd_filament_config.link, "target": spec.fluidd_filament_config.target}
-    if operation_id in (remote_screen.UNIT_OPERATION, remote_screen.SERVER_OPERATION, remote_screen.NGINX_OPERATION):
+    if operation_id == FLUIDD_BUILD_OPERATION:
+        return {"path": fluidd_build.DESTINATION, "version": spec.fluidd_build.version, "archive_sha256": spec.fluidd_build.sha256}
+    if operation_id in (moonraker_klippy_apis.OPERATION, moonraker_spoolman.OPERATION, moonraker_allowed_services.OPERATION, restart_on_exit.MOONRAKER_OPERATION, restart_on_exit.KLIPPER_OPERATION, remote_screen.UNIT_OPERATION, remote_screen.SERVER_OPERATION, remote_screen.NGINX_OPERATION):
         guarded = GUARDED_FILE_PATCHES[operation_id]
         return {"path": guarded.file(spec), "restart_service": guarded.restart_service}
     if operation_id == MOONRAKER_METADATA_OPERATION:
@@ -2659,11 +3066,17 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             "qidiclient_static_gifs",
             MOONRAKER_METADATA_OPERATION,
             MOONRAKER_CACHE_OPERATION,
+            moonraker_klippy_apis.OPERATION,
+            moonraker_spoolman.OPERATION,
+            moonraker_allowed_services.OPERATION,
             FLUIDD_BOX_OPERATION,
             FLUIDD_SERVICE_WORKER_OPERATION,
             KLIPPER_BOX_OPERATION,
             KLIPPER_PRINT_STATS_OPERATION,
+            restart_on_exit.MOONRAKER_OPERATION,
+            restart_on_exit.KLIPPER_OPERATION,
             FILAMENT_CONFIG_OPERATION,
+            FLUIDD_BUILD_OPERATION,
             remote_screen.UNIT_OPERATION,
             remote_screen.SERVER_OPERATION,
             remote_screen.NGINX_OPERATION,
@@ -2704,6 +3117,10 @@ def _validate_host_preimage(
         return
     if operation_id == MOONRAKER_METADATA_OPERATION:
         _validate_host_file_preimage(preimage, expected_path=spec.moonraker_metadata_3mf.file, paths=paths)
+        return
+    if operation_id == FLUIDD_BUILD_OPERATION:
+        if preimage not in (FLUIDD_BUILD_PREIMAGE, FLUIDD_BUILD_UPDATE_PREIMAGE):
+            raise StateValidationError("Fluidd build restoration preimage is invalid.")
         return
     if operation_id.startswith("service_"):
         expected_service = _service_for_operation(operation_id, spec)
@@ -2886,10 +3303,6 @@ def _replace_system_ledger(state: InstalledState, ledger: dict[str, Any]) -> Ins
     )
 
 
-def _has_restore_preimages(ledger: dict[str, Any] | None) -> bool:
-    return isinstance(ledger, dict) and isinstance(ledger.get("restore_preimages"), dict) and bool(ledger["restore_preimages"])
-
-
 def _system_root(environ: dict[str, str]) -> Path:
     return Path(environ.get(SYSTEM_ROOT_ENV, "/"))
 
@@ -3034,7 +3447,7 @@ def _write_host_journal(
 
 
 def _recover_pending_host_journal(
-    *, paths: RuntimePaths, root: Path, sudo_password: str | None, run, ledger: dict[str, Any], spec: SystemOptimizationsSpec,
+    *, paths: RuntimePaths, root: Path, sudo_password: str | None, run, ledger: dict[str, Any], spec: SystemOptimizationsSpec, restarts: _ServiceRestarts,
 ) -> None:
     path = _journal_path(paths)
     if not path.exists(): return
@@ -3058,7 +3471,7 @@ def _recover_pending_host_journal(
         if _operation_matches_preimage(key, preimage=preimage, spec=spec, paths=paths, root=root, run=run):
             continue
         try:
-            _restore_preimage_for_operation(key, preimage, paths=paths, spec=spec, root=root, sudo_password=sudo_password, run=run)
+            _restore_preimage_for_operation(key, preimage, paths=paths, spec=spec, root=root, sudo_password=sudo_password, run=run, restarts=restarts)
         except BaseException as exc:
             raise SystemOptimizationRecoveryError(f"Pending host rollback failed: {getattr(exc, 'message', str(exc))}", ledger) from exc
         if not _operation_matches_preimage(key, preimage=preimage, spec=spec, paths=paths, root=root, run=run):
@@ -3074,6 +3487,7 @@ def _restore_preimage_for_operation(
     root: Path,
     sudo_password: str | None,
     run,
+    restarts: _ServiceRestarts,
 ) -> None:
     if operation_id == "dns":
         for item in reversed(preimage["files"]):
@@ -3086,17 +3500,20 @@ def _restore_preimage_for_operation(
         _restore_service(preimage, root=root, sudo_password=sudo_password, run=run)
         return
     if operation_id == "qidiclient_static_gifs":
-        _restore_gifs(preimage, root=root, sudo_password=sudo_password, run=run)
+        _restore_gifs(preimage, root=root, sudo_password=sudo_password, run=run, restarts=restarts)
         return
     if operation_id in GUARDED_FILE_PATCHES:
-        _restore_guarded_file_preimage(operation_id, preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
+        _restore_guarded_file_preimage(operation_id, preimage, paths=paths, root=root, sudo_password=sudo_password, run=run, restarts=restarts)
         return
     if operation_id == FILAMENT_CONFIG_OPERATION:
         _restore_filament_config_link(paths, spec)
         return
+    if operation_id == FLUIDD_BUILD_OPERATION:
+        _restore_fluidd_build(preimage, root=root)
+        return
     if operation_id == MOONRAKER_METADATA_OPERATION:
         _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
-        _restart_service(spec.moonraker_metadata_3mf.restart_service, root=root, sudo_password=sudo_password, run=run)
+        restarts.request(spec.moonraker_metadata_3mf.restart_service)
         return
     if operation_id == ROCKCHIP_ROOT_SYNC_OPERATION:
         _restore_rockchip(

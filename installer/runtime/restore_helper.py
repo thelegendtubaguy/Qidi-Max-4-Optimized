@@ -98,7 +98,6 @@ def run_restore_helper(
     state_declares_sources, state_firmware = _snapshot_source_firmware(backup_snapshot)
     require_external = requires_external_backup_manifest(
         package_version=parsed.package_version if parsed is not None else None,
-        known_package_versions=manifest.package.known_versions,
         state_declares_source_patches=state_declares_sources,
     )
     allowed = {patch.id: patch.destination for patch in manifest.install.source_patches}

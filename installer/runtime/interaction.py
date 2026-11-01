@@ -106,7 +106,8 @@ def maybe_restart_pending_service_if_idle(
     urlopen: UrlOpenFn = urllib.request.urlopen,
 ) -> bool:
     try:
-        safety.ensure_printer_idle(paths.moonraker_url, urlopen=urlopen)
+        # Install and uninstall may have just restarted Moonraker; give it time to report printer state again.
+        safety.ensure_printer_idle(paths.moonraker_url, urlopen=urlopen, wait_seconds=90.0)
     except ActivePrintError:
         reporter.debug(event="klipper.process_restart.deferred", reason="active_print")
         reporter.line(messages.KLIPPER_SERVICE_RESTART_DEFERRED_ACTIVE_PRINT)

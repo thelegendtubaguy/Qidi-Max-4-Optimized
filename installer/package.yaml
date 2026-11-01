@@ -6,52 +6,7 @@ package:
   id: qidi-max4-optimized
   display_name: QIDI Max 4 Optimized
   printer_model: qidi-max4
-  version: "26.10.28.3"
-  known_versions:
-    - "26.04.21.1"
-    - "26.04.27.1"
-    - "26.04.27.2"
-    - "26.04.27.3"
-    - "26.04.27.4"
-    - "26.05.04.1"
-    - "26.05.19.1"
-    - "26.05.20.1"
-    - "26.05.21.1"
-    - "26.05.27.1"
-    - "26.06.01.1"
-    - "26.06.02.1"
-    - "26.06.03.1"
-    - "26.06.04.1"
-    - "26.06.11.1"
-    - "26.06.13.1"
-    - "26.06.15.1"
-    - "26.07.03.1"
-    - "26.07.03.2"
-    - "26.07.13.1"
-    - "26.07.13.2"
-    - "26.07.26.1"
-    - "26.07.26.2"
-    - "26.07.28.1"
-    - "26.08.05.1"
-    - "26.08.06.1"
-    - "26.08.06.2"
-    - "26.08.09.1"
-    - "26.08.09.2"
-    - "26.08.29.1"
-    - "26.09.09.1"
-    - "26.09.15.1"
-    - "26.10.19.1"
-    - "26.10.19.2"
-    - "26.10.20.1"
-    - "26.10.20.2"
-    - "26.10.21.1"
-    - "26.10.21.2"
-    - "26.10.22.1"
-    - "26.10.23.1"
-    - "26.10.23.2"
-    - "26.10.28.1"
-    - "26.10.28.2"
-    - "26.10.28.3"
+  version: "26.10.29.1"
 
 firmware:
   supported:
@@ -110,8 +65,18 @@ install:
       - "start_end.cfg"
       - "temperatures.cfg"
       - "box_link_monitor.cfg"
+      - "box_mcu_temperature.cfg"
+      - "background_save_config.cfg"
+      - "box_heater_refresh.cfg"
+      - "save_variables_fast.cfg"
       - "box_feed_motion.cfg"
       - "box_eject.cfg"
+      - "box_filament_guard.cfg"
+      - "box_loaded_slot.cfg"
+      - "box_slot_jog.cfg"
+      - "box_flow_recovery.cfg"
+      - "box485_monitor.cfg"
+      - "spoolman.cfg"
 
   ensure_lines:
     - id: include_optimized_macros
@@ -123,12 +88,42 @@ install:
     - id: box_link_monitor
       source: "klipper/tltg/box_link_monitor.py"
       destination: "klippy/extras/tltg_box_link_monitor.py"
+    - id: box_mcu_temperature
+      source: "klipper/tltg/box_mcu_temperature.py"
+      destination: "klippy/extras/tltg_box_mcu_temperature.py"
+    - id: background_save_config
+      source: "klipper/tltg/background_save_config.py"
+      destination: "klippy/extras/tltg_background_save_config.py"
+    - id: box_heater_refresh
+      source: "klipper/tltg/box_heater_refresh.py"
+      destination: "klippy/extras/tltg_box_heater_refresh.py"
+    - id: save_variables_fast
+      source: "klipper/tltg/save_variables_fast.py"
+      destination: "klippy/extras/tltg_save_variables_fast.py"
     - id: box_feed_motion
       source: "klipper/tltg/box_feed_motion.py"
       destination: "klippy/extras/tltg_box_feed_motion.py"
     - id: box_eject
       source: "klipper/tltg/box_eject.py"
       destination: "klippy/extras/tltg_box_eject.py"
+    - id: box_filament_guard
+      source: "klipper/tltg/box_filament_guard.py"
+      destination: "klippy/extras/tltg_box_filament_guard.py"
+    - id: box_loaded_slot
+      source: "klipper/tltg/box_loaded_slot.py"
+      destination: "klippy/extras/tltg_box_loaded_slot.py"
+    - id: box_slot_jog
+      source: "klipper/tltg/box_slot_jog.py"
+      destination: "klippy/extras/tltg_box_slot_jog.py"
+    - id: box_flow_recovery
+      source: "klipper/tltg/box_flow_recovery.py"
+      destination: "klippy/extras/tltg_box_flow_recovery.py"
+    - id: box485_monitor
+      source: "klipper/tltg/box485_monitor.py"
+      destination: "klippy/extras/tltg_box485_monitor.py"
+    - id: spoolman
+      source: "klipper/tltg/spoolman.py"
+      destination: "klippy/extras/tltg_spoolman.py"
     - id: probe_test
       source: "klipper/tltg/probe_test.py"
       destination: "klippy/extras/tltg_probe_test.py"
@@ -458,6 +453,13 @@ patches:
         - firmwares: ["01.01.07.01"]
           expected_normalized_sha256: "79234acad35e02bf68724057dc355e2e85e29c5f001fce4566e2550f3d1d5c44"
 
+    - id: heaters_m109_0
+      file: "config/klipper-macros-qd/heaters.cfg"
+      section: "gcode_macro m109.0"
+      variants:
+        - firmwares: ["01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01"]
+          expected_normalized_sha256: "50260f1efe090bd27f49c61a34b960989cfa2cdff5656bc5193cbbfc6a387b77"
+
     - id: kinematics_homing_override
       file: "config/klipper-macros-qd/kinematics.cfg"
       section: "homing_override"
@@ -522,6 +524,12 @@ system_optimizations:
   fluidd_box_filament_ids:
     file: /home/qidi/fluidd/assets/index-DlFvHGAh.js
     service_worker: /home/qidi/fluidd/sw.js
+  # The project's Fluidd fork release; the bundle builder downloads and verifies it.
+  fluidd_build:
+    version: v1.37.7-tltg-779eafd
+    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-779eafd/fluidd.zip
+    archive: system/fluidd.zip
+    sha256: 8c9e3cbae6a8d690b6576169dbde89a496545cacb3c8754afa69df6e0b658d20
   klipper_box_config:
     file: /home/qidi/klipper/klippy/extras/box_config.py
     restart_service: klipper.service

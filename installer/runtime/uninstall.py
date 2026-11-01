@@ -452,16 +452,17 @@ def _execute_uninstall(
         uninstall_counters["postflight"][0] = 1
         reporter.emit_uninstall_counters(**_freeze_counters(uninstall_counters))
 
-        if restore_system:
-            restore_system_optimizations(
-                paths=paths,
-                manifest=manifest,
-                state=state,
-                reporter=reporter,
-                input_stream=input_stream,
-                environ=environ,
-                run=run,
-            )
+        restore_system_optimizations(
+            paths=paths,
+            manifest=manifest,
+            state=state,
+            reporter=reporter,
+            input_stream=input_stream,
+            environ=environ,
+            include_optional=restore_system,
+            run=run,
+            urlopen=urlopen,
+        )
 
         if state_path.exists():
             journal.note_write()

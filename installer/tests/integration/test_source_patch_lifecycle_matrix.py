@@ -197,6 +197,31 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                     elif name != "tltg_box_load_approach_speed":
                         self.assertNotIn(f"{name} =", saved_variables)
 
+    def test_install_lowers_box_speed_pairs_left_at_earlier_defaults(self):
+        # The load pair is still at the earlier defaults; the operator changed one unload speed.
+        printer_root, paths, _ = self._fixture("01.01.06.03")
+        saved_variables_path = printer_root / "config/saved_variables.cfg"
+        saved_variables_path.write_text(
+            saved_variables_path.read_text(encoding="utf-8")
+            + "tltg_box_load_fast_speed_1 = 120\n"
+            + "tltg_box_load_fast_speed_2 = 100\n"
+            + "tltg_box_unload_speed_1 = 115\n"
+            + "tltg_box_unload_speed_2 = 90\n",
+            encoding="utf-8",
+        )
+
+        self._run_install(paths)
+
+        saved_variables = saved_variables_path.read_text(encoding="utf-8")
+        for name, value in (
+            ("tltg_box_load_fast_speed_1", "85"),
+            ("tltg_box_load_fast_speed_2", "65"),
+            ("tltg_box_unload_speed_1", "115"),
+            ("tltg_box_unload_speed_2", "90"),
+        ):
+            self.assertEqual(klipper_cfg.resolve_unique_option(saved_variables, "Variables", name).value, value)
+        self.assertNotIn("tltg_box_load_fast_length =", saved_variables)
+
     def test_noninteractive_box_reconciliation_adds_missing_mappings_without_replacing_existing_ones(self):
         printer_root, paths, _ = self._fixture("01.01.06.03")
         saved_variables_path = printer_root / "config/saved_variables.cfg"

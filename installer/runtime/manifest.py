@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
@@ -29,6 +30,7 @@ from .models import (
     StateSpec,
     SystemAptSourcesSpec,
     SystemDnsSpec,
+    SystemFluiddBuildSpec,
     SystemFluiddBundleSpec,
     SystemFluiddFilamentConfigSpec,
     SystemOptionalServiceSpec,
@@ -46,13 +48,19 @@ class ManifestValidationError(ValueError):
 
 def load_manifest(path: Path) -> Manifest:
     try:
-        with path.open("r", encoding="utf-8") as handle:
-            raw = yaml.safe_load(handle)
+        text = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise ManifestValidationError(f"Could not read manifest: {path}") from exc
+    try:
+        return _parse_manifest_text(text)
     except yaml.YAMLError as exc:
         raise ManifestValidationError(f"Could not parse manifest: {path}") from exc
-    return parse_manifest(raw)
+
+
+# The parsed manifest is immutable, so one parse serves every load of the same text.
+@lru_cache(maxsize=4)
+def _parse_manifest_text(text: str) -> Manifest:
+    return parse_manifest(yaml.safe_load(text))
 
 
 def parse_manifest(raw: Any) -> Manifest:
@@ -68,7 +76,6 @@ def parse_manifest(raw: Any) -> Manifest:
         display_name=_require_str(package_raw, "display_name"),
         printer_model=_require_str(package_raw, "printer_model"),
         version=_require_str(package_raw, "version"),
-        known_versions=_require_unique_str_list(package_raw, "known_versions", non_empty=True),
     )
 
     firmware_raw = _require_mapping(raw, "firmware")
@@ -384,6 +391,7 @@ def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec 
     moonraker_metadata_raw = _require_mapping(system_raw, "moonraker_metadata_3mf")
     moonraker_file_manager_raw = _require_mapping(system_raw, "moonraker_file_manager")
     fluidd_box_raw = _require_mapping(system_raw, "fluidd_box_filament_ids")
+    fluidd_build_raw = _require_mapping(system_raw, "fluidd_build")
     klipper_box_raw = _require_mapping(system_raw, "klipper_box_config")
     klipper_print_stats_raw = _require_mapping(system_raw, "klipper_print_stats_manager")
     filament_config_raw = _require_mapping(system_raw, "fluidd_filament_config")
@@ -438,6 +446,12 @@ def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec 
         fluidd_box_filament_ids=SystemFluiddBundleSpec(
             file=_validate_absolute_path(_require_str(fluidd_box_raw, "file")),
             service_worker=_validate_absolute_path(_require_str(fluidd_box_raw, "service_worker")),
+        ),
+        fluidd_build=SystemFluiddBuildSpec(
+            version=_require_str(fluidd_build_raw, "version"),
+            url=_validate_https_url(_require_str(fluidd_build_raw, "url")),
+            archive=_validate_relative_path(_require_str(fluidd_build_raw, "archive"), allowed_roots=("system",)),
+            sha256=_require_sha256(fluidd_build_raw, "sha256"),
         ),
         klipper_box_config=SystemMoonrakerMetadata3mfSpec(
             file=_validate_absolute_path(_require_str(klipper_box_raw, "file")),
@@ -551,6 +565,12 @@ def _validate_relative_path(path: str, *, allowed_roots: tuple[str, ...]) -> str
         allowed = ", ".join(allowed_roots)
         raise ManifestValidationError(f"Path must start with one of {allowed}: {path}")
     return pure.as_posix()
+
+
+def _validate_https_url(url: str) -> str:
+    if not url.startswith("https://") or any(char.isspace() for char in url):
+        raise ManifestValidationError(f"Expected an https URL: {url}")
+    return url
 
 
 def _validate_filament_config_link(path: str) -> str:

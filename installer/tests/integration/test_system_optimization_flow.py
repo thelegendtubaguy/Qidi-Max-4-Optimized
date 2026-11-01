@@ -6,13 +6,16 @@ import json
 import os
 import shutil
 import unittest
+import urllib.error
 from pathlib import Path
 from subprocess import CompletedProcess
 from unittest import mock
 
 from installer.runtime import system_optimizations
 from installer.runtime import fluidd_box_filaments as fluidd_patch
+from installer.runtime import moonraker_allowed_services
 from installer.runtime import remote_screen
+from installer.runtime import restart_on_exit
 from installer.runtime.fluidd_box_filaments import OPERATION as FLUIDD_BOX_OPERATION, PATCH_MARKER
 from installer.runtime.fluidd_filament_config import OPERATION as FILAMENT_CONFIG_OPERATION
 from installer.runtime.klipper_box_config import OPERATION as KLIPPER_BOX_OPERATION
@@ -46,6 +49,7 @@ from installer.tests.helpers import (
     fake_system_root,
     moonraker_urlopen,
     snapshot_tree,
+    with_fluidd_build,
 )
 
 
@@ -59,6 +63,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             include_klipper_box_config=True,
             include_klipper_print_stats_manager=True,
             include_nginx_site=True,
+            include_moonraker_asvc=True,
         )
         host_run = fake_host_run(system_root)
         moonraker = system_root / "home/qidi/moonraker/moonraker/components/file_manager/file_manager.py"
@@ -73,11 +78,17 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         box_config_before = box_config.read_bytes()
         stats_manager = system_root / "home/qidi/klipper/klippy/extras/print_stats_manager.py"
         stats_manager_before = stats_manager.read_bytes()
+        klippy_apis = system_root / "home/qidi/moonraker/moonraker/components/klippy_apis.py"
+        klippy_apis_before = klippy_apis.read_bytes()
+        spoolman = system_root / "home/qidi/moonraker/moonraker/components/spoolman.py"
+        spoolman_before = spoolman.read_bytes()
         nginx_site = system_root / remote_screen.NGINX_SITE.lstrip("/")
         nginx_site_before = nginx_site.read_bytes()
         screen_unit = system_root / remote_screen.UNIT_FILE.lstrip("/")
         screen_server = system_root / remote_screen.SERVER_FILE.lstrip("/")
         screen_state = system_root / "systemd" / f"{remote_screen.UNIT}.json"
+        asvc = system_root / moonraker_allowed_services.FILE.lstrip("/")
+        asvc_before = asvc.read_bytes()
         before = snapshot_tree(system_root)
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
         env[SYSTEM_ROOT_ENV] = str(system_root)
@@ -112,13 +123,25 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             saved_variables_path=paths.config_root / "saved_variables.cfg"
         )
         install_idle_checks = 0
+        service_events = []
 
         def install_urlopen(request, timeout=0):
             nonlocal install_idle_checks
             url = getattr(request, "full_url", str(request))
             if url == paths.moonraker_url:
                 install_idle_checks += 1
+            if url.endswith("/server/info"):
+                service_events.append("moonraker answered")
+            if url.endswith("/machine/services/restart"):
+                service_events.append("klipper.service via Moonraker")
             return base_urlopen(request, timeout=timeout)
+
+        def install_run(command, **kwargs):
+            if list(command)[-3:-1] == ["systemctl", "restart"]:
+                service_events.append(list(command)[-1])
+            if list(command)[-2:] == ["systemctl", "daemon-reload"]:
+                service_events.append("daemon-reload")
+            return host_run(command, **kwargs)
 
         run_install(
             paths,
@@ -127,9 +150,23 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             input_stream=install_responses,
             urlopen=install_urlopen,
             environ=env,
-            run=host_run,
+            run=install_run,
         )
         self.assertEqual(install_idle_checks, 2)
+        # Every host change is in place before any service restarts, and each restarts once. The touchscreen app
+        # restarts after Moonraker answers again, and Klipper restarts once for both its host and source changes.
+        restarts = [
+            "moonraker.service",
+            "moonraker answered",
+            remote_screen.UNIT,
+            "qidi-client.service",
+            "klipper.service via Moonraker",
+        ]
+        self.assertEqual(service_events[-len(restarts):], restarts)
+        self.assertEqual(set(service_events[:-len(restarts)]), {"daemon-reload"})
+        # Klipper and Moonraker restart after any exit outside systemd, without restarting them to apply it.
+        for dropin in restart_on_exit.FILES.values():
+            self.assertEqual((system_root / dropin.lstrip("/")).read_text(encoding="utf-8"), restart_on_exit.CONTENT)
         self.assertEqual(install_responses.readline(), "unused\n")
         self.assertTrue((system_root / "etc/resolv.conf").is_symlink())
         self.assertIn(
@@ -160,6 +197,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertNotEqual(moonraker.read_bytes(), moonraker_before)
         self.assertIn(b"\r\n", moonraker.read_bytes())
         self.assertEqual(moonraker.stat().st_mode & 0o777, 0o640)
+        self.assertIn(b"            plateindex = self._tltg_3mf_plate_index(filename)\r\n", klippy_apis.read_bytes())
+        self.assertIn(b"        self._highest_epos = self._last_epos\r\n", spoolman.read_bytes())
         self.assertIn(FLUIDD_BOX_OPERATION, state.system_ledger["restore_preimages"])
         self.assertIn(PATCH_MARKER.encode(), fluidd.read_bytes())
         self.assertIn(b"Math.floor(u/4)===t-1", fluidd.read_bytes())
@@ -189,8 +228,10 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(screen_unit.read_text(encoding="utf-8"), remote_screen.UNIT_CONTENT)
         self.assertEqual(screen_server.read_bytes(), remote_screen.SERVER_PAYLOAD.read_bytes())
         self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "enabled")
-        self.assertIn(b"location /tltg-screen/ {\r\n", nginx_site.read_bytes())
-        self.assertNotIn(b"\n", nginx_site.read_bytes().replace(b"\r\n", b""))
+        # Without a package Fluidd build, nginx keeps serving QIDI's patched bundle.
+        self.assertEqual(nginx_site.read_bytes(), nginx_site_before)
+        self.assertEqual(state.system_ledger["outcomes"][system_optimizations.FLUIDD_BUILD_OPERATION]["status"], "missing")
+        self.assertEqual(asvc.read_bytes(), asvc_before + b"\nqidi-client\n")
         fluidd_current = fluidd.read_bytes()
         # Earlier package versions left owned Fluidd patches, including an older Box motion section, that updates must replace in place.
         fluidd_previous = fluidd_before.decode().replace(fluidd_patch.SLOT_PARSE_STOCK, fluidd_patch.SLOT_PARSE_PATCHED).replace(
@@ -209,6 +250,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             paths=paths, spec=manifest.system_optimizations, ledger=cache_policy,
             reporter=PlainReporter(io.StringIO()), input_stream=None, environ=env,
             source="auto_update_reconcile", run=host_run,
+            urlopen=moonraker_urlopen(),
         )
         self.assertEqual(reconciled["restore_preimages"][cache_id], prior_preimage)
         self.assertEqual(fluidd.read_bytes(), fluidd_current)
@@ -222,48 +264,122 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             paths=paths, spec=manifest.system_optimizations, ledger=reconciled,
             reporter=PlainReporter(io.StringIO()), input_stream=None, environ=env,
             source="auto_update_reconcile", run=host_run,
+            urlopen=moonraker_urlopen(),
         )
         self.assertEqual(screen_server.read_bytes(), remote_screen.SERVER_PAYLOAD.read_bytes())
         self.assertFalse(reconciled["restore_preimages"][remote_screen.SERVER_OPERATION]["exists"])
+
+        # Serving the package Fluidd build retires QIDI's bundle patches; a failure first rolls the switch back.
+        manifest = with_fluidd_build(manifest)
+        build = system_root / "home/qidi/tltg-fluidd"
+        previous_build = system_root / "home/qidi/tltg-fluidd.tltg-previous"
+        marker = build / ".tltg-optimized-fluidd"
+
+        def failing_restart(unit):
+            failed = False
+
+            def run(command, **kwargs):
+                nonlocal failed
+                if not failed and list(command)[-3:] == ["systemctl", "restart", unit]:
+                    failed = True
+                    return CompletedProcess(command, 1, stdout="", stderr="restart failed")
+                return host_run(command, **kwargs)
+            return run
+
+        def reconcile(ledger, run=host_run):
+            return apply_system_optimizations(
+                paths=paths, spec=manifest.system_optimizations, ledger=ledger,
+                reporter=PlainReporter(io.StringIO()), input_stream=None, environ=env,
+                source="auto_update_reconcile", run=run,
+                urlopen=moonraker_urlopen(),
+            )
+
+        with self.assertRaises(SystemOptimizationApplyError):
+            reconcile(reconciled, failing_restart("nginx.service"))
+        self.assertFalse(build.exists())
+        self.assertEqual(nginx_site.read_bytes(), nginx_site_before)
+        self.assertEqual(fluidd.read_bytes(), fluidd_current)
+        reconciled = reconcile(reconciled)
+        self.assertEqual(marker.read_text(encoding="utf-8"), manifest.system_optimizations.fluidd_build.sha256 + "\n")
+        self.assertEqual((build / "assets/index.js").stat().st_mode & 0o777, 0o644)
+        self.assertIn(b"\r\n    root /home/qidi/tltg-fluidd;\r\n", nginx_site.read_bytes())
+        self.assertIn(b"location /tltg-screen/ {\r\n", nginx_site.read_bytes())
+        self.assertNotIn(b"\n", nginx_site.read_bytes().replace(b"\r\n", b""))
+        self.assertEqual(fluidd.read_bytes(), fluidd_before)
+        self.assertEqual(service_worker.read_bytes(), service_worker_before)
+        self.assertNotIn(FLUIDD_BOX_OPERATION, reconciled["restore_preimages"])
+        self.assertNotIn(fluidd_patch.SERVICE_WORKER_OPERATION, reconciled["restore_preimages"])
+        self.assertEqual(reconciled["outcomes"][FLUIDD_BOX_OPERATION]["status"], "retired")
+        # Updates replace an earlier build, which comes back if a later change fails.
+        marker.write_text("0" * 64 + "\n", encoding="utf-8")
+        screen_server.write_bytes(prior_server)
+        reconciled["outcomes"][remote_screen.SERVER_OPERATION]["postflight"]["sha256"] = __import__("hashlib").sha256(prior_server).hexdigest()
+        with self.assertRaises(SystemOptimizationApplyError):
+            reconcile(reconciled, failing_restart(remote_screen.UNIT))
+        self.assertEqual(marker.read_text(encoding="utf-8"), "0" * 64 + "\n")
+        self.assertFalse(previous_build.exists())
+        reconciled = reconcile(reconciled)
+        self.assertEqual(marker.read_text(encoding="utf-8"), manifest.system_optimizations.fluidd_build.sha256 + "\n")
+        self.assertFalse(previous_build.exists())
         write_installed_state(printer_root / manifest.state_file, _replace_system_ledger(state, reconciled))
 
-        run_uninstall(
-            paths,
-            manifest,
-            compatibility,
-            PlainReporter(io.StringIO()),
-            input_stream=io.StringIO("yes\nyes\nno\n"),
-            urlopen=moonraker_urlopen(),
-            environ=env,
-            run=host_run,
-        )
+        # Declining the system-restoration prompt keeps only the optional OS optimizations; everything install makes
+        # regardless of policy is always undone. Moonraker stays unreachable for a while after restoration restarts
+        # it, and the pending Klipper restart still runs once it answers again.
+        moonraker_down = 0
+
+        def uninstall_run(command, **kwargs):
+            nonlocal moonraker_down
+            if list(command)[-3:] == ["systemctl", "restart", "moonraker.service"]:
+                moonraker_down = 3
+            return host_run(command, **kwargs)
+
+        base_uninstall_urlopen = moonraker_urlopen()
+
+        def uninstall_urlopen(request, *args, **kwargs):
+            nonlocal moonraker_down
+            if moonraker_down:
+                moonraker_down -= 1
+                raise urllib.error.URLError("Moonraker is restarting")
+            return base_uninstall_urlopen(request, *args, **kwargs)
+
+        with mock.patch("installer.runtime.safety.time.sleep"):
+            run_uninstall(
+                paths,
+                manifest,
+                compatibility,
+                PlainReporter(io.StringIO()),
+                input_stream=io.StringIO("yes\nno\nno\n"),
+                urlopen=uninstall_urlopen,
+                environ=env,
+                run=uninstall_run,
+            )
+        self.assertFalse(paths.restart_marker_path.exists())
         self.assertFalse((printer_root / manifest.state_file).exists())
-        self.assertFalse((system_root / "etc/resolv.conf").is_symlink())
-        self.assertEqual(
-            (system_root / "etc/resolv.conf").read_text(encoding="utf-8"),
-            "nameserver 114.114.114.114\n",
-        )
-        self.assertEqual(
-            (system_root / "etc/apt/sources.list").read_text(encoding="utf-8"),
-            "old apt\n",
-        )
-        self.assertFalse(dropin.exists())
+        self.assertNotEqual((system_root / "etc/apt/sources.list").read_text(encoding="utf-8"), "old apt\n")
+        self.assertTrue(dropin.exists())
         self.assertEqual(moonraker.read_bytes(), moonraker_before)
         self.assertEqual(moonraker.stat().st_mode & 0o777, 0o640)
         self.assertEqual(fluidd.read_bytes(), fluidd_before)
         self.assertEqual(service_worker.read_bytes(), service_worker_before)
         self.assertEqual(box_config.read_bytes(), box_config_before)
         self.assertEqual(stats_manager.read_bytes(), stats_manager_before)
+        self.assertEqual(klippy_apis.read_bytes(), klippy_apis_before)
+        self.assertEqual(spoolman.read_bytes(), spoolman_before)
         self.assertFalse(probe_helper.exists())
         self.assertFalse(filament_link.is_symlink())
         self.assertEqual(nginx_site.read_bytes(), nginx_site_before)
+        self.assertEqual(asvc.read_bytes(), asvc_before)
+        self.assertFalse(build.exists())
         self.assertFalse(screen_unit.exists())
         self.assertFalse(screen_server.exists())
         self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "disabled")
+        for dropin in restart_on_exit.FILES.values():
+            self.assertFalse((system_root / dropin.lstrip("/")).exists())
 
-    def test_unreviewed_fluidd_bundle_is_preserved_without_blocking_other_patches(self):
+    def test_unreviewed_host_files_are_preserved_without_blocking_other_patches(self):
         printer_root = copy_base_runtime()
-        root = fake_system_root(include_moonraker_cache=True, include_fluidd_bundle=True)
+        root = fake_system_root(include_moonraker_cache=True, include_fluidd_bundle=True, include_moonraker_asvc=True)
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
         env[SYSTEM_ROOT_ENV] = str(root)
         paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
@@ -271,17 +387,28 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         fluidd = root / manifest.system_optimizations.fluidd_box_filament_ids.file.lstrip("/")
         fluidd.write_text(fluidd.read_text().replace('"officiallFilasList",e)', '"officiallFilasList",e||{})'))
         original = fluidd.read_bytes()
+        asvc = root / moonraker_allowed_services.FILE.lstrip("/")
+        asvc.write_text("[allowed]\nklipper_mcu\n", encoding="utf-8")
+        operator_dropin = root / restart_on_exit.FILES[restart_on_exit.KLIPPER_OPERATION].lstrip("/")
+        operator_dropin.parent.mkdir(parents=True)
+        operator_dropin.write_text("[Service]\nRemainAfterExit=yes\n", encoding="utf-8")
 
         ledger = apply_system_optimizations(
             paths=paths, spec=manifest.system_optimizations,
             ledger={"policy": {"system_optimizations": "disabled", "ai_detection": "unset"}},
             reporter=PlainReporter(io.StringIO()), input_stream=None,
             environ=env, source="yes_install", run=fake_host_run(root),
+            urlopen=moonraker_urlopen(),
         )
 
         self.assertEqual(fluidd.read_bytes(), original)
         self.assertEqual(ledger["outcomes"][FLUIDD_BOX_OPERATION]["status"], "unsupported")
         self.assertNotIn(FLUIDD_BOX_OPERATION, ledger["restore_preimages"])
+        self.assertEqual(asvc.read_text(encoding="utf-8"), "[allowed]\nklipper_mcu\n")
+        self.assertEqual(ledger["outcomes"][moonraker_allowed_services.OPERATION]["status"], "unsupported")
+        self.assertEqual(operator_dropin.read_text(encoding="utf-8"), "[Service]\nRemainAfterExit=yes\n")
+        self.assertEqual(ledger["outcomes"][restart_on_exit.KLIPPER_OPERATION]["status"], "unsupported")
+        self.assertIn(restart_on_exit.MOONRAKER_OPERATION, ledger["restore_preimages"])
         self.assertIn(system_optimizations.MOONRAKER_CACHE_OPERATION, ledger["restore_preimages"])
 
     def test_moonraker_cache_admission_and_restart_failure_preserve_source(self):
@@ -315,6 +442,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                         if fault == "concurrent":
                             failed = True
                             target.write_bytes(target.read_bytes() + b"\n# concurrent operator edit\n")
+                            return CompletedProcess(command, 1, stdout="", stderr="restart failed")
                     return host_run(command, **kwargs)
 
                 expected_error = SystemOptimizationRecoveryError if fault == "concurrent" else SystemOptimizationApplyError
@@ -324,6 +452,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                         ledger={"policy": {"system_optimizations": "disabled", "ai_detection": "unset"}},
                         reporter=PlainReporter(io.StringIO()), input_stream=None,
                         environ=env, source="yes_install", run=run,
+                        urlopen=moonraker_urlopen(),
                     )
                 if fault == "concurrent":
                     drifted = target.read_bytes()
@@ -333,6 +462,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                         recover_pending_system_optimization(
                             paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()),
                             input_stream=None, environ=env, run=host_run,
+                            urlopen=moonraker_urlopen(),
                         )
                     self.assertEqual(target.read_bytes(), drifted)
                 else:
@@ -375,6 +505,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             recover_pending_system_optimization(
                 paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()),
                 input_stream=io.StringIO(), environ=env, run=fake_host_run(system_root),
+                urlopen=moonraker_urlopen(),
             )
         self.assertTrue(_journal_path(paths).exists())
 
@@ -421,6 +552,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                 input_stream=io.StringIO(),
                 environ=env,
                 run=host_run,
+                urlopen=moonraker_urlopen(),
             )
         )
         self.assertFalse(_journal_path(paths).exists())
@@ -455,6 +587,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             paths=paths, spec=manifest.system_optimizations, ledger=cache_policy,
             reporter=PlainReporter(io.StringIO()), input_stream=None, environ=env,
             source="auto_update_reconcile", run=host_run,
+            urlopen=moonraker_urlopen(),
         )
         self.assertEqual(moonraker.read_bytes(), drifted)
         self.assertEqual(os.readlink(filament_link), "/home/qidi/operator_filaments")
@@ -654,7 +787,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         journal = {"schema_version": 1, "operation": "rockchip_root_sync", "transaction_id": "same", "phase": "captured", "preimage": {"classification": "defective_stock", "dropin": {"path": "/etc/shadow", "exists": False}, "desired_dropin": manifest.system_optimizations.rockchip_root_sync.dropin_content, "unit": {}, "mount_options": ["rw", "sync"], "marker": {"exists": False}}}
         _journal_path(paths).write_text(json.dumps(journal), encoding="utf-8")
         with self.assertRaises(SystemOptimizationRecoveryError):
-            recover_pending_system_optimization(paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, run=fake_host_run(root))
+            recover_pending_system_optimization(paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, run=fake_host_run(root), urlopen=moonraker_urlopen())
         self.assertTrue(_journal_path(paths).exists())
 
     def test_rockchip_restores_full_admitted_mount_preimage(self):
@@ -680,18 +813,18 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         selected = ("service_xl2tpd", "service_bluetooth")
         with mock.patch.object(system_optimizations, "_selected_operation_ids", return_value=selected):
             with self.assertRaises(SystemOptimizationRecoveryError):
-                apply_system_optimizations(paths=paths, spec=manifest.system_optimizations, ledger=ledger, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, source="test", run=run)
+                apply_system_optimizations(paths=paths, spec=manifest.system_optimizations, ledger=ledger, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, source="test", run=run, urlopen=moonraker_urlopen())
         payload = json.loads(_journal_path(paths).read_text(encoding="utf-8"))
         self.assertIn("service_xl2tpd", payload["preimages"])
         self.assertIn("service_bluetooth", payload["preimages"])
         calls["fail_apply"] = False
         with self.assertRaises(SystemOptimizationRecoveryError):
-            recover_pending_system_optimization(paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, run=run)
+            recover_pending_system_optimization(paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, run=run, urlopen=moonraker_urlopen())
         self.assertTrue(_journal_path(paths).exists())
         with self.assertRaises(SystemOptimizationRecoveryError):
-            apply_system_optimizations(paths=paths, spec=manifest.system_optimizations, ledger=ledger, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, source="next-lifecycle", run=run)
+            apply_system_optimizations(paths=paths, spec=manifest.system_optimizations, ledger=ledger, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, source="next-lifecycle", run=run, urlopen=moonraker_urlopen())
         calls["fail_restore"] = False
-        self.assertTrue(recover_pending_system_optimization(paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, run=run))
+        self.assertTrue(recover_pending_system_optimization(paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, run=run, urlopen=moonraker_urlopen()))
         self.assertFalse(_journal_path(paths).exists())
 
     def test_rockchip_drift_journal_never_replays_after_interrupt(self):
@@ -707,9 +840,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                 raise KeyboardInterrupt
         with mock.patch.object(reporter, "line", side_effect=interrupt_after_preserve):
             with self.assertRaises(KeyboardInterrupt):
-                system_optimizations.restore_system_optimizations(paths=paths, manifest=manifest, state=state, reporter=reporter, input_stream=io.StringIO(), environ=env, run=fake_host_run(root))
+                system_optimizations.restore_system_optimizations(paths=paths, manifest=manifest, state=state, reporter=reporter, input_stream=io.StringIO(), environ=env, include_optional=True, run=fake_host_run(root), urlopen=moonraker_urlopen())
         self.assertEqual(mount_options.read_text(encoding="utf-8"), "ro,noatime,async\n")
-        recover_pending_system_optimization(paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, run=fake_host_run(root))
+        recover_pending_system_optimization(paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, run=fake_host_run(root), urlopen=moonraker_urlopen())
         self.assertEqual(mount_options.read_text(encoding="utf-8"), "ro,noatime,async\n")
 
     def test_unsafe_or_incomplete_mount_preimage_fails_before_host_mutation(self):
@@ -728,7 +861,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                         reporter=PlainReporter(io.StringIO()),
                         input_stream=io.StringIO(),
                         environ=env,
+                        include_optional=True,
                         run=fake_host_run(root),
+                        urlopen=moonraker_urlopen(),
                     )
                 self.assertFalse(_journal_path(paths).exists())
                 self.assertEqual(snapshot_tree(root), before)

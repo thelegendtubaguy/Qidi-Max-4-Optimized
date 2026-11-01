@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -20,17 +21,23 @@ class CompatibilityValidationError(ValueError):
 
 def load_supported_upgrade_sources(path: Path) -> UpgradeSources:
     try:
-        with path.open("r", encoding="utf-8") as handle:
-            raw = yaml.safe_load(handle)
+        text = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise CompatibilityValidationError(
             f"Could not read supported upgrade sources: {path}"
         ) from exc
+    try:
+        return _parse_upgrade_sources_text(text)
     except yaml.YAMLError as exc:
         raise CompatibilityValidationError(
             f"Could not parse supported upgrade sources: {path}"
         ) from exc
-    return parse_supported_upgrade_sources(raw)
+
+
+# The parsed envelope is immutable, so one parse serves every load of the same text.
+@lru_cache(maxsize=4)
+def _parse_upgrade_sources_text(text: str) -> UpgradeSources:
+    return parse_supported_upgrade_sources(yaml.safe_load(text))
 
 
 def parse_supported_upgrade_sources(raw: Any) -> UpgradeSources:
@@ -78,11 +85,6 @@ def parse_supported_upgrade_sources(raw: Any) -> UpgradeSources:
 def validate_manifest_compatibility(
     manifest: Manifest, upgrade_sources: UpgradeSources
 ) -> None:
-    if manifest.package.version not in manifest.package.known_versions:
-        raise CompatibilityValidationError(
-            "Current package.version must occur in package.known_versions."
-        )
-
     allowed_targets = {
         target.target_tuple for target in upgrade_sources.allowed_patch_targets
     }
@@ -116,12 +118,9 @@ def validate_manifest_compatibility(
 
 
 def validate_installed_state_identity(state, manifest: Manifest) -> None:
-    if (
-        state.package_id != manifest.package.id
-        or state.package_version not in manifest.package.known_versions
-    ):
+    if state.package_id != manifest.package.id:
         raise CompatibilityValidationError(
-            "Installed package identity or version is not admitted by this manifest."
+            "Installed package identity is not admitted by this manifest."
         )
 
 

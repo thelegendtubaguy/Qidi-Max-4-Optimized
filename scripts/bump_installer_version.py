@@ -106,15 +106,7 @@ def _update_package_yaml(text: str, version: str) -> str:
     )
     if count != 1:
         raise VersionBumpError("Could not update package.version in installer/package.yaml.")
-
-    known_match = re.search(r'(?m)^(  known_versions:\n)((?:    - ["\'][^"\'\n]+["\']\n)+)', text)
-    if known_match is None:
-        raise VersionBumpError("Could not find package.known_versions in installer/package.yaml.")
-    known_versions = set(re.findall(r'    - ["\']([^"\'\n]+)["\']', known_match.group(2)))
-    if version in known_versions:
-        return text
-    insert_at = known_match.end(2)
-    return text[:insert_at] + f'    - "{version}"\n' + text[insert_at:]
+    return text
 
 
 def _update_globals(text: str, version: str) -> str:

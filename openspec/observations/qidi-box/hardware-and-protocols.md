@@ -180,6 +180,16 @@ Harnessed `slot_sync()` saved the owning stepper's slot name regardless of its `
 
 **Runtime-confirmed (2026-10-24, `.07.01`, instrumented `box_config.py` position trace of a vendor slot 2 load and unload).** After heating, the slot moved about +317 mm, −31 mm, then about +997 mm on its own queue at an average of about 50 mm/s, and backed off 2.7 mm. It then followed the extruder queue for `G1 E25`, `E5`, `E10`, `E5`, `E20` before being detached for the `E100` purge. The unload followed the extruder for `G1 E-30` and `E-120`, then retracted about 1055 mm on its own queue. Positions came from 50 ms polling, so speeds are approximate.
 
+### Retraction past the slot inlet
+
+**Runtime-confirmed (2026-10-30, `.07.01`, two USB Boxes, slot 0, `TLTG_BOX_SLOT_JOG` on a private motion queue, idle, nozzle cold).** Slot 1B was loaded to the toolhead, so the hub sensor stayed occupied throughout. Slot 0 started from where it rested with filament at its inlet; its distance from park was not measured.
+
+- Slot 0 retracted in 10–50 mm moves at 20–40 mm/s. The operator saw its filament move back, and `runout_button` stayed `0` until it read `1` after about 1860 mm in total.
+- At that point the operator found the filament tip out of the slot feeder. Driving the slot 100 mm forward in 10 mm moves did not return filament to the inlet sensor.
+- The slot inlet clearing while idle started no vendor task, and saved Box state was unchanged.
+- Pushing the filament back into the inlet by hand ran the vendor's normal automatic slot load.
+- **Config-confirmed:** QIDI's `klippy/extras/stepper_enable.py` sets `ENABLE_DELAY_TIME = 0.300`. `motor_enable(print_time)` schedules the enable pin `0.3 s` before `print_time` and logs `ENABLE delay: stepper=<name> enable=<time> move=<time>`.
+
 ## Cleanup scripts
 
 `CLEAR_FLUSH`:

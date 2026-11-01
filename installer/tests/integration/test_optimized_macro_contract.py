@@ -200,6 +200,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
                     "OPTIMIZED_MOVE_TO_TRASH",
                     "UNLOAD_T[current_extruder]",
                     "T[next_extruder]",
+                    "M109.0 S",
                 )
 
     def test_box_availability_uses_one_transport_independent_definition(self):
