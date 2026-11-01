@@ -461,6 +461,7 @@ def _execute_uninstall(
             environ=environ,
             include_optional=restore_system,
             run=run,
+            urlopen=urlopen,
         )
 
         if state_path.exists():

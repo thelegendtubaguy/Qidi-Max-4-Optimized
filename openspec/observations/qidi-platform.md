@@ -113,6 +113,15 @@ The 4 KiB batch increased from `1.324 MiB/s` to `35.617 MiB/s`; the 256 KiB batc
 - Disabling `algo_app.service` does not clear those toggles.
 - Changing those toggles did not re-enable the disabled service, restore port `9010`, or restore its API in the observed runtime.
 
+## Touchscreen Moonraker connection
+
+- **Runtime-confirmed:** on one Max 4 running `01.01.07.01`, `qidiclient` connects to Moonraker directly at `127.0.0.1:7125` (user agent `WebSocket++/0.8.2`, registered as agent `QD_MAX4`), not through nginx.
+- **Static-recovered:** in `qidiclient` SHA-256 `b5285d1a52f1180757360d0893f0f8ed619aaaa31d2d621917c0a963bc3fde4e` (`01.01.07.01`), a loop checks the Moonraker connection every 5 seconds and reconnects when it is down. After 10 consecutive failed reconnects it logs `检测到连接断开重连次数达到阈值，报错 MoonrakerError` ("reconnect attempts reached the threshold, reporting MoonrakerError") and sets its `moonrakererror` key; a successful connection resets the count. Ten failed subscription attempts instead report `KlipperError`.
+- **Static-recovered:** the `QDC_400_005_015_001` handler subscribes to `moonrakererror`; its show predicate is always true and its clear predicate always false. `resource/qidi_client_error/QDC_400_005_015_001/0.json` titles it `Printer service failed to start` with `Please reinstall or contact customer support`.
+- **Runtime-confirmed:** on that printer, `moonraker.service` has `Type=simple`, `Restart=always`, `RestartSec=10`, and `RemainAfterExit=yes`. A transient unit with the same settings whose process was sent SIGTERM stayed `active (exited)` with `NRestarts=0`, so a clean Moonraker exit outside systemd leaves Moonraker down while systemd reports the unit active. `klipper.service` also has `Restart=always` with `RemainAfterExit=yes`; `qidi-client.service` has `Restart=always` without it.
+- **Runtime-confirmed:** on that printer, Moonraker's process received SIGTERM outside systemd and exited within a second, while the unit stayed active until a `systemctl restart` 97 seconds later. `qidiclient`, running throughout, then showed `QDC_400_005_015_001` with **Restart Klipper** and **Restart Firmware** buttons and still showed it a day later while Moonraker and Fluidd worked normally.
+- **Unresolved:** whether a crash that exits non-zero is restarted after `RestartSec`, as systemd documents.
+
 ## Stock integration constraints
 
 - `config/fluidd.cfg` is printer-owned and read-only for this repository.

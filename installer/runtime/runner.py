@@ -562,6 +562,7 @@ def _execute_install(
             environ=environ,
             auto_update_child=environ.get(LOCK_HELD_ENV) == "1",
             run=run,
+            urlopen=urlopen,
         )
     except BaseException as exc:
         reporter.debug(
