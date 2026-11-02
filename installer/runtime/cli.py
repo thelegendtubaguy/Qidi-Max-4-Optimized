@@ -31,6 +31,7 @@ from .host_reboot import (
 from .locking import acquire
 from .manifest import ManifestValidationError, load_manifest
 from .models import RuntimePaths, SystemOptimizationCliOptions
+from .ownership import repair_installer_ownership
 from .reporter import create_reporter
 from .restore_helper import RestoreHelperError, run_restore_helper
 from .rollback import clear_recovery_sentinel
@@ -104,6 +105,9 @@ def main(
                 action="demo-tui",
             )
             return 0
+
+        if not args.dry_run and not (args.mode == "box-firmware" and args.box_action == "status"):
+            repair_installer_ownership(paths, reporter=reporter, environ=env, input_stream=input_stream)
 
         if args.mode == "box-firmware":
             if args.box_action == "status":

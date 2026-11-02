@@ -25,6 +25,23 @@ The installer SHALL select one complete baseline for the detected supported firm
 - **THEN** migration requires an idle printer and a validated stock snapshot for the detected firmware
 - **AND** vendor-managed, user-specific, and sensitive configuration remains preserved
 
+### Requirement: Runs as root match runs as the printer's user
+Every installer launcher, including the release download, automatic updates, restore, and the THR and Box firmware tools, SHALL leave the same file owners and modes whether it is started as root or as the user who owns `printer_data`, and SHALL return installer-created files that an earlier run left owned by another user to that user.
+
+#### Scenario: A root start runs as the printer's user
+- **WHEN** a launcher starts as root
+- **THEN** the runtime switches to the user and groups that own `printer_data` before it imports or writes anything from the bundle, and uses sudo for privileged steps as an unprivileged run does
+- **AND** a bundle outside that user's home, such as one under `/root`, is first copied into the user's home, owned by the user, and run from there
+- **AND** the release download unpacks into that user's home, owned by the user
+- **AND** a root start refuses to run when `printer_data` is missing or owned by root
+
+#### Scenario: Files an earlier root run left are given back
+- **WHEN** any launcher run other than a dry run or Box firmware status starts, before it takes the installer lock or reads installer state
+- **THEN** every path named `tltg` or `.tltg` in `printer_data`, its `config` folder, the home folder, and Klipper's `klippy/extras`, and everything below those paths, that is not owned by the `printer_data` owner is changed to that user and the user's primary group, without following symbolic links
+- **AND** QIDI's files, including root-owned ones, are not changed
+- **AND** nothing runs through sudo when every such path already belongs to the user
+- **AND** the run stops before taking the lock when sudo can't make the change
+
 ### Requirement: Recoverable configuration lifecycle
 Install, reinstall, restore, and uninstall SHALL execute as serialized, idle-printer transactions with validated inputs, recoverable preimages, atomic committed state, and drift-safe reversal.
 

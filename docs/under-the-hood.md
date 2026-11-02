@@ -8,6 +8,7 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 - **Your changes win.** A setting you changed from QIDI's value is kept. A file you change after installing is kept and reported by uninstall.
 - **Everything is backed up first.** See [Restore a backup](troubleshooting.md#restore-a-backup).
 - **The printer must be idle** for any change that restarts Klipper or Moonraker.
+- **The installer runs as `qidi`,** the user that owns `~/printer_data`, even when started with `sudo`, and uses `sudo` only for the steps that need it. Every run first gives any of its own files, everything named `tltg` in `~/printer_data`, `~/printer_data/config`, the home folder, and Klipper's `klippy/extras`, back to `qidi` if an earlier run as root left them owned by root. QIDI's own files keep their owners.
 - **Each service restarts once.** Changes are made first, then each changed service restarts once at the end. After Moonraker restarts, the installer waits for it to answer, then restarts the touchscreen app, `qidi-client`, so it reconnects.
 
 ## Klipper configuration
