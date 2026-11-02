@@ -11,7 +11,7 @@ from pathlib import Path
 from subprocess import CompletedProcess
 from unittest import mock
 
-from installer.runtime import system_optimizations
+from installer.runtime import messages, system_optimizations
 from installer.runtime import fluidd_box_filaments as fluidd_patch
 from installer.runtime import moonraker_allowed_services
 from installer.runtime import remote_screen
@@ -812,19 +812,25 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         ledger = {"policy": {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}, "restore_preimages": {}, "actions": []}
         selected = ("service_xl2tpd", "service_bluetooth")
         with mock.patch.object(system_optimizations, "_selected_operation_ids", return_value=selected):
-            with self.assertRaises(SystemOptimizationRecoveryError):
+            with self.assertRaises(SystemOptimizationRecoveryError) as failed:
                 apply_system_optimizations(paths=paths, spec=manifest.system_optimizations, ledger=ledger, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, source="test", run=run, urlopen=moonraker_urlopen())
+        # The failure that started the rollback stays visible beside the rollback's own failure.
+        self.assertIn(messages.SYSTEM_OPTIMIZATIONS_FAILED, failed.exception.message)
+        self.assertIn(messages.SYSTEM_RESTORE_FAILED, failed.exception.message)
         payload = json.loads(_journal_path(paths).read_text(encoding="utf-8"))
         self.assertIn("service_xl2tpd", payload["preimages"])
         self.assertIn("service_bluetooth", payload["preimages"])
         calls["fail_apply"] = False
-        with self.assertRaises(SystemOptimizationRecoveryError):
+        with self.assertRaises(SystemOptimizationRecoveryError) as pending:
             recover_pending_system_optimization(paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, run=run, urlopen=moonraker_urlopen())
+        self.assertIn(messages.SYSTEM_OPTIMIZATIONS_FAILED, pending.exception.message)
         self.assertTrue(_journal_path(paths).exists())
         with self.assertRaises(SystemOptimizationRecoveryError):
             apply_system_optimizations(paths=paths, spec=manifest.system_optimizations, ledger=ledger, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, source="next-lifecycle", run=run, urlopen=moonraker_urlopen())
         calls["fail_restore"] = False
-        self.assertTrue(recover_pending_system_optimization(paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, run=run, urlopen=moonraker_urlopen()))
+        output = io.StringIO()
+        self.assertTrue(recover_pending_system_optimization(paths=paths, manifest=manifest, reporter=PlainReporter(output), input_stream=io.StringIO(), environ=env, run=run, urlopen=moonraker_urlopen()))
+        self.assertIn(messages.SYSTEM_OPTIMIZATIONS_FAILED, output.getvalue())
         self.assertFalse(_journal_path(paths).exists())
 
     def test_rockchip_drift_journal_never_replays_after_interrupt(self):
