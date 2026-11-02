@@ -10,6 +10,16 @@ This page covers what the optimized configuration changes for the Box.
 
 A normal print end restores the default tool mapping, T0 → 1A, T1 → 1B, and so on. `TLTG_RESET_TOOL_MAPPINGS` restores it while the printer is idle.
 
+## Tool changes outside a print
+
+`T0` through `T15`, which are also the tool buttons in Fluidd's Tool card, are QIDI's print-time tool change: they cut the loaded filament, unload it, and load the tool's slot without heating the nozzle. Outside a print they ran anyway, with the nozzle cold or cooling, and could leave the Box busy and the printer paused with no print. They now run only while a print is running or paused. Otherwise nothing moves and the console says:
+
+```text
+T4 not run: QIDI's tool change runs only during a print. To load a slot, use Load on the QIDI Box card or LOAD_FILAMENT_CONTROL SLOT=<n>.
+```
+
+**Load** on the QIDI Box card heats the nozzle for the slot's filament and swaps out whatever is loaded.
+
 ## Box heater
 
 Box heater targets can be set from Fluidd, up to 65 °C, the Box's advertised maximum.

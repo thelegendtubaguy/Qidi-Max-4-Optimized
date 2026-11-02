@@ -20,6 +20,9 @@ from .models import (
 from .path_safety import ensure_external_path_has_no_symlink_components
 
 
+EXTRA_MODULE_MODE = 0o644
+
+
 class SourcePatchError(ValueError):
     pass
 
@@ -304,12 +307,15 @@ def install_extra_module(
     ensure_external_path_has_no_symlink_components(
         root=paths.managed_klipper_root, target=target
     )
+    # Klipper may run as another user than the installer, so modules must be
+    # world-readable. A module left 0600 by earlier installs is rewritten,
+    # which also replaces one the installer could not chmod.
     if target.is_file() and not target.is_symlink():
-        if target.read_bytes() == payload:
+        if target.read_bytes() == payload and target.stat().st_mode & 0o777 == EXTRA_MODULE_MODE:
             return "unchanged"
     journal.track_file(target)
     journal.note_write()
-    atomic_write_bytes(target, payload)
+    atomic_write_bytes(target, payload, mode=EXTRA_MODULE_MODE, force_mode=True)
     if target.read_bytes() != payload:
         raise SourcePatchError(
             f"Extra module post-write verification failed: {module.destination}"
