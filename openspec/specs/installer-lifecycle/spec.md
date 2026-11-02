@@ -176,6 +176,7 @@ The installer SHALL apply host OS optimizations only under explicit persisted po
 - **AND** unowned, unknown, or user-modified state is preserved and reported
 - **AND** operation failure rolls back journaled host work without deleting a verified configuration install
 - **AND** incomplete host compensation retains a recovery blocker and does not report the overall operation as complete
+- **AND** when compensation fails, the reported error names the failure that started it as well as the compensation's own failure, and the retained recovery record keeps that original failure, so the later run that finishes or retries the compensation reports it too
 
 #### Scenario: Uninstall follows the operator's host-state decision
 - **WHEN** uninstall finds host restore preimages

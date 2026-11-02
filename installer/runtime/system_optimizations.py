@@ -351,7 +351,7 @@ def recover_pending_system_optimization(
     except StateValidationError as exc:
         raise SystemOptimizationRecoveryError("System optimization recovery state is invalid.", ledger) from exc
     restarts = _ServiceRestarts(paths=paths, root=root, sudo_password=sudo_password, run=run, urlopen=urlopen)
-    _recover_pending_host_journal(
+    failure = _recover_pending_host_journal(
         paths=paths,
         root=root,
         sudo_password=sudo_password,
@@ -363,7 +363,9 @@ def recover_pending_system_optimization(
     restarts.flush()
     recovered = before and not _journal_path(paths).exists()
     if recovered:
-        reporter.line("Pending Rockchip system transaction recovered.")
+        reporter.line(messages.SYSTEM_PENDING_ROLLBACK_FINISHED)
+        if failure:
+            reporter.line(messages.SYSTEM_PENDING_ROLLBACK_CAUSE.format(failure=failure))
     return recovered
 
 
@@ -1330,7 +1332,7 @@ def apply_system_optimizations(
     except BaseException as exc:
         if current_preimages:
             last_id = next(reversed(current_preimages))
-            _write_host_journal(paths, operation_id=last_id, transaction_id=uuid.uuid4().hex, phase="compensating", preimage=current_preimages[last_id], preimages=current_preimages)
+            _write_host_journal(paths, operation_id=last_id, transaction_id=uuid.uuid4().hex, phase="compensating", preimage=current_preimages[last_id], preimages=current_preimages, failure=_failure_text(exc))
         try:
             _restore_preimage_map(
                 current_preimages,
@@ -1349,7 +1351,8 @@ def apply_system_optimizations(
                 restore_preimages={**initial_restore_preimages, **current_preimages},
             )
             raise SystemOptimizationRecoveryError(
-                f"System optimization rollback failed: {getattr(rollback_exc, 'message', str(rollback_exc))}",
+                f"System optimization failed: {_failure_text(exc)} "
+                f"Rolling it back also failed: {_failure_text(rollback_exc)}",
                 recovery_ledger,
             ) from rollback_exc
         atomic_delete(_journal_path(paths))
@@ -1377,6 +1380,13 @@ def apply_system_optimizations(
         actions=actions,
         restore_preimages=restore_preimages,
     )
+
+
+def _failure_text(exc: BaseException) -> str:
+    if isinstance(exc, KeyboardInterrupt):
+        return "Interrupted."
+    text = getattr(exc, "message", None) or str(exc) or type(exc).__name__
+    return text if text.endswith((".", "!", "?")) else text + "."
 
 
 def _action_record(
@@ -3433,6 +3443,7 @@ def _write_host_journal(
     phase: str,
     preimage: dict[str, Any],
     preimages: dict[str, Any] | None = None,
+    failure: str | None = None,
 ) -> None:
     payload = {
         "schema_version": 2,
@@ -3442,15 +3453,19 @@ def _write_host_journal(
         "preimage": preimage,
         "preimages": preimages or {operation_id: preimage},
     }
+    if failure is not None:
+        # What made the transaction roll back, for the run that finishes the rollback.
+        payload["failure"] = failure
     atomic_write_text(paths.printer_data_root / SYSTEM_JOURNAL, json.dumps(payload, sort_keys=True, indent=2) + "\n", mode=0o600, force_mode=True)
 
 
 
 def _recover_pending_host_journal(
     *, paths: RuntimePaths, root: Path, sudo_password: str | None, run, ledger: dict[str, Any], spec: SystemOptimizationsSpec, restarts: _ServiceRestarts,
-) -> None:
+) -> str | None:
+    """Finish a pending transaction; return the failure that left it pending, if recorded."""
     path = _journal_path(paths)
-    if not path.exists(): return
+    if not path.exists(): return None
     try: payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc: raise SystemOptimizationRecoveryError("System optimization journal is invalid.") from exc
     operation_id = payload.get("operation") if isinstance(payload, dict) else None
@@ -3465,6 +3480,8 @@ def _recover_pending_host_journal(
         for key, preimage in preimages.items(): _validate_host_preimage(key, preimage, spec=spec, paths=paths)
     except (StateValidationError, SystemOptimizationRecoveryError) as exc:
         raise SystemOptimizationRecoveryError("System optimization journal is invalid.", ledger) from exc
+    failure = payload.get("failure") if isinstance(payload.get("failure"), str) else None
+    earlier = f" The run that left it failed with: {failure}" if failure else ""
     # A journal is only cleared by explicit post-state verification, never legacy action text.
     for key in reversed(list(preimages)):
         preimage = preimages[key]
@@ -3473,10 +3490,11 @@ def _recover_pending_host_journal(
         try:
             _restore_preimage_for_operation(key, preimage, paths=paths, spec=spec, root=root, sudo_password=sudo_password, run=run, restarts=restarts)
         except BaseException as exc:
-            raise SystemOptimizationRecoveryError(f"Pending host rollback failed: {getattr(exc, 'message', str(exc))}", ledger) from exc
+            raise SystemOptimizationRecoveryError(f"Pending host rollback failed: {_failure_text(exc)}{earlier}", ledger) from exc
         if not _operation_matches_preimage(key, preimage=preimage, spec=spec, paths=paths, root=root, run=run):
-            raise SystemOptimizationRecoveryError("Pending host rollback could not be verified.", ledger)
+            raise SystemOptimizationRecoveryError(f"Pending host rollback could not be verified.{earlier}", ledger)
     atomic_delete(path)
+    return failure
 
 def _restore_preimage_for_operation(
     operation_id: str,
