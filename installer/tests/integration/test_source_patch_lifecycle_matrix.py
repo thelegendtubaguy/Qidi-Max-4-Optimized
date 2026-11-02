@@ -162,6 +162,24 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 self.assertEqual(entry.original_bytes, stock_source)
                 self.assertEqual(entry.original_sha256, hashlib.sha256(stock_source).hexdigest())
 
+    def test_install_leaves_extra_modules_readable_by_klipper(self):
+        # Klipper may run as another user than the installer.
+        printer_root, paths, _ = self._fixture("01.01.07.01", source_variant="sync-reset")
+        modules = [
+            paths.managed_klipper_root / module.destination
+            for module in self.manifest.install.extra_modules
+        ]
+        self._run_install(paths)
+        for module in modules:
+            self.assertEqual(module.stat().st_mode & 0o777, 0o644, module.name)
+
+        # Earlier installs left new modules 0600; the next install repairs them.
+        for module in modules:
+            module.chmod(0o600)
+        self._run_install(paths)
+        for module in modules:
+            self.assertEqual(module.stat().st_mode & 0o777, 0o644, module.name)
+
     def test_install_initializes_absent_release_defaults_and_preserves_operator_values(self):
         # An operator's 0 retention, or a Box motion setting reset to QIDI's value (None), is a choice.
         for existing, expected in ((None, "1"), ("0", "0")):

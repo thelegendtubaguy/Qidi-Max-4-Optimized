@@ -29,6 +29,13 @@
 # tltg_box_loaded_slot's record and last_load_slot, or is the only slot with
 # filament at its inlet; anything else is refused with the reason. Whenever
 # neither QIDI nor this module would move anything, the console says why.
+#
+# Tool changes outside a print: T0-T15 call T_MANAGER, QIDI's print-time tool
+# change, whose flow cuts, unloads, and loads without heating the nozzle.
+# Outside a print, such as from Fluidd's tool buttons, it ran with the nozzle
+# cooling and could end in QIDI's PAUSE, leaving the printer paused with no
+# print. T_MANAGER now runs only while a print is running or paused; otherwise
+# it says to load the slot instead.
 
 import logging
 
@@ -128,7 +135,8 @@ class BoxFlowRecovery:
         for name, handler in (
                 ("FLOW_STOP", self.cmd_FLOW_STOP),
                 ("UNLOAD_FILAMENT_CONTROL", self.cmd_UNLOAD_FILAMENT_CONTROL),
-                ("EJECT_FILAMENT_CONTROL", self.cmd_EJECT_FILAMENT_CONTROL)):
+                ("EJECT_FILAMENT_CONTROL", self.cmd_EJECT_FILAMENT_CONTROL),
+                ("T_MANAGER", self.cmd_T_MANAGER)):
             original = self.gcode.register_command(name, None)
             if original is None:
                 logging.info("tltg_box_flow_recovery: %s not found", name)
@@ -238,6 +246,18 @@ class BoxFlowRecovery:
             return self.originals["FLOW_STOP"](gcmd)
         finally:
             self._locked.discard(current)
+
+    # ------------------------------------------------------------ tool change
+    def cmd_T_MANAGER(self, gcmd):
+        if self._print_state() in ("printing", "paused"):
+            return self.originals["T_MANAGER"](gcmd)
+        message = ("T%s not run: QIDI's tool change runs only during a print. "
+                   "To load a slot, use Load on the QIDI Box card or "
+                   "LOAD_FILAMENT_CONTROL SLOT=<n>."
+                   % (gcmd.get("T", ""),))
+        logging.info("tltg_box_flow_recovery: %s", message)
+        gcmd.respond_info(message)
+        return None
 
     # --------------------------------------------------- unload and eject
     def cmd_UNLOAD_FILAMENT_CONTROL(self, gcmd):
