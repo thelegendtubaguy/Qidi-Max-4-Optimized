@@ -559,6 +559,17 @@ When the USB Box hub sensor detects filament, the toolhead filament sensor does 
 - **WHEN** a print is running or paused, the toolhead sensor detects filament, a vendor Box flow is running, the Box adapter is not the USB adapter, or QIDI's Box controller lacks the traced flow structure
 - **THEN** the vendor command runs unchanged, except that an unload with nothing past the hub does not run, as above, and an unload of stranded filament during a print does not run and the console says to resume or cancel the print first
 
+### Requirement: QIDI Box tool change only during a print
+Optimized configuration SHALL run the vendor tool change, `T_MANAGER` as called by `T0`–`T15`, only while a print is running or paused. Otherwise it SHALL move nothing and the console SHALL say how to load a slot instead.
+
+#### Scenario: Tool change outside a print
+- **WHEN** `T<n>` or `T_MANAGER T=<n>` runs with no print running or paused
+- **THEN** no vendor Box flow starts, no heater target changes, and the console names the tool and says to use the QIDI Box card's Load or `LOAD_FILAMENT_CONTROL SLOT=<n>`
+
+#### Scenario: Tool change during a print
+- **WHEN** `T<n>` runs while a print is running or paused
+- **THEN** the vendor tool change runs unchanged
+
 ### Requirement: Spoolman spools follow the loaded QIDI Box slot
 Optimized configuration SHALL keep an operator-assigned Spoolman spool for each QIDI Box slot and the external spool, and SHALL make the loaded slot's spool Moonraker's active spool whenever the slot recorded as loaded changes.
 
