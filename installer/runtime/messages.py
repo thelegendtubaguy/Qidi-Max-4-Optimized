@@ -129,3 +129,5 @@ MANAGED_TREE_DRIFT_OVERWRITTEN = "Managed tree drift overwritten:"
 MANAGED_TREE_DRIFT = "Managed tree drift:"
 
 INTERRUPTED = "Interrupted. No further installer actions will run."
+OWNERSHIP_REPAIRED = "Gave {count} installer files and folders back to {user}; an earlier run with sudo had left them owned by root."
+OWNERSHIP_REPAIR_FAILED = "Some installer files are owned by root after an earlier run with sudo, and sudo could not give them back to {user}."

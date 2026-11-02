@@ -10,6 +10,8 @@ SSH into your printer as `qidi@<your printer's ip>` and run:
 /bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/install-latest.sh)"
 ```
 
+Running it with `sudo` works the same: the installer switches to `qidi` and asks for `sudo` itself when it needs it, so every file it writes belongs to `qidi` either way. The same goes for `restore.sh`, `auto-update.sh`, and `box-firmware.sh`.
+
 The installer checks your firmware, the printer's state, and free space before writing anything, and makes a backup of your configuration first. Along the way it asks about:
 
 - **Toolhead board firmware fix** (firmware `01.01.07.01` only): asked first, before anything changes. The default is No. See [Firmware fixes](firmware.md).
