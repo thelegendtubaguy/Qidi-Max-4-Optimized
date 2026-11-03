@@ -709,7 +709,7 @@ Forbidden patterns:
 
 Condition: `PRE_SCRAPE=1 selects mixed-speed start wiping; omitted or zero retains fast non-start cleanup`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:622-668`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:629-675`
 
 Direct visible macro calls in branch slice:
 

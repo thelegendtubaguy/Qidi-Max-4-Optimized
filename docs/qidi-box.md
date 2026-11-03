@@ -156,6 +156,10 @@ The slot is the one that last fed filament to the hub, or the one QIDI last load
 
 Unload of a slot whose filament isn't past the hub doesn't run. The console says so, instead of QIDI parking the toolhead and reporting success.
 
+## Resuming a paused print
+
+Pausing turns the nozzle off. With the Box, **Resume** first moves the toolhead to the waste chute and heats the nozzle back to the temperature it had when the print paused, then runs QIDI's resume, which reloads the filament and carries on printing. QIDI's resume cuts before it heats, so after a pause long enough for the nozzle to cool below 135 °C it stopped with `Extrude below minimum temp`, and the print stayed paused until the nozzle was heated by hand.
+
 ## Box disconnects
 
 See [Fixes](fixes.md#qidi-box-disconnects) for what this project changes, and [Troubleshooting](troubleshooting.md#box-link-monitor) to record why a Box drops.

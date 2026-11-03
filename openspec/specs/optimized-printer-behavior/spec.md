@@ -182,6 +182,7 @@ Optimized macros SHALL keep external-spool runout policy independent from vendor
 #### Scenario: Resume follows vendor recovery unless the operator overrides the sensor
 - **WHEN** a paused print is resumed
 - **THEN** an active Box print resumes through the vendor Box resume command
+- **AND** before that command, the hotend is reheated in the waste chute to the temperature saved at pause, so the vendor's pre-heat cut cannot fail with `Extrude below minimum temp`
 - **AND** an external-spool print with automatic external pause disabled resumes without a filament-present gate
 - **AND** an external-spool print with automatic external pause enabled resumes only through a path that refuses to continue while the toolhead sensor reports no filament
 
