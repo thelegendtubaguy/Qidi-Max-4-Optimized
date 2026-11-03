@@ -78,6 +78,7 @@ install:
       - "box485_monitor.cfg"
       - "spoolman.cfg"
       - "macro_status.cfg"
+      - "klipper_fixes.cfg"
 
   ensure_lines:
     - id: include_optimized_macros
@@ -104,6 +105,9 @@ install:
     - id: macro_status
       source: "klipper/tltg/macro_status.py"
       destination: "klippy/extras/tltg_macro_status.py"
+    - id: klipper_fixes
+      source: "klipper/tltg/klipper_fixes.py"
+      destination: "klippy/extras/tltg_klipper_fixes.py"
     - id: save_variables_fast
       source: "klipper/tltg/save_variables_fast.py"
       destination: "klippy/extras/tltg_save_variables_fast.py"

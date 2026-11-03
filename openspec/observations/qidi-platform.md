@@ -80,6 +80,12 @@
 - **Runtime-confirmed:** stock `[delayed_gcode INIT_GLOBALS]` runs 5 s after Klipper is ready and held its main loop for 0.7–0.9 s after every start, mostly in `LIST_MACROS SILENT=1` iterating every printer object, which copies each one's status. Klipper's step generation after `G1` bursts held it for 150–580 ms during printing.
 - **Runtime-confirmed:** 92.5% of a printing day's `klippy.log` (167 MB) was Klipper's once-a-second `Stats` line, about 1.8 KB with this printer's MCUs; QIDI's debug lines were about 7%.
 
+## Klipper base
+
+- **Static-recovered (2026-11-03, file hashes against upstream history):** QIDI's `klippy` tree for `01.01.07.01` is upstream Klipper between `v0.12.0-274-gd7d9092a9` and `v0.12.0-276-gca815f52c` (2024-08-03 to 08-08): 151 files are byte-identical to an upstream version, 40 are modified, and 17 are QIDI-only. `reactor.py`, `serialhdl.py`, and `chelper` are unmodified; `mcu.py`, `toolhead.py`, `webhooks.py`, `heaters.py`, and `homing.py` are modified. Files ship with CRLF line endings. The prebuilt `c_helper.so` was built with Debian gcc 10.2.1, which is installed on the printer.
+- **Static-recovered:** the functions `tltg_klipper_fixes` replaces are identical in `01.01.06.04`, `01.01.06.05`, and `01.01.07.01`, and lack upstream's later fixes, including `MCU._handle_starting` calling `invoke_async_shutdown` without its required `details` argument.
+- **Harness-recovered (QIDI's `reactor.py`, greenlet 2.0.2 as on the printer):** a timer whose callback pauses, rescheduled with `update_timer` by another task, ran twice at once.
+
 ## Rockchip first-boot service and root mount
 
 - `/proc/device-tree/compatible` on the observed Max 4 identifies RK3308, while `/etc/init.d/rockchip.sh` assigns `CHIPNAME="rk3208"` for that hardware.

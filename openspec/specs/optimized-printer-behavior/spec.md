@@ -736,6 +736,29 @@ Optimized configuration SHALL copy `multi_color_controller`'s status, and each p
 - **WHEN** a stock or optimized macro reads an object such as `printer.configfile` or `printer.toolhead`
 - **THEN** it receives the same values and types as with Klipper's deep copy, and changing them does not change the object
 
+### Requirement: Upstream Klipper fixes
+Optimized configuration SHALL apply upstream Klipper's fixes for homing endstop sync timing, MCU restart shutdowns, command waits on lost MCUs, TMC enable order, heater main-loop and stale-temperature checks, and concurrent timer runs, each only when the function it replaces matches the vendor original it was written for, and SHALL log which were applied and which were skipped.
+
+#### Scenario: Matching vendor Klipper
+- **WHEN** Klipper starts with the vendor functions these fixes were written for
+- **THEN** every fix is applied and `klippy.log` lists them
+
+#### Scenario: Changed vendor Klipper
+- **WHEN** a function a fix replaces differs from that original
+- **THEN** that fix is skipped, the function is unchanged, and `klippy.log` says so
+
+#### Scenario: Lost MCU
+- **WHEN** Klipper declares communication with an MCU lost while a command waits for that MCU's acknowledgement
+- **THEN** the waiting command and later ones fail with `No communication with MCU` as a G-code error
+
+#### Scenario: Main loop stops
+- **WHEN** Klipper's main loop stops for 5 s while a heater's readings keep arriving
+- **THEN** that heater's output is set to 0
+
+#### Scenario: Timer rescheduled while its run is paused
+- **WHEN** a timer's callback pauses and another task calls `update_timer` for it
+- **THEN** the callback is not started again until the paused run returns
+
 ### Requirement: Box heater sensors stop polling after a shutdown
 Once Klipper has shut down, a failed read of a Box heater's AHT20 SHALL stop that sensor's polling instead of raising, so Klipper stays in its shutdown state with the original reason. While Klipper is not shut down, sensor read errors SHALL propagate unchanged.
 
