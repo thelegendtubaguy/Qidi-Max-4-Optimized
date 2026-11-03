@@ -35,6 +35,20 @@ Klipper also does less work on its main loop, so Box motor moves keep more headr
 - With USB Boxes only, QIDI's software looks for an RS-485 adapter every 30 seconds instead of every 2.
 - Spoolman's slot tracking reads the loaded slot directly instead of building QIDI's Box status twice a second.
 
+## Fixes from newer Klipper
+
+QIDI's Klipper is upstream Klipper from August 2024 with QIDI's changes. These later upstream fixes are applied to it when Klipper starts:
+
+- Homing moves, including the Box's, set up their endstop sync for the start of the move. Before, the setup could wait behind the move's own step messages.
+- A Box or toolhead board that restarts by itself now stops Klipper with `MCU '…' spontaneous restart`. Before, Klipper carried on and failed later with a misleading error.
+- Once Klipper loses contact with a Box or board, commands waiting on it fail with `No communication with MCU` instead of waiting forever and holding up every later command.
+- A stepper disable that arrives while its driver is still being enabled waits for the enable to finish.
+- Heaters turn off if Klipper's main loop stops for 5 seconds while temperature readings keep arriving. A heater's temperature reads 0 only 7 seconds after its last reading, instead of 5, so a lost board is reported as lost rather than as a heater fault.
+- A Klipper timer can't be started again while an earlier run of it is still waiting.
+- Python's garbage collector skips everything Klipper set up at startup, so its periodic full collections have less to check.
+
+`klippy.log` lists the fixes applied at each start. A fix is skipped, and listed as skipped, if the Klipper code it replaces isn't exactly the version it was written for.
+
 ## Unknown Box filaments shutting Klipper down
 
 Loading a slot whose saved filament isn't in QIDI's list no longer shuts Klipper down. See [QIDI Box](qidi-box.md#filaments-missing-from-qidis-list).
