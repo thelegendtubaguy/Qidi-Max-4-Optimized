@@ -74,6 +74,12 @@
 - **Runtime-confirmed:** on the same printer, idle and cold, a `WEIGHTING_DEBUG_QUERY` after several Klipper restarts received `query_cs1237_data` with empty `data`. The handler raised `IndexError` at `cs1237.pyx` line 54. Run through `run_script_from_command`, Klipper's G-code dispatcher treated the exception as an internal error and shut down the MCU before the caller could handle it; the following automatic Klippy restart failed because the MCU remained shut down. Earlier queries on that printer returned readings normally; the cause of the empty reply is unresolved.
 - **Unresolved:** acceptable noise across printers, force-to-signal scale, disconnected-sensor values, the cause of isolated outlier readings, and correspondence between a responsive raw signal and reliable MCU homing triggers have not been validated. Raw readings alone do not certify safe homing.
 
+## Klipper main-loop load
+
+- **Runtime-confirmed (test printer, 2026-11-03, `01.01.07.01`, two USB Boxes, py-spy and `/proc`, after the load-cell timer fix):** Klipper's main thread used 0.09 of a core at idle, 0.22 printing (95th percentile 0.33), and 0.22 during Box tool changes; the busiest five-minute window was 0.24 and the busiest minute 0.28. About half of idle main-thread time was Moonraker's status refresh. Before the fix, five-minute process load reached 0.57–0.60 before a Box unload failed with `Communication timeout during homing`.
+- **Runtime-confirmed:** stock `[delayed_gcode INIT_GLOBALS]` runs 5 s after Klipper is ready and held its main loop for 0.7–0.9 s after every start, mostly in `LIST_MACROS SILENT=1` iterating every printer object, which copies each one's status. Klipper's step generation after `G1` bursts held it for 150–580 ms during printing.
+- **Runtime-confirmed:** 92.5% of a printing day's `klippy.log` (167 MB) was Klipper's once-a-second `Stats` line, about 1.8 KB with this printer's MCUs; QIDI's debug lines were about 7%.
+
 ## Rockchip first-boot service and root mount
 
 - `/proc/device-tree/compatible` on the observed Max 4 identifies RK3308, while `/etc/init.d/rockchip.sh` assigns `CHIPNAME="rk3208"` for that hardware.

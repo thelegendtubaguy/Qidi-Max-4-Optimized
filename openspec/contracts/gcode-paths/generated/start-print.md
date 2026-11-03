@@ -662,7 +662,7 @@ Direct visible macro calls in branch slice:
 
 Ordered invariants:
 
-- `box_available = printer["box_extras"] is defined or ("T_MANAGER" in printer.gcode.commands and ((printer.multi_color_controller|default({})).box_count|default(0)|int > 0 or (printer.box485|default({})).box_count|default(0)|int > 0))`
+- `box_available = printer.tltg_macro_status.box_available`
 - `OPTIMIZED_WAIT_HOTEND S={scrape_target} STATUS=clear_nozzle`
 - `TEMPERATURE_WAIT SENSOR={printer.toolhead.extruder} MAXIMUM={scrape_maximum}`
 - `{% if box_available %}`

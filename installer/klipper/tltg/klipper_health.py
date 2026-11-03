@@ -21,10 +21,22 @@
 # endstop sync times out, so the next such failure explains itself. Its
 # status feeds the timer count and main-thread load to Fluidd's System
 # Utilization charts.
+#
+# Status copies: QIDI's multi_color_controller status, which Moonraker reads
+# every second, deep-copies its flattened Box status, a dict of about 440
+# strings, numbers, and lists, which takes about half of the status's 11 ms.
+# Klipper's macros deep-copy each object's whole status the first time a
+# macro reads it, such as 48 ms for printer.configfile, which QIDI's start,
+# end, and startup macros read many times. In both modules copy.deepcopy is
+# replaced with a plain copy of the same dicts, lists, tuples, and values,
+# several times faster; anything else still goes to copy.deepcopy.
 
 import collections
+import copy
 import logging
+import sys
 import time
+import types
 
 # QIDI box_extras / box2base load-cell callbacks whose stopped timers leak.
 FINISHED_CALLBACKS = ("_read_wei_timer", "_init_probe_data_advance")
@@ -37,12 +49,17 @@ HISTORY = 300
 # grows this far past that.
 TIMER_GROWTH_WARNING = 50
 # Warn when the main thread is at least this busy over the whole window.
-BUSY_LOAD = 0.8
+# Printing and Box tool changes peak near 25% over five minutes on the test
+# printer; the leaked timers had it near 50% when a Box unload timed out.
+BUSY_LOAD = 0.45
 BUSY_WINDOW = 300.
 WARNING_REPEAT = 3600.
 # Window before an endstop sync timeout reported with it.
 TIMEOUT_CONTEXT = 10.
 HOMING_TIMEOUT = "Communication timeout during homing"
+# Objects whose modules deep-copy whole statuses: QIDI's Box status, and
+# Klipper's macro access to every object's status.
+STATUS_COPIERS = ("multi_color_controller", "gcode_macro")
 
 # The KlipperHealth of the running Klipper; the endstop wrapper outlives a
 # RESTART, which creates a new one.
@@ -133,6 +150,58 @@ def _wrap_home_wait():
     return True
 
 
+_PLAIN_VALUES = (str, int, float, bool, type(None))
+
+
+def _plain_copy(value):
+    kind = type(value)
+    if kind in _PLAIN_VALUES:
+        return value
+    if kind is dict:
+        return {key: _plain_copy(item) for key, item in value.items()}
+    if kind is list:
+        return [_plain_copy(item) for item in value]
+    if isinstance(value, tuple):
+        # As copy.deepcopy: a tuple, or a named tuple such as Klipper's
+        # Coord, whose items copy to themselves is returned as it is.
+        items = [_plain_copy(item) for item in value]
+        if all(new is old for new, old in zip(items, value)):
+            return value
+        if kind is tuple:
+            return tuple(items)
+    raise TypeError(kind)
+
+
+def _deepcopy(value, memo=None, *args):
+    """copy.deepcopy for status trees of plain values, copied directly."""
+    if memo is None:
+        try:
+            return _plain_copy(value)
+        except (TypeError, RecursionError):
+            pass
+    return copy.deepcopy(value, memo, *args)
+
+
+def _plain_copy_module():
+    module = types.ModuleType("copy")
+    module.__dict__.update(copy.__dict__)
+    module.deepcopy = _deepcopy
+    return module
+
+
+def lighten_status_copy(obj):
+    """Give the module that defines obj's class the plain-value deepcopy.
+    Returns True when it has it."""
+    module = sys.modules.get(getattr(type(obj), "__module__", None))
+    current = getattr(module, "copy", None)
+    if getattr(current, "deepcopy", None) is _deepcopy:
+        return True
+    if current is not copy:
+        return False
+    module.copy = _plain_copy_module()
+    return True
+
+
 class KlipperHealth:
     def __init__(self, config):
         self.printer = config.get_printer()
@@ -149,7 +218,16 @@ class KlipperHealth:
         if not _wrap_home_wait():
             logging.info("tltg_klipper_health: Klipper's endstop layout is "
                          "not as expected; homing timeouts are not reported")
+        self.printer.register_event_handler("klippy:connect", self._connect)
         self.printer.register_event_handler("klippy:ready", self._ready)
+
+    def _connect(self):
+        for name in STATUS_COPIERS:
+            obj = self.printer.lookup_object(name, None)
+            if obj is not None and not lighten_status_copy(obj):
+                logging.info("tltg_klipper_health: %s does not use the copy "
+                             "module as expected; its status copy is "
+                             "unchanged", name)
 
     def _ready(self):
         now = self.reactor.monotonic()

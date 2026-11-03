@@ -18,7 +18,10 @@
 #   port for reads, so pointed at a Box's Klipper port it takes that MCU's
 #   replies and the Box drops;
 # - lets QIDI's "Can not find 485 device", logged every 2 s while no adapter
-#   is attached, into klippy.log once an hour with a repeat count.
+#   is attached, into klippy.log once an hour with a repeat count;
+# - while no RS-485 hardware has been seen, makes QIDI look for its adapter
+#   every 30 s instead of every 2 s, and looks for RS-485 hardware itself
+#   every minute instead of every 10 s, to keep Klipper's main loop free.
 
 import hashlib
 import json
@@ -39,6 +42,10 @@ ISSUES_URL = "https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/issues"
 SPAM_MESSAGE = "Can not find 485 device"
 SPAM_SUMMARY_INTERVAL = 3600.0
 SAMPLE_INTERVAL = 10.0
+# Before any RS-485 hardware is seen: how often to look for it, and how often
+# QIDI's box485 retries opening an adapter that isn't there.
+IDLE_SAMPLE_INTERVAL = 60.0
+IDLE_RECONNECT_INTERVAL = 30.0
 REPORT_INTERVAL = 600.0
 # Identical frames for one address and command are written once, then again
 # with a repeat count when the payload changes or after this many seconds.
@@ -345,10 +352,13 @@ def _patch_manager(cls):
         if monitor is not None and monitor.refuse_port(self):
             return self.reactor.NEVER
         try:
-            return original_reconnect(self, eventtime, *args, **kwargs)
+            waketime = original_reconnect(self, eventtime, *args, **kwargs)
         finally:
             if monitor is not None:
                 monitor.tap(self)
+        if monitor is not None:
+            waketime = monitor.reconnect_time(self, eventtime, waketime)
+        return waketime
 
     cls.connect = connect
     cls._on_reconnect_timer = _on_reconnect_timer
@@ -498,6 +508,21 @@ class Box485Monitor:
             " /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0. The QIDI Box"
             " ids in box.cfg belong in [mcu mcu_boxN], not [box485]."
             % self._conflict["owner"])
+
+    def reconnect_time(self, manager, eventtime, waketime):
+        """When box485 should next try its adapter: QIDI's 2 s, or 30 s while
+        no RS-485 hardware has been seen and its port doesn't exist."""
+        if self._active or getattr(manager, "ser", None) is not None:
+            return waketime
+        try:
+            if waketime >= eventtime + IDLE_RECONNECT_INTERVAL:
+                return waketime
+        except TypeError:
+            return waketime
+        port = getattr(manager, "port", None)
+        if not port or os.path.exists(str(port)):
+            return waketime
+        return eventtime + IDLE_RECONNECT_INTERVAL
 
     # ------------------------------------------------------------- capture
     def tap(self, manager):
@@ -929,7 +954,9 @@ class Box485Monitor:
                     self._write_report()
         except Exception:
             logging.exception("tltg_box485_monitor: sample failed")
-        return eventtime + SAMPLE_INTERVAL
+        if self._active:
+            return eventtime + SAMPLE_INTERVAL
+        return eventtime + IDLE_SAMPLE_INTERVAL
 
     def cmd_TLTG_RS_BOX_REPORT(self, gcmd):
         self._signals = self._detect()
