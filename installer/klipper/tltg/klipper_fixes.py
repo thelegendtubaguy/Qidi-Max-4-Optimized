@@ -1,10 +1,11 @@
-# Upstream Klipper fixes for QIDI Max 4 Optimized.
+# Upstream Klipper fixes and main-loop savings for QIDI Max 4 Optimized.
 #
 # QIDI's Klipper is upstream Klipper from August 2024 with QIDI's changes.
 # Upstream has since fixed bugs in code QIDI left as it was. This module
-# applies those fixes to QIDI's classes when Klipper loads it, each only
-# when the function it replaces is exactly the one these fixes were written
-# for; otherwise that fix is skipped and klippy.log says so.
+# applies those fixes, and two cheaper versions of main-loop code, to QIDI's
+# classes when Klipper loads it, each only when the function it replaces is
+# exactly the one it was written for; otherwise that change is skipped and
+# klippy.log says so.
 #
 # - Homing endstop sync (upstream 8e6e467eb): MCU_trsync.start scheduled
 #   the trsync start and timeout messages for the time they take effect
@@ -30,6 +31,14 @@
 #   it looks like a heater fault.
 # - Timers (upstream aa59b3203): update_timer no longer starts a timer's
 #   callback again while an earlier run of it is paused.
+# - Timer scan: the reactor keeps the next wake time in a local variable
+#   while it checks its ~70 timers, instead of rewriting its own copy for
+#   each one. The scan was about 3% of a core while printing.
+# - Status updates: QIDI's once-a-second pass that sends Moonraker what
+#   changed skips objects whose status is the same object as last time
+#   (most gcode_macro objects), and runs QIDI's nested comparison of
+#   multi_color_controller only on values that differ. Moonraker receives
+#   the same updates.
 
 import gc
 import hashlib
@@ -39,6 +48,7 @@ import logging
 import mcu
 import reactor
 import serialhdl
+import webhooks
 from . import heaters, tmc
 
 MARKER = "_tltg_klipper_fixes"
@@ -74,6 +84,8 @@ ORIGINALS = {
         "63032501a62a442b80b518cd24d44d9409a7e65198467237ecebf2e788c42f8c",
     "SelectReactor._check_timers":
         "0ea257db086cd06aec86e30638ceda91ec100882268aa6a2b601e28f3f5cee02",
+    "QueryStatusHelper._do_query":
+        "9a74a0b5a7e416c0e682a081c2ba3103364397edb0d40cfad3dddbae166bd2e1",
 }
 
 
@@ -286,21 +298,111 @@ def _check_timers(self, eventtime, busy):
                 gc.collect(gc_level)
                 return 0.
         return min(1., max(.001, self._next_timer - eventtime))
-    self._next_timer = self.NEVER
+    # Callbacks may lower self._next_timer; fold in the scan's minimum last.
+    never = self._next_timer = self.NEVER
+    next_timer = never
     g_dispatch = self._g_dispatch
     for t in self._timers:
         waketime = t.waketime
         if eventtime >= waketime:
-            t.waketime = self.NEVER
+            t.waketime = never
             t.timer_is_running = True
             t.waketime = waketime = t.callback(eventtime)
             t.timer_is_running = False
             if g_dispatch is not self._g_dispatch:
-                self._next_timer = min(self._next_timer, waketime)
+                self._next_timer = min(self._next_timer, next_timer, waketime)
                 self._end_greenlet(g_dispatch)
                 return 0.
-        self._next_timer = min(self._next_timer, waketime)
+        if waketime < next_timer:
+            next_timer = waketime
+    if next_timer < self._next_timer:
+        self._next_timer = next_timer
     return 0.
+
+
+# ------------------------------------------------------------------ status
+def _status_diff(self, now, last):
+    """QIDI's _get_diff_recursive, comparing each key's values in C first
+    so that only values that differ go through QIDI's recursion."""
+    if not isinstance(now, dict) or not isinstance(last, dict):
+        return self._get_diff_recursive(now, last)
+    diff = {}
+    for k, v in now.items():
+        if k not in last:
+            diff[k] = v
+        else:
+            last_v = last[k]
+            if v != last_v:
+                res = self._get_diff_recursive(v, last_v)
+                if res is not None:
+                    diff[k] = res
+    return diff if diff else None
+
+
+def _do_query(self, eventtime):
+    last_query = self.last_query
+    query = self.last_query = {}
+    msglist = self.pending_queries
+    self.pending_queries = []
+    msglist.extend(self.clients.values())
+    lookup_object = self.printer.lookup_object
+    deep_modules = webhooks.DEEP_COMPARISON_MODULES
+    # Generate get_status() info for each client
+    for cconn, subscription, send_func, template in msglist:
+        is_query = cconn is None
+        if not is_query and cconn.is_closed():
+            del self.clients[cconn]
+            continue
+        # Query each requested printer object
+        cquery = {}
+        for obj_name, req_items in subscription.items():
+            res = query.get(obj_name, None)
+            if res is None:
+                po = lookup_object(obj_name, None)
+                if po is None or not hasattr(po, 'get_status'):
+                    res = query[obj_name] = {}
+                else:
+                    res = query[obj_name] = po.get_status(eventtime)
+            if req_items is None:
+                req_items = list(res.keys())
+                if req_items:
+                    subscription[obj_name] = req_items
+            if is_query:
+                cquery[obj_name] = {ri: res.get(ri, None) for ri in req_items}
+                continue
+            lres = last_query.get(obj_name, {})
+            if res is lres:
+                # Every field is the same object as last time, so QIDI's
+                # comparison would find no change.
+                continue
+            cres = {}
+            if obj_name in deep_modules:
+                for ri in req_items:
+                    rd = res.get(ri, None)
+                    last_val = lres.get(ri, None)
+                    if rd != last_val:
+                        diff_result = _status_diff(self, rd, last_val)
+                        if diff_result is not None:
+                            cres[ri] = diff_result
+            else:
+                for ri in req_items:
+                    rd = res.get(ri, None)
+                    if rd != lres.get(ri, None):
+                        cres[ri] = rd
+            if cres:
+                cquery[obj_name] = cres
+        # Send data
+        if cquery or is_query:
+            tmp = dict(template)
+            tmp['params'] = {'eventtime': eventtime, 'status': cquery}
+            send_func(tmp)
+    if not query:
+        # Unregister timer if there are no longer any subscriptions
+        printer_reactor = self.printer.get_reactor()
+        printer_reactor.unregister_timer(self.query_timer)
+        self.query_timer = None
+        return printer_reactor.NEVER
+    return eventtime + webhooks.SUBSCRIPTION_REFRESH_TIME
 
 
 class KlipperFixes:
@@ -324,11 +426,14 @@ class KlipperFixes:
             ("heater stale temperature", lambda: _replace(
                 heaters.Heater, "get_temp", "Heater.get_temp",
                 _heater_get_temp)),
-            ("timer double runs", lambda: all((
+            ("timer double runs and scan", lambda: all((
                 _replace(reactor.SelectReactor, "update_timer",
                          "SelectReactor.update_timer", _update_timer),
                 _replace(reactor.SelectReactor, "_check_timers",
                          "SelectReactor._check_timers", _check_timers)))),
+            ("status update pass", lambda: _replace(
+                webhooks.QueryStatusHelper, "_do_query",
+                "QueryStatusHelper._do_query", _do_query)),
         ]
         applied, skipped = [], []
         for name, fix in fixes:
