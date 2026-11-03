@@ -31,6 +31,7 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 | `klippy/extras/box_config.py` | Lets Fluidd set Box heater targets, capped at 65 °C. | Klipper, once |
 | Moonraker `file_manager.py` and `metadata.py` | The [3MF metadata cache and plate fix](fixes.md#multi-plate-3mf-files). | Moonraker, when the patch changes |
 | Moonraker `spoolman.py` | Charges the new spool from the start of each filament change, keeps the Spoolman connection from dropping, and passes a spool picked in Fluidd to the [loaded slot](spoolman.md). | Moonraker, once |
+| `~/tltg-moonraker-speedups` and `tltg-moonraker-speedups.pth` in `~/moonraker-env` | Adds `msgspec` and `uvloop`, which Moonraker uses when it can import them, to QIDI's Moonraker. Moonraker builds the JSON it sends to Fluidd and the touchscreen with `msgspec` and runs its event loop on `uvloop`, using less CPU. Nothing in QIDI's `~/moonraker-env` is replaced. | Moonraker, when the packages change |
 | `/etc/systemd/system/{moonraker,klipper}.service.d/tltg-restart-on-exit.conf` | Turns off `RemainAfterExit` in QIDI's Moonraker and Klipper services, so systemd starts them again 10 seconds after they stop without systemd stopping them. Before, they stayed down until a restart or reboot while still reported as running. | None |
 
 ## Fluidd and the web server
@@ -54,6 +55,6 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 
 ## What uninstall does
 
-Uninstall removes the optimized macros and added modules, restores every QIDI file above, points the web server back at QIDI's Fluidd, removes `~/tltg-fluidd`, the Printer screen service, the Moonraker and Klipper restart-on-exit settings, and the filament folder link, and restores Moonraker's service list. It asks before undoing the OS optimizations. Files you changed after installing are kept and listed.
+Uninstall removes the optimized macros and added modules, restores every QIDI file above, points the web server back at QIDI's Fluidd, removes `~/tltg-fluidd`, Moonraker's `msgspec` and `uvloop`, the Printer screen service, the Moonraker and Klipper restart-on-exit settings, and the filament folder link, and restores Moonraker's service list. It asks before undoing the OS optimizations. Files you changed after installing are kept and listed.
 
 Firmware is never changed by install, update, or uninstall unless you [ask for it](firmware.md).

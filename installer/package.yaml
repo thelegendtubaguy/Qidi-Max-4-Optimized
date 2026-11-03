@@ -541,6 +541,15 @@ system_optimizations:
     url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-a73fa74/fluidd.zip
     archive: system/fluidd.zip
     sha256: 74e775fc4d74af670b5768c9ea79f67ea6db98a3ceb3e05b7495cc6f4efba8fb
+  # Wheels for QIDI's Moonraker virtualenv (Python 3.9, aarch64); the bundle builder downloads and verifies them.
+  moonraker_speedups:
+    wheels:
+      - url: https://files.pythonhosted.org/packages/44/14/9d6f685a277e4d3417f103c4d228cb7ea83fdd776c739570f233917f5fd2/msgspec-0.20.0-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl
+        archive: system/moonraker-speedups/msgspec-0.20.0-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl
+        sha256: d5bb7ce84fe32f6ce9f62aa7e7109cb230ad542cc5bc9c46e587f1dac4afc48e
+      - url: https://files.pythonhosted.org/packages/d4/f0/855cfe0abc7e51a05b13311a017fcc967142067180f24cdcfe7ba047e4f3/uvloop-0.23.0-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl
+        archive: system/moonraker-speedups/uvloop-0.23.0-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl
+        sha256: 55d6f4135d914305929fe9e9c44d8b5383a9b3fa1bee3bfcf60ee97e01af07ea
   klipper_box_config:
     file: /home/qidi/klipper/klippy/extras/box_config.py
     restart_service: klipper.service
