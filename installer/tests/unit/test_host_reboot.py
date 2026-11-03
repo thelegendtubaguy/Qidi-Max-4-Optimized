@@ -9,9 +9,11 @@ from pathlib import Path
 from installer.runtime.host_reboot import (
     HostRebootError,
     arm_auto_update_reboot_followup,
+    maybe_offer_recommended_reboot,
     maybe_schedule_host_reboot,
     perform_scheduled_host_reboot,
     read_host_reboot_marker,
+    recommend_reboot,
     verify_completed_host_reboot,
     write_host_reboot_marker,
 )
@@ -158,6 +160,61 @@ class HostRebootTests(unittest.TestCase):
         self.assertIn("systemd-run", calls[1])
         self.assertIn("--on-active=30s", calls[1])
         self.assertNotIn("reboot", calls[1])
+
+    def test_recommended_reboot_is_offered_once_per_boot_and_rechecks_idle_before_rebooting(self):
+        calls: list[list[str]] = []
+
+        def run(command, **kwargs):
+            calls.append(command)
+            return subprocess.CompletedProcess(command, 0)
+
+        def offer(input_stream, explicit=False):
+            report = io.StringIO()
+            scheduled = maybe_offer_recommended_reboot(
+                self.paths,
+                reporter=PlainReporter(report),
+                input_stream=input_stream,
+                environ={},
+                explicit=explicit,
+                urlopen=moonraker_urlopen("standby"),
+                run=run,
+            )
+            return scheduled, report.getvalue()
+
+        # Nothing applied, nothing offered.
+        self.assertEqual(offer(io.StringIO("y\n")), (False, ""))
+        recommend_reboot(self.paths)
+        # Declined, or without a terminal, the installer says to reboot and does nothing else.
+        for stream in (io.StringIO("n\n"), None):
+            scheduled, report = offer(stream)
+            self.assertFalse(scheduled)
+            self.assertIn("sudo reboot", report)
+        self.assertEqual(calls, [])
+        # Accepted, or asked for with --reboot-host, the reboot is delayed through complete-host-reboot.
+        for stream, explicit in ((io.StringIO("y\n"), False), (None, True)):
+            calls.clear()
+            self.assertTrue(offer(stream, explicit)[0])
+            self.assertIn("--on-active=10s", calls[-1])
+            self.assertIn("complete-host-reboot", calls[-1])
+        calls.clear()
+        self.assertFalse(
+            perform_scheduled_host_reboot(
+                self.paths, reporter=PlainReporter(io.StringIO()), environ={}, recommended=True,
+                urlopen=moonraker_urlopen("printing"), run=run,
+            )
+        )
+        self.assertEqual(calls, [])
+        self.assertTrue(
+            perform_scheduled_host_reboot(
+                self.paths, reporter=PlainReporter(io.StringIO()), environ={}, recommended=True,
+                urlopen=moonraker_urlopen("standby"), run=run,
+            )
+        )
+        self.assertEqual(calls[-1][-2:], ["systemctl", "reboot"])
+        # Any reboot satisfies the recommendation.
+        self.boot_id.write_text("boot-two\n", encoding="utf-8")
+        self.assertEqual(offer(io.StringIO("y\n")), (False, ""))
+        self.assertFalse(self.paths.reboot_recommended_path.exists())
 
 
 if __name__ == "__main__":

@@ -39,6 +39,9 @@ ALLOWED_FILES = [
     "firmware/max4-box-shutdown-fix-v1.json",
     "firmware/BOX_FIRMWARE.md",
     "firmware/FLASHING.md",
+    "scripts/build_zram_modules.py",
+    "kernel/qidi_max4_zram_defconfig",
+    "kernel/README.md",
 ]
 ALLOWED_DIRECTORIES = [
     "LICENSES",

@@ -92,6 +92,19 @@ These files contain QIDI and project modifications to upstream macro material. E
   - `config/crowsnest.conf`
   - `installer/stock/qidi-max4-defaults/firmwares/*/config/crowsnest.conf`
 
+## GPL-2.0-only components
+
+The full GPLv2 text is available in [`LICENSES/GPL-2.0-only.txt`](LICENSES/GPL-2.0-only.txt).
+
+### Linux kernel modules
+
+- Source: <https://github.com/armbian/linux-rockchip> commit `709c51c64e1652d4f8c87b1815db86f56d188268`
+- License: GPL-2.0-only
+- Paths:
+  - `installer/system/zram/*.ko`
+
+The `lz4_compress`, `lz4_decompress`, `lz4`, `zsmalloc`, and `zram` modules are built unmodified from that source for QIDI's Max 4 kernel. [`scripts/build_zram_modules.py`](scripts/build_zram_modules.py) and [`kernel/`](kernel/) hold the configuration and steps that rebuild them.
+
 ## Vendored Python dependencies
 
 Vendored dependency versions and artifact hashes are recorded in `installer/runtime/vendor/DEPENDENCIES.yaml`. The corresponding source is under `installer/runtime/vendor/`.

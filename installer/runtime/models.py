@@ -34,6 +34,10 @@ class RuntimePaths:
         return self.host_reboot_marker_override or self.printer_data_root / ".tltg_optimized_host_reboot_required"
 
     @property
+    def reboot_recommended_path(self) -> Path:
+        return self.printer_data_root / ".tltg_optimized_reboot_recommended"
+
+    @property
     def boot_id_path(self) -> Path:
         return self.boot_id_path_override or Path("/proc/sys/kernel/random/boot_id")
 
@@ -252,6 +256,25 @@ class SystemMoonrakerSpeedupsSpec:
 
 
 @dataclass(frozen=True)
+class SystemKernelModuleSpec:
+    name: str
+    archive: str
+    sha256: str
+
+
+@dataclass(frozen=True)
+class SystemZramSwapSpec:
+    kernel_release: str
+    kernel_version: str
+    # In load order.
+    modules: tuple[SystemKernelModuleSpec, ...]
+    size_mb: int
+    algorithm: str
+    swappiness: int
+    page_cluster: int
+
+
+@dataclass(frozen=True)
 class SystemFluiddFilamentConfigSpec:
     link: str
     target: str
@@ -285,6 +308,7 @@ class SystemOptimizationsSpec:
     fluidd_box_filament_ids: SystemFluiddBundleSpec
     fluidd_build: SystemFluiddBuildSpec
     moonraker_speedups: SystemMoonrakerSpeedupsSpec
+    zram_swap: SystemZramSwapSpec
     klipper_box_config: SystemMoonrakerMetadata3mfSpec
     klipper_print_stats_manager: SystemMoonrakerMetadata3mfSpec
     fluidd_filament_config: SystemFluiddFilamentConfigSpec
