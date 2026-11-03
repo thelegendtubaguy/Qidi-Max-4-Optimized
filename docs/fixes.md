@@ -25,6 +25,8 @@ Every QIDI Box load left three of QIDI's timers behind in Klipper, from the load
 
 Klipper also watches how busy it is. If its timers keep piling up, or it stays more than 80% busy for five minutes, the console says so, at most once an hour. If a homing move times out, the console says how busy Klipper was just before. `klippy.log` gets a `tltg_klipper_health` line every minute with the timer count and how busy Klipper was.
 
+In Fluidd, the **System Utilization** card on the System page charts both: **Klipper Main Thread** under Klipper Load, and **Klipper Timers**. Klipper Load counts all of Klipper's threads; the main thread is the one that has to keep up. The timer count stays around 60.
+
 ## Unknown Box filaments shutting Klipper down
 
 Loading a slot whose saved filament isn't in QIDI's list no longer shuts Klipper down. See [QIDI Box](qidi-box.md#filaments-missing-from-qidis-list).
