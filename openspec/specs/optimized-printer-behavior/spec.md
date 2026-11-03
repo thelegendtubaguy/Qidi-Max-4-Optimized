@@ -759,6 +759,13 @@ Optimized configuration SHALL apply upstream Klipper's fixes for homing endstop 
 - **WHEN** a timer's callback pauses and another task calls `update_timer` for it
 - **THEN** the callback is not started again until the paused run returns
 
+### Requirement: Cheaper status updates
+Optimized configuration SHALL replace the vendor once-a-second status update pass, only when it matches the vendor original, with one that sends each subscriber the same updates while skipping objects whose status is the same object as in the previous pass and comparing `multi_color_controller` values natively before the vendor nested comparison.
+
+#### Scenario: Subscriber updates
+- **WHEN** Moonraker is subscribed and printer objects change between passes
+- **THEN** each update carries only the changed fields, and only the changed nested values of `multi_color_controller`, as with the vendor pass
+
 ### Requirement: Box heater sensors stop polling after a shutdown
 Once Klipper has shut down, a failed read of a Box heater's AHT20 SHALL stop that sensor's polling instead of raising, so Klipper stays in its shutdown state with the original reason. While Klipper is not shut down, sensor read errors SHALL propagate unchanged.
 

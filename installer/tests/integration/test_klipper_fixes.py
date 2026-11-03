@@ -20,10 +20,12 @@ def _load():
     """Import tltg_klipper_fixes with stand-ins for the Klipper modules it
     patches; the tests attach the classes they need."""
     saved = {name: sys.modules.get(name)
-             for name in ("mcu", "reactor", "serialhdl", "extras", "extras.heaters", "extras.tmc")}
-    for name in ("mcu", "reactor", "serialhdl"):
+             for name in ("mcu", "reactor", "serialhdl", "webhooks", "extras", "extras.heaters", "extras.tmc")}
+    for name in ("mcu", "reactor", "serialhdl", "webhooks"):
         sys.modules[name] = types.ModuleType(name)
     sys.modules["serialhdl"].error = SerialError
+    sys.modules["webhooks"].DEEP_COMPARISON_MODULES = ["multi_color_controller"]
+    sys.modules["webhooks"].SUBSCRIPTION_REFRESH_TIME = 1.
     package = types.ModuleType("extras")
     package.__path__ = []
     sys.modules["extras"] = package
@@ -176,6 +178,78 @@ class TimerTest(unittest.TestCase):
         timer.timer_is_running = False
         klipper_fixes._update_timer(reactor, timer, 0.)
         self.assertEqual((timer.waketime, reactor._next_timer), (0., 0.))
+
+    def test_scan_runs_due_timers_and_finds_the_next_wake(self) -> None:
+        never = 1e99
+        reactor = types.SimpleNamespace(NEVER=never, _next_timer=0., _g_dispatch=None)
+        later = types.SimpleNamespace(waketime=20.)
+        idle = types.SimpleNamespace(waketime=never)
+
+        def run_due(eventtime):
+            klipper_fixes._update_timer(reactor, idle, 15.)
+            return 30.
+        due = types.SimpleNamespace(waketime=5., callback=run_due)
+        reactor._timers = [due, later, idle]
+
+        klipper_fixes._check_timers(reactor, 10., False)
+
+        self.assertEqual((due.waketime, idle.waketime, reactor._next_timer), (30., 15., 15.))
+
+
+class StatusUpdateTest(unittest.TestCase):
+    """Moonraker's once-a-second update carries only what changed."""
+
+    class Helper:
+        def __init__(self, objects):
+            self.printer = types.SimpleNamespace(lookup_object=lambda name, default=None: objects.get(name, default))
+            self.clients = {}
+            self.pending_queries = []
+            self.last_query = {}
+
+        def _get_diff_recursive(self, now, last):
+            # QIDI's nested comparison for multi_color_controller.
+            if not isinstance(now, dict) or not isinstance(last, dict):
+                return now if now != last else None
+            diff = {}
+            for k, v in now.items():
+                if k not in last:
+                    diff[k] = v
+                else:
+                    res = self._get_diff_recursive(v, last[k])
+                    if res is not None:
+                        diff[k] = res
+            return diff if diff else None
+
+    def test_updates_carry_only_changes(self) -> None:
+        macro = {"run": False}
+        state = {"sensor": {"temperature": 20.}, "box": {"slot0": "PLA", "temp": 28.7}}
+        objects = {
+            "gcode_macro M": types.SimpleNamespace(get_status=lambda e: macro),
+            "temperature_sensor s": types.SimpleNamespace(get_status=lambda e: dict(state["sensor"])),
+            "multi_color_controller": types.SimpleNamespace(
+                get_status=lambda e: {"box": dict(state["box"]), "task": {}}),
+        }
+        helper = self.Helper(objects)
+        sent = []
+        class Connection:
+            def is_closed(self):
+                return False
+        conn = Connection()
+        helper.clients[conn] = (conn, {name: None for name in objects}, sent.append, {})
+
+        klipper_fixes._do_query(helper, 1.)
+        klipper_fixes._do_query(helper, 2.)
+        state["sensor"]["temperature"] = 21.
+        state["box"]["temp"] = 28.8
+        klipper_fixes._do_query(helper, 3.)
+
+        updates = [message["params"]["status"] for message in sent]
+        self.assertEqual(updates, [
+            {"gcode_macro M": {"run": False}, "temperature_sensor s": {"temperature": 20.},
+             "multi_color_controller": {"box": {"slot0": "PLA", "temp": 28.7}, "task": {}}},
+            {"temperature_sensor s": {"temperature": 21.},
+             "multi_color_controller": {"box": {"temp": 28.8}}},
+        ])
 
 
 if __name__ == "__main__":
