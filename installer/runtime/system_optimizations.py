@@ -32,6 +32,7 @@ from .fluidd_filament_config import OPERATION as FILAMENT_CONFIG_OPERATION
 from .moonraker_file_manager import OPERATION as MOONRAKER_CACHE_OPERATION, patch_file_manager
 from . import moonraker_klippy_apis
 from . import moonraker_allowed_services
+from . import moonraker_speedups
 from . import moonraker_spoolman
 from . import remote_screen
 from . import restart_on_exit
@@ -93,6 +94,11 @@ FLUIDD_BUNDLE_OPERATIONS = (FLUIDD_BOX_OPERATION, FLUIDD_SERVICE_WORKER_OPERATIO
 # The build is only ever installed where nothing existed or over an earlier package build, so restoration is removal.
 FLUIDD_BUILD_PREIMAGE = {"path": fluidd_build.DESTINATION, "exists": False}
 FLUIDD_BUILD_UPDATE_PREIMAGE = {"path": fluidd_build.DESTINATION, "exists": True, "previous": fluidd_build.PREVIOUS}
+MOONRAKER_SPEEDUPS_OPERATION = moonraker_speedups.OPERATION
+# Like the Fluidd build, the speedups directory is only ever created where nothing existed or over an earlier package
+# directory, so restoration is removal.
+MOONRAKER_SPEEDUPS_PREIMAGE = {"path": moonraker_speedups.DESTINATION, "exists": False}
+MOONRAKER_SPEEDUPS_UPDATE_PREIMAGE = {"path": moonraker_speedups.DESTINATION, "exists": True, "previous": moonraker_speedups.PREVIOUS}
 MOONRAKER_SERVICE = "moonraker.service"
 KLIPPER_SERVICE = "klipper.service"
 QIDICLIENT_SERVICE = "qidi-client.service"
@@ -185,6 +191,15 @@ GUARDED_FILE_PATCHES = {
         restart_service="klipper.service",
         missing_message=None,
         skip_unrecognized=True,
+    ),
+    moonraker_speedups.PATH_OPERATION: _GuardedFilePatch(
+        label="Moonraker speedups path file",
+        file=lambda spec: moonraker_speedups.PATH_FILE,
+        patch=moonraker_speedups.patch_path_file,
+        restart_service=moonraker_speedups.RESTART_SERVICE,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
     ),
     restart_on_exit.MOONRAKER_OPERATION: _GuardedFilePatch(
         label="Moonraker restart-on-exit drop-in",
@@ -467,6 +482,26 @@ def maybe_emit_system_dry_run(
                 fluidd_build.FOREIGN: f"  - would preserve existing {fluidd_build.DESTINATION}",
             }[state])
             continue
+        if operation_id == MOONRAKER_SPEEDUPS_OPERATION and _system_root_allowed(paths=paths, environ=environ):
+            spec = manifest.system_optimizations
+            if not _moonraker_speedups_bundled(spec):
+                reporter.line(f"  - {operation_id}: the package has no Moonraker speedups")
+                continue
+            if not _moonraker_env_present(_system_root(environ)):
+                reporter.line(f"  - {operation_id}: QIDI's Moonraker virtualenv not found")
+                continue
+            try:
+                state = _moonraker_speedups_state(spec, _system_root(environ))
+            except InstallerError as exc:
+                reporter.line(f"  - would fail {operation_id}: {getattr(exc, 'message', str(exc))}")
+                continue
+            reporter.line({
+                moonraker_speedups.ABSENT: f"  - would install msgspec and uvloop for Moonraker at {moonraker_speedups.DESTINATION}",
+                moonraker_speedups.OUTDATED: f"  - would replace {moonraker_speedups.DESTINATION}",
+                moonraker_speedups.CURRENT: f"  - {operation_id}: already current",
+                moonraker_speedups.FOREIGN: f"  - would preserve existing {moonraker_speedups.DESTINATION}",
+            }[state])
+            continue
         if operation_id in GUARDED_FILE_PATCHES and _system_root_allowed(paths=paths, environ=environ):
             guarded = GUARDED_FILE_PATCHES[operation_id]
             root = _system_root(environ)
@@ -624,6 +659,63 @@ def _restore_fluidd_build(preimage: dict[str, Any], *, root: Path) -> None:
         raise SystemOptimizationRecoveryError(exc.message) from exc
 
 
+def _moonraker_speedup_wheels(spec: SystemOptimizationsSpec) -> list[tuple[Path, str]]:
+    installer_root = Path(__file__).resolve().parents[1]
+    return [(installer_root / wheel.archive, wheel.sha256) for wheel in spec.moonraker_speedups.wheels]
+
+
+def _moonraker_speedups_bundled(spec: SystemOptimizationsSpec) -> bool:
+    return all(path.is_file() for path, _ in _moonraker_speedup_wheels(spec))
+
+
+def _moonraker_env_present(root: Path) -> bool:
+    site_packages = _map_path(root, moonraker_speedups.SITE_PACKAGES)
+    return not _path_has_symlink_component(site_packages, root=root) and site_packages.is_dir()
+
+
+def _moonraker_speedups_state(spec: SystemOptimizationsSpec, root: Path) -> str:
+    """Raises MoonrakerSpeedupsError when the package wheels are missing or invalid."""
+    destination = _map_path(root, moonraker_speedups.DESTINATION)
+    _reject_parent_symlink_path(destination, root=root)
+    wheels = _moonraker_speedup_wheels(spec)
+    return moonraker_speedups.state(
+        destination,
+        files=moonraker_speedups.wheel_files(wheels),
+        wheels_digest=moonraker_speedups.digest(sha256 for _, sha256 in wheels),
+    )
+
+
+def _moonraker_speedups_current(spec: SystemOptimizationsSpec, root: Path) -> bool:
+    try:
+        return _moonraker_speedups_state(spec, root) == moonraker_speedups.CURRENT
+    except InstallerError:
+        return False
+
+
+def _restore_moonraker_speedups(preimage: dict[str, Any], *, root: Path, restarts: _ServiceRestarts) -> None:
+    destination = _map_path(root, moonraker_speedups.DESTINATION)
+    previous = _map_path(root, moonraker_speedups.PREVIOUS)
+    removing = _map_path(root, moonraker_speedups.REMOVING)
+    for path in (destination, previous, removing):
+        _reject_parent_symlink_path(path, root=root)
+    try:
+        if preimage.get("exists"):
+            # Without a moved-aside directory, the replaced packages are still in place.
+            if previous.is_symlink() or not previous.is_dir():
+                return
+            if destination.exists() or destination.is_symlink():
+                moonraker_speedups.remove(destination, removing)
+            previous.rename(destination)
+        elif destination.exists() or destination.is_symlink():
+            moonraker_speedups.remove(destination, removing)
+        else:
+            return
+    except moonraker_speedups.MoonrakerSpeedupsError as exc:
+        raise SystemOptimizationRecoveryError(exc.message) from exc
+    # Moonraker keeps the packages it imported until it restarts.
+    restarts.request(MOONRAKER_SERVICE, required=True)
+
+
 def _retire_fluidd_bundle_patch(
     operation_id: str,
     *,
@@ -741,6 +833,10 @@ def restore_system_optimizations(
                 if fluidd_build.installed_sha256(_map_path(root, fluidd_build.DESTINATION)) is None:
                     reporter.line(f"{fluidd_build.DESTINATION} was replaced after install and was preserved.")
                     continue
+            elif operation_id == MOONRAKER_SPEEDUPS_OPERATION:
+                if moonraker_speedups.installed_digest(_map_path(root, moonraker_speedups.DESTINATION)) is None:
+                    reporter.line(f"{moonraker_speedups.DESTINATION} was replaced after install and was preserved.")
+                    continue
             elif operation_id != ROCKCHIP_ROOT_SYNC_OPERATION and guarded is None and _operation_needs_apply(
                 operation_id, spec=manifest.system_optimizations, root=root, run=run
             ):
@@ -784,6 +880,8 @@ def restore_system_optimizations(
                 _restore_filament_config_link(paths, manifest.system_optimizations)
             elif operation_id == FLUIDD_BUILD_OPERATION:
                 _restore_fluidd_build(preimage, root=root)
+            elif operation_id == MOONRAKER_SPEEDUPS_OPERATION:
+                _restore_moonraker_speedups(preimage, root=root, restarts=restarts)
             elif guarded is not None:
                 _restore_guarded_file(guarded, preimage, paths=paths, root=root, sudo_password=sudo_password, run=run, restarts=restarts)
             elif operation_id == ROCKCHIP_ROOT_SYNC_OPERATION:
@@ -920,6 +1018,23 @@ def apply_system_optimizations(
                 if guarded.required:
                     raise SystemOptimizationError(f"Required {guarded.label} was modified and was preserved.")
                 reporter.line(f"{guarded.label} was modified after install and was preserved.")
+                continue
+            if operation_id == moonraker_speedups.PATH_OPERATION and not (
+                _moonraker_env_present(root) and _moonraker_speedups_current(spec, root)
+            ):
+                # Never point Moonraker at packages that aren't in place.
+                actions.append(
+                    _action_record(
+                        operation_id=operation_id,
+                        status="skipped",
+                        started_at=started_at,
+                        preimage=None,
+                        desired=_desired(operation_id, spec),
+                        postflight={"path": guarded.file(spec)},
+                        source=source,
+                        reconciled=False,
+                    )
+                )
                 continue
             if operation_id == remote_screen.NGINX_OPERATION and not _fluidd_build_current(spec, root):
                 reporter.line(f"{guarded.label} was left unchanged because the package Fluidd is not installed.")
@@ -1068,6 +1183,75 @@ def apply_system_optimizations(
                     )
                 )
                 restore_preimages.setdefault(operation_id, dict(FLUIDD_BUILD_PREIMAGE))
+                atomic_delete(_journal_path(paths))
+                applied_any = True
+                continue
+            if operation_id == MOONRAKER_SPEEDUPS_OPERATION:
+                if not _moonraker_speedups_bundled(spec):
+                    state = "missing"
+                elif not _moonraker_env_present(root):
+                    state = "missing"
+                    reporter.line("QIDI's Moonraker virtualenv was not found; Moonraker runs without msgspec and uvloop.")
+                else:
+                    state = _moonraker_speedups_state(spec, root)
+                if state == moonraker_speedups.FOREIGN:
+                    reporter.line(f"{moonraker_speedups.DESTINATION} already exists and was preserved.")
+                if state in {"missing", moonraker_speedups.FOREIGN, moonraker_speedups.CURRENT}:
+                    if state == moonraker_speedups.CURRENT and operation_id in restore_preimages:
+                        continue
+                    actions.append(
+                        _action_record(
+                            operation_id=operation_id,
+                            status={"missing": "missing", moonraker_speedups.FOREIGN: "preserved"}.get(state, "already_current"),
+                            started_at=started_at,
+                            preimage=None,
+                            desired=_desired(operation_id, spec),
+                            postflight={"path": moonraker_speedups.DESTINATION, "state": state},
+                            source=source,
+                            reconciled=False,
+                        )
+                    )
+                    if state == moonraker_speedups.CURRENT:
+                        # The marker shows a package directory, so its restoration is removal.
+                        restore_preimages.setdefault(operation_id, dict(MOONRAKER_SPEEDUPS_PREIMAGE))
+                    continue
+                destination = _map_path(root, moonraker_speedups.DESTINATION)
+                staging = _map_path(root, moonraker_speedups.STAGING)
+                previous = _map_path(root, moonraker_speedups.PREVIOUS)
+                for leftover in (staging, previous):
+                    _reject_parent_symlink_path(leftover, root=root)
+                    moonraker_speedups.discard(leftover)
+                moonraker_speedups.extract(_moonraker_speedup_wheels(spec), staging)
+                preimage = dict(MOONRAKER_SPEEDUPS_PREIMAGE if state == moonraker_speedups.ABSENT else MOONRAKER_SPEEDUPS_UPDATE_PREIMAGE)
+                current_preimages[operation_id] = preimage
+                _write_host_journal(
+                    paths,
+                    operation_id=operation_id,
+                    transaction_id=uuid.uuid4().hex,
+                    phase="apply",
+                    preimage=preimage,
+                    preimages=current_preimages,
+                )
+                if state == moonraker_speedups.OUTDATED:
+                    destination.rename(previous)
+                staging.rename(destination)
+                if _moonraker_speedups_state(spec, root) != moonraker_speedups.CURRENT:
+                    raise SystemOptimizationError("Moonraker speedups failed postflight.")
+                # Moonraker imports the packages only when it starts; a failed restart rolls them back.
+                restarts.request(MOONRAKER_SERVICE, required=True)
+                actions.append(
+                    _action_record(
+                        operation_id=operation_id,
+                        status="applied",
+                        started_at=started_at,
+                        preimage=preimage,
+                        desired=_desired(operation_id, spec),
+                        postflight={"path": moonraker_speedups.DESTINATION, "state": moonraker_speedups.CURRENT},
+                        source=source,
+                        reconciled=source in {"auto_update_child", "auto_update_reconcile"},
+                    )
+                )
+                restore_preimages.setdefault(operation_id, dict(MOONRAKER_SPEEDUPS_PREIMAGE))
                 atomic_delete(_journal_path(paths))
                 applied_any = True
                 continue
@@ -1364,11 +1548,15 @@ def apply_system_optimizations(
             restore_preimages=initial_restore_preimages,
         )
         raise SystemOptimizationApplyError(getattr(exc, "message", str(exc)), partial) from exc
-    # The replaced Fluidd build is kept only while the transaction can still roll back.
+    # The replaced Fluidd build and Moonraker speedups are kept only while the transaction can still roll back.
     with suppress(OSError, InstallerError):
         previous = _map_path(root, fluidd_build.PREVIOUS)
         _reject_parent_symlink_path(previous, root=root)
         fluidd_build.discard(previous)
+    with suppress(OSError, InstallerError):
+        previous = _map_path(root, moonraker_speedups.PREVIOUS)
+        _reject_parent_symlink_path(previous, root=root)
+        moonraker_speedups.discard(previous)
     if source in {"auto_update_child", "auto_update_reconcile"}:
         reporter.line(
             "System optimizations reconciled."
@@ -1757,6 +1945,8 @@ def _restore_preimage_map(preimages: dict[str, Any], *, paths: RuntimePaths, spe
             _restore_filament_config_link(paths, spec)
         elif operation_id == FLUIDD_BUILD_OPERATION:
             _restore_fluidd_build(preimage, root=root)
+        elif operation_id == MOONRAKER_SPEEDUPS_OPERATION:
+            _restore_moonraker_speedups(preimage, root=root, restarts=restarts)
         elif operation_id == MOONRAKER_METADATA_OPERATION:
             _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
             restarts.request(MOONRAKER_SERVICE)
@@ -1833,6 +2023,12 @@ def _operation_matches_preimage(
         if preimage.get("exists"):
             previous = _map_path(root, fluidd_build.PREVIOUS)
             return not previous.exists() and not previous.is_symlink() and fluidd_build.installed_sha256(destination) is not None
+        return not destination.exists() and not destination.is_symlink()
+    if operation_id == MOONRAKER_SPEEDUPS_OPERATION:
+        destination = _map_path(root, moonraker_speedups.DESTINATION)
+        if preimage.get("exists"):
+            previous = _map_path(root, moonraker_speedups.PREVIOUS)
+            return not previous.exists() and not previous.is_symlink() and moonraker_speedups.installed_digest(destination) is not None
         return not destination.exists() and not destination.is_symlink()
     if operation_id in {"apt_sources", MOONRAKER_METADATA_OPERATION, *GUARDED_FILE_PATCHES}:
         item = preimage.get("file", preimage)
@@ -2563,6 +2759,9 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         KLIPPER_PRINT_STATS_OPERATION,
         restart_on_exit.MOONRAKER_OPERATION,
         restart_on_exit.KLIPPER_OPERATION,
+        # The path file goes after the packages it points at, so restoration removes it first.
+        MOONRAKER_SPEEDUPS_OPERATION,
+        moonraker_speedups.PATH_OPERATION,
         FILAMENT_CONFIG_OPERATION,
         FLUIDD_BUILD_OPERATION,
         remote_screen.UNIT_OPERATION,
@@ -2625,7 +2824,12 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
         return {"path": spec.fluidd_filament_config.link, "target": spec.fluidd_filament_config.target}
     if operation_id == FLUIDD_BUILD_OPERATION:
         return {"path": fluidd_build.DESTINATION, "version": spec.fluidd_build.version, "archive_sha256": spec.fluidd_build.sha256}
-    if operation_id in (moonraker_klippy_apis.OPERATION, moonraker_spoolman.OPERATION, moonraker_allowed_services.OPERATION, restart_on_exit.MOONRAKER_OPERATION, restart_on_exit.KLIPPER_OPERATION, remote_screen.UNIT_OPERATION, remote_screen.SERVER_OPERATION, remote_screen.NGINX_OPERATION):
+    if operation_id == MOONRAKER_SPEEDUPS_OPERATION:
+        return {
+            "path": moonraker_speedups.DESTINATION,
+            "wheels_digest": moonraker_speedups.digest(wheel.sha256 for wheel in spec.moonraker_speedups.wheels),
+        }
+    if operation_id in (moonraker_klippy_apis.OPERATION, moonraker_spoolman.OPERATION, moonraker_allowed_services.OPERATION, moonraker_speedups.PATH_OPERATION, restart_on_exit.MOONRAKER_OPERATION, restart_on_exit.KLIPPER_OPERATION, remote_screen.UNIT_OPERATION, remote_screen.SERVER_OPERATION, remote_screen.NGINX_OPERATION):
         guarded = GUARDED_FILE_PATCHES[operation_id]
         return {"path": guarded.file(spec), "restart_service": guarded.restart_service}
     if operation_id == MOONRAKER_METADATA_OPERATION:
@@ -3085,6 +3289,8 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             KLIPPER_PRINT_STATS_OPERATION,
             restart_on_exit.MOONRAKER_OPERATION,
             restart_on_exit.KLIPPER_OPERATION,
+            MOONRAKER_SPEEDUPS_OPERATION,
+            moonraker_speedups.PATH_OPERATION,
             FILAMENT_CONFIG_OPERATION,
             FLUIDD_BUILD_OPERATION,
             remote_screen.UNIT_OPERATION,
@@ -3131,6 +3337,10 @@ def _validate_host_preimage(
     if operation_id == FLUIDD_BUILD_OPERATION:
         if preimage not in (FLUIDD_BUILD_PREIMAGE, FLUIDD_BUILD_UPDATE_PREIMAGE):
             raise StateValidationError("Fluidd build restoration preimage is invalid.")
+        return
+    if operation_id == MOONRAKER_SPEEDUPS_OPERATION:
+        if preimage not in (MOONRAKER_SPEEDUPS_PREIMAGE, MOONRAKER_SPEEDUPS_UPDATE_PREIMAGE):
+            raise StateValidationError("Moonraker speedups restoration preimage is invalid.")
         return
     if operation_id.startswith("service_"):
         expected_service = _service_for_operation(operation_id, spec)
@@ -3528,6 +3738,9 @@ def _restore_preimage_for_operation(
         return
     if operation_id == FLUIDD_BUILD_OPERATION:
         _restore_fluidd_build(preimage, root=root)
+        return
+    if operation_id == MOONRAKER_SPEEDUPS_OPERATION:
+        _restore_moonraker_speedups(preimage, root=root, restarts=restarts)
         return
     if operation_id == MOONRAKER_METADATA_OPERATION:
         _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)

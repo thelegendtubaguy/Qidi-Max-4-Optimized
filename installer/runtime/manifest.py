@@ -37,8 +37,10 @@ from .models import (
     SystemOptimizationsSpec,
     SystemQidiClientStaticGifsSpec,
     SystemMoonrakerMetadata3mfSpec,
+    SystemMoonrakerSpeedupsSpec,
     SystemRockchipRootSyncSpec,
     SystemServicesSpec,
+    SystemWheelSpec,
 )
 
 
@@ -392,6 +394,10 @@ def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec 
     moonraker_file_manager_raw = _require_mapping(system_raw, "moonraker_file_manager")
     fluidd_box_raw = _require_mapping(system_raw, "fluidd_box_filament_ids")
     fluidd_build_raw = _require_mapping(system_raw, "fluidd_build")
+    speedups_raw = _require_mapping(system_raw, "moonraker_speedups")
+    wheels_raw = speedups_raw.get("wheels")
+    if not isinstance(wheels_raw, list) or not wheels_raw:
+        raise ManifestValidationError("Expected non-empty list at moonraker_speedups.wheels.")
     klipper_box_raw = _require_mapping(system_raw, "klipper_box_config")
     klipper_print_stats_raw = _require_mapping(system_raw, "klipper_print_stats_manager")
     filament_config_raw = _require_mapping(system_raw, "fluidd_filament_config")
@@ -452,6 +458,17 @@ def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec 
             url=_validate_https_url(_require_str(fluidd_build_raw, "url")),
             archive=_validate_relative_path(_require_str(fluidd_build_raw, "archive"), allowed_roots=("system",)),
             sha256=_require_sha256(fluidd_build_raw, "sha256"),
+        ),
+        moonraker_speedups=SystemMoonrakerSpeedupsSpec(
+            wheels=tuple(
+                SystemWheelSpec(
+                    url=_validate_https_url(_require_str(item, "url")),
+                    archive=_validate_relative_path(_require_str(item, "archive"), allowed_roots=("system",)),
+                    sha256=_require_sha256(item, "sha256"),
+                )
+                for item in wheels_raw
+                if _ensure_mapping_entry(item, "moonraker_speedups.wheels")
+            ),
         ),
         klipper_box_config=SystemMoonrakerMetadata3mfSpec(
             file=_validate_absolute_path(_require_str(klipper_box_raw, "file")),

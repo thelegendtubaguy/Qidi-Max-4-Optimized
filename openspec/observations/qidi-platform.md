@@ -134,6 +134,12 @@ The 4 KiB batch increased from `1.324 MiB/s` to `35.617 MiB/s`; the 256 KiB batc
 - **Runtime-confirmed:** on that printer, Moonraker's process received SIGTERM outside systemd and exited within a second, while the unit stayed active until a `systemctl restart` 97 seconds later. `qidiclient`, running throughout, then showed `QDC_400_005_015_001` with **Restart Klipper** and **Restart Firmware** buttons and still showed it a day later while Moonraker and Fluidd worked normally.
 - **Unresolved:** whether a crash that exits non-zero is restarted after `RestartSec`, as systemd documents.
 
+## Moonraker speedups
+
+- **Runtime-confirmed:** on one Max 4 running `01.01.07.01`, QIDI's Moonraker is a January 2024 tree without git metadata (API `1.4.0`, SQLite database) running in `~/moonraker-env` on Python 3.9.2. Its `utils/json_wrapper.py` uses `msgspec` and its `eventloop.py` uses `uvloop` when they import, unless `MOONRAKER_ENABLE_MSGSPEC` or `MOONRAKER_ENABLE_UVLOOP` is set to something other than `y`, `yes`, or `true`. Neither package is installed, and its startup log reports `msgspec_enabled: False` and `uvloop_enabled: False`.
+- **Runtime-confirmed:** on that printer at idle, a py-spy profile of Moonraker's main thread spent its time on websocket writes and stdlib `json.dumps` of status updates; database work did not appear. Klipper sent one status update per second of about 12.5 KB, mostly the full `box_extras` Box list.
+- **Runtime-confirmed:** on that printer at idle with two websocket clients and the same Klipper build, Moonraker used 5.6% of a core with neither package, 5.07% with `msgspec` 0.20.0, and 4.35% with `msgspec` and `uvloop` 0.23.0 (three 120-second windows each after a fresh restart). The full-status subscribe reply took 1198 ms, 1034 ms, and 864 ms. With both packages, Moonraker's JSON has no spaces after separators and replies are 3–16% smaller, the read methods Fluidd uses return the same keys and value types, and `qidiclient` kept reading Box status.
+
 ## Stock integration constraints
 
 - `config/fluidd.cfg` is printer-owned and read-only for this repository.

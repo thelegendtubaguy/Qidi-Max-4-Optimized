@@ -17,6 +17,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from installer.runtime import fluidd_build
+from installer.runtime import moonraker_speedups
 from installer.runtime.compatibility import load_supported_upgrade_sources, validate_manifest_compatibility
 from installer.runtime.manifest import load_manifest
 from installer.runtime.naming import BUNDLE_NAME_PREFIX, BUNDLE_ROOT_NAME
@@ -67,6 +68,7 @@ def main(argv: list[str] | None = None) -> int:
     validate_manifest_compatibility(manifest, compatibility)
     validate_source_payloads(manifest)
     fluidd_archive = fetch_fluidd_build(manifest)
+    speedup_wheels = fetch_moonraker_speedups(manifest)
 
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -91,6 +93,10 @@ def main(argv: list[str] | None = None) -> int:
         destination = bundle_root / directory
         shutil.copytree(source, destination, ignore=ignore)
     shutil.copy2(fluidd_archive, bundle_root / "installer" / manifest.system_optimizations.fluidd_build.archive)
+    for wheel, cached in speedup_wheels:
+        destination = bundle_root / "installer" / wheel.archive
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(cached, destination)
 
     (bundle_root / "RELEASE_METADATA.yaml").write_text(
         render_release_metadata(manifest.package.version, args.channel, args.build_id),
@@ -165,6 +171,26 @@ def fetch_fluidd_build(manifest) -> Path:
         partial.replace(cached)
     fluidd_build.archive_files(cached, build.sha256)
     return cached
+
+
+def fetch_moonraker_speedups(manifest) -> list[tuple[object, Path]]:
+    """Return the pinned Moonraker speedup wheels, downloading each once and verifying it against the manifest."""
+    fetched = []
+    for wheel in manifest.system_optimizations.moonraker_speedups.wheels:
+        cached = DOWNLOAD_CACHE / f"{wheel.sha256}-{Path(wheel.archive).name}"
+        if not cached.is_file():
+            print(f"Downloading {Path(wheel.archive).name} from {wheel.url}", file=sys.stderr)
+            with urllib.request.urlopen(wheel.url, timeout=120) as response:
+                data = response.read()
+            if hashlib.sha256(data).hexdigest() != wheel.sha256:
+                raise ValueError(f"{wheel.url} does not match the pinned sha256.")
+            cached.parent.mkdir(parents=True, exist_ok=True)
+            partial = cached.with_name(cached.name + ".partial")
+            partial.write_bytes(data)
+            partial.replace(cached)
+        fetched.append((wheel, cached))
+    moonraker_speedups.wheel_files((cached, wheel.sha256) for wheel, cached in fetched)
+    return fetched
 
 
 def bundle_names(*, channel: str, package_version: str, build_id: str | None) -> tuple[str, str]:

@@ -164,6 +164,7 @@ def fake_system_root(
         klippy_apis.write_bytes((REPO_ROOT / "installer/tests/fixtures/moonraker_klippy_apis.py").read_bytes().replace(b"\n", b"\r\n"))
         spoolman = moonraker.parent.parent / "spoolman.py"
         spoolman.write_bytes((REPO_ROOT / "installer/tests/fixtures/moonraker_spoolman.py").read_bytes().replace(b"\n", b"\r\n"))
+        (root / "home/qidi/moonraker-env/lib/python3.9/site-packages").mkdir(parents=True)
     (root / "mounts").mkdir()
     (root / "mounts/root.options").write_text("rw,relatime,sync\n", encoding="utf-8")
     return root
@@ -180,6 +181,28 @@ def with_fluidd_build(manifest):
     spec = manifest.system_optimizations
     pinned = dataclasses.replace(spec.fluidd_build, archive=str(archive), sha256=hashlib.sha256(archive.read_bytes()).hexdigest())
     return dataclasses.replace(manifest, system_optimizations=dataclasses.replace(spec, fluidd_build=pinned))
+
+
+def with_moonraker_speedups(manifest):
+    """Pin the manifest's Moonraker speedups to small wheels; repository checkouts carry no release wheels."""
+    directory = temp_path("moonraker-speedups-")
+    wheels = []
+    for name, extension in (("msgspec", "_core.so"), ("uvloop", "loop.so")):
+        wheel = directory / f"{name}.whl"
+        with zipfile.ZipFile(wheel, "w") as archive:
+            archive.writestr(f"{name}/__init__.py", f"# {name}\n")
+            binary = zipfile.ZipInfo(f"{name}/{extension}")
+            binary.external_attr = 0o100755 << 16
+            archive.writestr(binary, b"\x7fELF")
+            archive.writestr(f"{name}-1.0.dist-info/RECORD", "")
+        wheels.append(dataclasses.replace(
+            manifest.system_optimizations.moonraker_speedups.wheels[0],
+            archive=str(wheel),
+            sha256=hashlib.sha256(wheel.read_bytes()).hexdigest(),
+        ))
+    spec = manifest.system_optimizations
+    pinned = dataclasses.replace(spec.moonraker_speedups, wheels=tuple(wheels))
+    return dataclasses.replace(manifest, system_optimizations=dataclasses.replace(spec, moonraker_speedups=pinned))
 
 
 def fake_host_run(root: Path):
