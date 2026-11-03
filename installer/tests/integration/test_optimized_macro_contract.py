@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import re
 import unittest
 
@@ -169,6 +170,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assert_ordered(
             resume,
             "{% if box_enabled %}",
+            "M109 S{resume_temp}",
             "TRY_RESUME_PRINT",
             "{% elif sensor.pause_enabled|int == 0 %}",
             "RESUME_PRINT",
@@ -203,16 +205,18 @@ class OptimizedMacroContractTests(unittest.TestCase):
                     "M109.0 S",
                 )
 
-    def test_box_availability_uses_one_transport_independent_definition(self):
-        predicate = (
-            '{% set box_available = printer["box_extras"] is defined or ("T_MANAGER" in printer.gcode.commands and '
-            "((printer.multi_color_controller|default({})).box_count|default(0)|int > 0 or "
-            "(printer.box485|default({})).box_count|default(0)|int > 0)) %}"
-        )
+    def test_macros_do_not_copy_large_status_objects(self):
+        # Klipper deep-copies an object's whole status on a macro's first read of it, on its main
+        # thread; these take 9-50 ms each, against QIDI's 50 ms Box endstop sync window.
+        large = re.compile(r'printer(?:\.|\[")(?:configfile|gcode|multi_color_controller|box_extras)\b')
         for path in sorted(OPTIMIZED_MACRO_ROOT.glob("*.cfg")):
             text = path.read_text(encoding="utf-8")
             with self.subTest(path=path.name):
-                self.assertEqual(text.count('printer["box_extras"]'), text.count(predicate))
+                self.assertEqual(large.findall(text), [])
+                self.assertEqual(
+                    text.count("set box_available ="),
+                    text.count("{% set box_available = printer.tltg_macro_status.box_available %}"),
+                )
 
     def test_tool_mapping_lifecycle_preserves_active_prints_and_resets_idle_state(self):
         ensure = self._macro_gcode("_TLTG_ENSURE_TOOL_MAPPINGS")
@@ -390,7 +394,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertNotIn("_OPTIMIZED_HOME_Z_FROM_SAFE_POINT_RAW", public_gcode)
 
         raw_gcode = self._macro_gcode("_OPTIMIZED_HOME_Z_FROM_SAFE_POINT_RAW")
-        self.assertIn("printer.configfile.settings.printer.max_accel", raw_gcode)
+        self.assertIn("printer.tltg_macro_status.max_accel", raw_gcode)
         self.assertLess(raw_gcode.index("G28.6245197 Z"), raw_gcode.index("SET_VELOCITY_LIMIT ACCEL={default_accel}"))
 
         optimized_text = "\n".join(path.read_text(encoding="utf-8") for path in sorted(OPTIMIZED_MACRO_ROOT.glob("*.cfg")))
@@ -412,7 +416,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertNotIn("G4 P2000", cut_gcode)
         self.assert_ordered(
             cut_gcode,
-            'printer.print_stats.state == "printing" and "T_MANAGER" in printer.gcode.commands',
+            'printer.print_stats.state == "printing" and printer.tltg_macro_status.vendor_flow',
             "{% if not vendor_flow_cuts %}",
             "SET_STEPPER_ENABLE STEPPER=extruder enable=0",
         )
@@ -477,7 +481,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
             "SAVE_GCODE_STATE NAME=optimized_unload_filament_state",
             "G90",
             "M83",
-            '{% if "T_MANAGER" in printer.gcode.commands %}',
+            '{% if printer.tltg_macro_status.vendor_flow %}',
             "UNLOAD_FILAMENT T={T}",
             "{% else %}",
             "CUT_FILAMENT T={T}",
@@ -816,7 +820,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertNotIn("_OPTIMIZED_HOME_Z_FROM_SAFE_POINT_RAW", cleanup)
         self.assert_ordered(
             cleanup,
-            'box_available = printer["box_extras"] is defined',
+            'box_available = printer.tltg_macro_status.box_available',
             "OPTIMIZED_WAIT_HOTEND S={scrape_target} STATUS=clear_nozzle",
             "TEMPERATURE_WAIT SENSOR={printer.toolhead.extruder} MAXIMUM={scrape_maximum}",
             "{% if box_available %}",
@@ -830,7 +834,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
         finish = self._macro_gcode("_OPTIMIZED_FINISH_START_SCRAPE")
         self.assert_ordered(
             finish,
-            'box_available = printer["box_extras"] is defined',
+            'box_available = printer.tltg_macro_status.box_available',
             "{% if box_available %}",
             "OPTIMIZED_MOVE_TO_TRASH",
             "OPTIMIZED_WIPE_NOZZLE_DROP",
@@ -858,3 +862,76 @@ class OptimizedMacroContractTests(unittest.TestCase):
             if section_name.lower() == name.lower():
                 return "\n".join(line for _, line in extract_gcode_lines(lines, header_index + 1, end_index))
         self.fail(f"Missing section [{name}] in {path}")
+
+
+spec = importlib.util.spec_from_file_location(
+    "tltg_macro_status", REPO_ROOT / "installer/klipper/tltg/macro_status.py"
+)
+macro_status = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(macro_status)
+
+
+class _Status:
+    def __init__(self, status=None, **attrs):
+        self.status = status or {}
+        self.calls = 0
+        self.__dict__.update(attrs)
+
+    def get_status(self, eventtime):
+        self.calls += 1
+        return self.status
+
+
+class MacroStatusTest(unittest.TestCase):
+    """The facts macros read must match what they read before from the
+    printer objects, for each way a Box connects."""
+
+    def status(self, objects, commands=()):
+        class Printer:
+            def lookup_object(self, name, default=None):
+                return objects.get(name, default)
+
+        status = object.__new__(macro_status.MacroStatus)
+        status.printer = Printer()
+        status.gcode = _Status(status_commands={name: {} for name in commands})
+        status.max_accel = 20000.
+        status.status_failed = set()
+        return status.get_status(1.)
+
+    def test_box_available_for_each_box_transport(self) -> None:
+        def controller(count):
+            return _Status({"box_count": count, "box": {"loaded_slot": "slot2"}})
+
+        cases = [
+            ("USB Box", {"box_extras": _Status()}, (), True),
+            ("RS-485 Box", {"box485": _Status({"box_count": 1}), "multi_color_controller": controller(0)},
+             ("T_MANAGER",), True),
+            ("controller Box", {"box485": _Status({"box_count": 0}), "multi_color_controller": controller(2)},
+             ("T_MANAGER",), True),
+            ("counted Box without QIDI's tool change", {"box485": _Status({"box_count": 1})}, (), False),
+            ("no Box", {"box485": _Status({"box_count": 0}), "multi_color_controller": controller(0)},
+             ("T_MANAGER",), False),
+            ("unreadable count", {"box485": _Status({"box_count": "x"})}, ("T_MANAGER",), False),
+        ]
+        for label, objects, commands, expected in cases:
+            with self.subTest(label):
+                status = self.status(objects, commands)
+                self.assertIs(status["box_available"], expected)
+                self.assertIs(status["vendor_flow"], "T_MANAGER" in commands)
+
+    def test_loaded_slot_matches_multi_color_controller(self) -> None:
+        box_extras = _Status()
+        save_variables = _Status(allVariables={"last_load_slot": "slot5"})
+        usb = _Status({"box": {"loaded_slot": "slot5"}}, _initialized=True,
+                      box_adapter=_Status(box1base=box_extras))
+        objects = {"box_extras": box_extras, "save_variables": save_variables, "multi_color_controller": usb}
+        self.assertEqual(self.status(objects)["loaded_slot"], "slot5")
+        self.assertEqual(usb.calls, 0)
+
+        save_variables.allVariables = {}
+        self.assertEqual(self.status(objects)["loaded_slot"], "slot16")
+
+        rs485 = _Status({"box": {"loaded_slot": "slot9"}}, _initialized=True, box_adapter=_Status())
+        self.assertEqual(self.status({"multi_color_controller": rs485})["loaded_slot"], "slot9")
+        self.assertEqual(self.status({})["loaded_slot"], "")
+        self.assertEqual(self.status({})["max_accel"], 20000.)

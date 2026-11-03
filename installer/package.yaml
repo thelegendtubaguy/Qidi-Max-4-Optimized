@@ -6,8 +6,7 @@ package:
   id: qidi-max4-optimized
   display_name: QIDI Max 4 Optimized
   printer_model: qidi-max4
-  version: "26.11.01.1"
-
+  version: "26.11.02.1"
 firmware:
   supported:
     - "01.01.06.03"
@@ -68,6 +67,7 @@ install:
       - "box_mcu_temperature.cfg"
       - "background_save_config.cfg"
       - "box_heater_refresh.cfg"
+      - "klipper_health.cfg"
       - "save_variables_fast.cfg"
       - "box_feed_motion.cfg"
       - "box_eject.cfg"
@@ -77,6 +77,8 @@ install:
       - "box_flow_recovery.cfg"
       - "box485_monitor.cfg"
       - "spoolman.cfg"
+      - "macro_status.cfg"
+      - "klipper_fixes.cfg"
 
   ensure_lines:
     - id: include_optimized_macros
@@ -97,6 +99,15 @@ install:
     - id: box_heater_refresh
       source: "klipper/tltg/box_heater_refresh.py"
       destination: "klippy/extras/tltg_box_heater_refresh.py"
+    - id: klipper_health
+      source: "klipper/tltg/klipper_health.py"
+      destination: "klippy/extras/tltg_klipper_health.py"
+    - id: macro_status
+      source: "klipper/tltg/macro_status.py"
+      destination: "klippy/extras/tltg_macro_status.py"
+    - id: klipper_fixes
+      source: "klipper/tltg/klipper_fixes.py"
+      destination: "klippy/extras/tltg_klipper_fixes.py"
     - id: save_variables_fast
       source: "klipper/tltg/save_variables_fast.py"
       destination: "klippy/extras/tltg_save_variables_fast.py"
@@ -526,10 +537,19 @@ system_optimizations:
     service_worker: /home/qidi/fluidd/sw.js
   # The project's Fluidd fork release; the bundle builder downloads and verifies it.
   fluidd_build:
-    version: v1.37.7-tltg-779eafd
-    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-779eafd/fluidd.zip
+    version: v1.37.7-tltg-a73fa74
+    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-a73fa74/fluidd.zip
     archive: system/fluidd.zip
-    sha256: 8c9e3cbae6a8d690b6576169dbde89a496545cacb3c8754afa69df6e0b658d20
+    sha256: 74e775fc4d74af670b5768c9ea79f67ea6db98a3ceb3e05b7495cc6f4efba8fb
+  # Wheels for QIDI's Moonraker virtualenv (Python 3.9, aarch64); the bundle builder downloads and verifies them.
+  moonraker_speedups:
+    wheels:
+      - url: https://files.pythonhosted.org/packages/44/14/9d6f685a277e4d3417f103c4d228cb7ea83fdd776c739570f233917f5fd2/msgspec-0.20.0-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl
+        archive: system/moonraker-speedups/msgspec-0.20.0-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl
+        sha256: d5bb7ce84fe32f6ce9f62aa7e7109cb230ad542cc5bc9c46e587f1dac4afc48e
+      - url: https://files.pythonhosted.org/packages/d4/f0/855cfe0abc7e51a05b13311a017fcc967142067180f24cdcfe7ba047e4f3/uvloop-0.23.0-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl
+        archive: system/moonraker-speedups/uvloop-0.23.0-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl
+        sha256: 55d6f4135d914305929fe9e9c44d8b5383a9b3fa1bee3bfcf60ee97e01af07ea
   klipper_box_config:
     file: /home/qidi/klipper/klippy/extras/box_config.py
     restart_service: klipper.service

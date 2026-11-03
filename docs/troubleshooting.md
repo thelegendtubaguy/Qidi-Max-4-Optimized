@@ -6,6 +6,8 @@
 
 Read the installer's output first. It stops before writing anything when firmware detection, preflight, printer state, or free-space checks fail, and says why.
 
+**`[Errno 13] Permission denied: '/home/qidi/printer_data/.tltg_optimized_installer.lock'`** or **`Could not validate previous package version.`** after an earlier run with `sudo`: versions before 26.11.02.1 ran as root when started with `sudo` and left the files they created owned by root, which a later run as `qidi` couldn't open. Install the current version, with or without `sudo`; it gives those files back to `qidi` before it starts.
+
 **Klipper is stopped with an error,** such as `... is not a valid config section`: you can still run the installer. It installs its files first, restarts Klipper, and then updates saved settings. If Klipper still doesn't start, the installer says so; fix the error shown in Fluidd and run the installer again.
 
 ## The touchscreen says "Printer service failed to start"

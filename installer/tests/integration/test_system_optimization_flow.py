@@ -11,9 +11,10 @@ from pathlib import Path
 from subprocess import CompletedProcess
 from unittest import mock
 
-from installer.runtime import system_optimizations
+from installer.runtime import messages, system_optimizations
 from installer.runtime import fluidd_box_filaments as fluidd_patch
 from installer.runtime import moonraker_allowed_services
+from installer.runtime import moonraker_speedups
 from installer.runtime import remote_screen
 from installer.runtime import restart_on_exit
 from installer.runtime.fluidd_box_filaments import OPERATION as FLUIDD_BOX_OPERATION, PATCH_MARKER
@@ -50,6 +51,7 @@ from installer.tests.helpers import (
     moonraker_urlopen,
     snapshot_tree,
     with_fluidd_build,
+    with_moonraker_speedups,
 )
 
 
@@ -231,6 +233,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         # Without a package Fluidd build, nginx keeps serving QIDI's patched bundle.
         self.assertEqual(nginx_site.read_bytes(), nginx_site_before)
         self.assertEqual(state.system_ledger["outcomes"][system_optimizations.FLUIDD_BUILD_OPERATION]["status"], "missing")
+        # Without the package's wheels, Moonraker is never pointed at a speedups directory.
+        self.assertEqual(state.system_ledger["outcomes"][moonraker_speedups.OPERATION]["status"], "missing")
+        self.assertEqual(state.system_ledger["outcomes"][moonraker_speedups.PATH_OPERATION]["status"], "skipped")
         self.assertEqual(asvc.read_bytes(), asvc_before + b"\nqidi-client\n")
         fluidd_current = fluidd.read_bytes()
         # Earlier package versions left owned Fluidd patches, including an older Box motion section, that updates must replace in place.
@@ -269,11 +274,17 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(screen_server.read_bytes(), remote_screen.SERVER_PAYLOAD.read_bytes())
         self.assertFalse(reconciled["restore_preimages"][remote_screen.SERVER_OPERATION]["exists"])
 
-        # Serving the package Fluidd build retires QIDI's bundle patches; a failure first rolls the switch back.
-        manifest = with_fluidd_build(manifest)
+        # Serving the package Fluidd build retires QIDI's bundle patches, and Moonraker gets the speedup packages; a
+        # failure first rolls both back.
+        manifest = with_moonraker_speedups(with_fluidd_build(manifest))
         build = system_root / "home/qidi/tltg-fluidd"
         previous_build = system_root / "home/qidi/tltg-fluidd.tltg-previous"
         marker = build / ".tltg-optimized-fluidd"
+        speedups = system_root / moonraker_speedups.DESTINATION.lstrip("/")
+        previous_speedups = system_root / moonraker_speedups.PREVIOUS.lstrip("/")
+        speedups_marker = speedups / moonraker_speedups.MARKER
+        speedups_path = system_root / moonraker_speedups.PATH_FILE.lstrip("/")
+        speedups_digest = moonraker_speedups.digest(wheel.sha256 for wheel in manifest.system_optimizations.moonraker_speedups.wheels)
 
         def failing_restart(unit):
             failed = False
@@ -297,11 +308,17 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         with self.assertRaises(SystemOptimizationApplyError):
             reconcile(reconciled, failing_restart("nginx.service"))
         self.assertFalse(build.exists())
+        self.assertFalse(speedups.exists())
+        self.assertFalse(speedups_path.exists())
         self.assertEqual(nginx_site.read_bytes(), nginx_site_before)
         self.assertEqual(fluidd.read_bytes(), fluidd_current)
         reconciled = reconcile(reconciled)
         self.assertEqual(marker.read_text(encoding="utf-8"), manifest.system_optimizations.fluidd_build.sha256 + "\n")
         self.assertEqual((build / "assets/index.js").stat().st_mode & 0o777, 0o644)
+        self.assertEqual(speedups_marker.read_text(encoding="utf-8"), speedups_digest + "\n")
+        self.assertEqual((speedups / "msgspec/_core.so").stat().st_mode & 0o777, 0o755)
+        self.assertEqual((speedups / "uvloop/__init__.py").stat().st_mode & 0o777, 0o644)
+        self.assertEqual(speedups_path.read_text(encoding="utf-8"), moonraker_speedups.PATH_CONTENT)
         self.assertIn(b"\r\n    root /home/qidi/tltg-fluidd;\r\n", nginx_site.read_bytes())
         self.assertIn(b"location /tltg-screen/ {\r\n", nginx_site.read_bytes())
         self.assertNotIn(b"\n", nginx_site.read_bytes().replace(b"\r\n", b""))
@@ -310,17 +327,22 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertNotIn(FLUIDD_BOX_OPERATION, reconciled["restore_preimages"])
         self.assertNotIn(fluidd_patch.SERVICE_WORKER_OPERATION, reconciled["restore_preimages"])
         self.assertEqual(reconciled["outcomes"][FLUIDD_BOX_OPERATION]["status"], "retired")
-        # Updates replace an earlier build, which comes back if a later change fails.
+        # Updates replace an earlier build and earlier speedups, which come back if a later change fails.
         marker.write_text("0" * 64 + "\n", encoding="utf-8")
+        speedups_marker.write_text("0" * 64 + "\n", encoding="utf-8")
         screen_server.write_bytes(prior_server)
         reconciled["outcomes"][remote_screen.SERVER_OPERATION]["postflight"]["sha256"] = __import__("hashlib").sha256(prior_server).hexdigest()
         with self.assertRaises(SystemOptimizationApplyError):
             reconcile(reconciled, failing_restart(remote_screen.UNIT))
         self.assertEqual(marker.read_text(encoding="utf-8"), "0" * 64 + "\n")
         self.assertFalse(previous_build.exists())
+        self.assertEqual(speedups_marker.read_text(encoding="utf-8"), "0" * 64 + "\n")
+        self.assertFalse(previous_speedups.exists())
         reconciled = reconcile(reconciled)
         self.assertEqual(marker.read_text(encoding="utf-8"), manifest.system_optimizations.fluidd_build.sha256 + "\n")
         self.assertFalse(previous_build.exists())
+        self.assertEqual(speedups_marker.read_text(encoding="utf-8"), speedups_digest + "\n")
+        self.assertFalse(previous_speedups.exists())
         write_installed_state(printer_root / manifest.state_file, _replace_system_ledger(state, reconciled))
 
         # Declining the system-restoration prompt keeps only the optional OS optimizations; everything install makes
@@ -371,6 +393,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(nginx_site.read_bytes(), nginx_site_before)
         self.assertEqual(asvc.read_bytes(), asvc_before)
         self.assertFalse(build.exists())
+        self.assertFalse(speedups.exists())
+        self.assertFalse(speedups_path.exists())
+        self.assertTrue(speedups_path.parent.is_dir())
         self.assertFalse(screen_unit.exists())
         self.assertFalse(screen_server.exists())
         self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "disabled")
@@ -812,19 +837,25 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         ledger = {"policy": {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}, "restore_preimages": {}, "actions": []}
         selected = ("service_xl2tpd", "service_bluetooth")
         with mock.patch.object(system_optimizations, "_selected_operation_ids", return_value=selected):
-            with self.assertRaises(SystemOptimizationRecoveryError):
+            with self.assertRaises(SystemOptimizationRecoveryError) as failed:
                 apply_system_optimizations(paths=paths, spec=manifest.system_optimizations, ledger=ledger, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, source="test", run=run, urlopen=moonraker_urlopen())
+        # The failure that started the rollback stays visible beside the rollback's own failure.
+        self.assertIn(messages.SYSTEM_OPTIMIZATIONS_FAILED, failed.exception.message)
+        self.assertIn(messages.SYSTEM_RESTORE_FAILED, failed.exception.message)
         payload = json.loads(_journal_path(paths).read_text(encoding="utf-8"))
         self.assertIn("service_xl2tpd", payload["preimages"])
         self.assertIn("service_bluetooth", payload["preimages"])
         calls["fail_apply"] = False
-        with self.assertRaises(SystemOptimizationRecoveryError):
+        with self.assertRaises(SystemOptimizationRecoveryError) as pending:
             recover_pending_system_optimization(paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, run=run, urlopen=moonraker_urlopen())
+        self.assertIn(messages.SYSTEM_OPTIMIZATIONS_FAILED, pending.exception.message)
         self.assertTrue(_journal_path(paths).exists())
         with self.assertRaises(SystemOptimizationRecoveryError):
             apply_system_optimizations(paths=paths, spec=manifest.system_optimizations, ledger=ledger, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, source="next-lifecycle", run=run, urlopen=moonraker_urlopen())
         calls["fail_restore"] = False
-        self.assertTrue(recover_pending_system_optimization(paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, run=run, urlopen=moonraker_urlopen()))
+        output = io.StringIO()
+        self.assertTrue(recover_pending_system_optimization(paths=paths, manifest=manifest, reporter=PlainReporter(output), input_stream=io.StringIO(), environ=env, run=run, urlopen=moonraker_urlopen()))
+        self.assertIn(messages.SYSTEM_OPTIMIZATIONS_FAILED, output.getvalue())
         self.assertFalse(_journal_path(paths).exists())
 
     def test_rockchip_drift_journal_never_replays_after_interrupt(self):

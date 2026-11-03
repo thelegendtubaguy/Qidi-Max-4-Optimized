@@ -25,6 +25,23 @@ The installer SHALL select one complete baseline for the detected supported firm
 - **THEN** migration requires an idle printer and a validated stock snapshot for the detected firmware
 - **AND** vendor-managed, user-specific, and sensitive configuration remains preserved
 
+### Requirement: Runs as root match runs as the printer's user
+Every installer launcher, including the release download, automatic updates, restore, and the THR and Box firmware tools, SHALL leave the same file owners and modes whether it is started as root or as the user who owns `printer_data`, and SHALL return installer-created files that an earlier run left owned by another user to that user.
+
+#### Scenario: A root start runs as the printer's user
+- **WHEN** a launcher starts as root
+- **THEN** the runtime switches to the user and groups that own `printer_data` before it imports or writes anything from the bundle, and uses sudo for privileged steps as an unprivileged run does
+- **AND** a bundle outside that user's home, such as one under `/root`, is first copied into the user's home, owned by the user, and run from there
+- **AND** the release download unpacks into that user's home, owned by the user
+- **AND** a root start refuses to run when `printer_data` is missing or owned by root
+
+#### Scenario: Files an earlier root run left are given back
+- **WHEN** any launcher run other than a dry run or Box firmware status starts, before it takes the installer lock or reads installer state
+- **THEN** every path named `tltg` or `.tltg` in `printer_data`, its `config` folder, the home folder, and Klipper's `klippy/extras`, and everything below those paths, that is not owned by the `printer_data` owner is changed to that user and the user's primary group, without following symbolic links
+- **AND** QIDI's files, including root-owned ones, are not changed
+- **AND** nothing runs through sudo when every such path already belongs to the user
+- **AND** the run stops before taking the lock when sudo can't make the change
+
 ### Requirement: Recoverable configuration lifecycle
 Install, reinstall, restore, and uninstall SHALL execute as serialized, idle-printer transactions with validated inputs, recoverable preimages, atomic committed state, and drift-safe reversal.
 
@@ -159,6 +176,7 @@ The installer SHALL apply host OS optimizations only under explicit persisted po
 - **AND** unowned, unknown, or user-modified state is preserved and reported
 - **AND** operation failure rolls back journaled host work without deleting a verified configuration install
 - **AND** incomplete host compensation retains a recovery blocker and does not report the overall operation as complete
+- **AND** when compensation fails, the reported error names the failure that started it as well as the compensation's own failure, and the retained recovery record keeps that original failure, so the later run that finishes or retries the compensation reports it too
 
 #### Scenario: Uninstall follows the operator's host-state decision
 - **WHEN** uninstall finds host restore preimages
@@ -230,6 +248,24 @@ Normal install and update SHALL apply recognized Moonraker metadata optimization
 - **AND** repeated reconciliation retains the first restore preimage without accumulating backups
 - **AND** uninstall restoration reverts only the unchanged installed file; concurrent changes and operator drift are preserved
 - **AND** the print-start plate selection is deployed the same way to Moonraker's Klippy API source, which is left unchanged when unrecognized
+
+### Requirement: Moonraker speedup packages
+The installer SHALL make the `msgspec` and `uvloop` packages that QIDI's Moonraker already uses when importable available to it from pinned, checksum-verified wheels in the release bundle, without replacing anything in QIDI's Moonraker virtualenv, and SHALL keep the change reversible.
+
+#### Scenario: Packages are added beside QIDI's virtualenv
+- **WHEN** the bundle carries the pinned wheels and QIDI's Python 3.9 Moonraker virtualenv exists
+- **THEN** the installer extracts the verified wheels into a package-owned directory marked with their checksums, and only then adds a path file to the virtualenv that points at it
+- **AND** Moonraker restarts once; a Moonraker that does not answer after the restart rolls back the path file and the directory
+- **AND** an update with different wheels replaces the directory whole, and a later failure in the same operation brings back the replaced one
+
+#### Scenario: Missing or foreign state is left alone
+- **WHEN** the bundle has no wheels, the virtualenv is missing, the directory exists without the package's marker, or an existing path file is not the package's
+- **THEN** the installer leaves them unchanged, never points Moonraker at packages that are not in place, and installs nothing else for this change
+
+#### Scenario: Speedup deployment remains reversible
+- **WHEN** uninstall finds the package's path file and directory
+- **THEN** it removes the unchanged path file, then the package-owned directory, and restarts Moonraker, leaving QIDI's virtualenv as it was
+- **AND** a directory that lost the package's marker or a path file changed after install is preserved and reported
 
 ### Requirement: Recoverable Fluidd QIDI Box filament display
 Fluidd SHALL display and edit QIDI Box slots the way QIDI firmware `01.01.07.01` stores and resolves them, independently of optional OS optimization policy. While QIDI's bundled Fluidd is served, normal install and update SHALL provide this by patching the recognized bundle, retaining the original bundle and preserving unrecognized or operator-modified bundles.

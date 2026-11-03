@@ -139,6 +139,10 @@ With QIDI's own code, `FLOW_STOP` on a paused flow never finished: every later c
 
 A step can also end with an error instead of failing, such as `Error during homing e_endstop: Communication timeout during homing` from a Box motor move. QIDI then left the flow running with the nozzle hot, and neither the card nor `FLOW_RETRY` could do anything with it. The flow is now paused on that step, with `Step BOX_LOAD failed. Pausing flow.` before the error, so Retry and Stop work as for any failed step.
 
+### Failed tool changes during a print
+
+When a step of a filament change during a print fails, QIDI pauses the print, and **Resume** finishes the change from wherever the filament stopped, then carries on printing. A step that ended with an error instead, such as `Error during homing b_endstop: Communication timeout during homing` while unloading, cancelled the print. It now pauses the print the same way, and the console says which step failed and why, for example `T1 failed at BOX_UNLOAD: Error during homing b_endstop: Communication timeout during homing. The print is paused; RESUME tries the tool change again.` Only a Klipper shutdown, such as a lost Box connection, still ends the print.
+
 ### Filament stopped between the hub and the toolhead
 
 A load that gets the filament to the Box hub but not to the toolhead, for example because the tube to the toolhead is longer than `FAST_LENGTH` allows for, leaves the filament in the tube between them. QIDI already counts that slot as loaded. Its Unload then does nothing but park the toolhead and report success, and its Eject heats the nozzle first.
@@ -152,6 +156,10 @@ The slot is the one that last fed filament to the hub, or the one QIDI last load
 
 Unload of a slot whose filament isn't past the hub doesn't run. The console says so, instead of QIDI parking the toolhead and reporting success.
 
+## Resuming a paused print
+
+Pausing turns the nozzle off. With the Box, **Resume** first moves the toolhead to the waste chute and heats the nozzle back to the temperature it had when the print paused, then runs QIDI's resume, which reloads the filament and carries on printing. QIDI's resume cuts before it heats, so after a pause long enough for the nozzle to cool below 135 °C it stopped with `Extrude below minimum temp`, and the print stayed paused until the nozzle was heated by hand.
+
 ## Box disconnects
 
 See [Fixes](fixes.md#qidi-box-disconnects) for what this project changes, and [Troubleshooting](troubleshooting.md#box-link-monitor) to record why a Box drops.
@@ -162,7 +170,7 @@ QIDI's firmware `01.01.07.01` includes support for Boxes, buffers, and filament 
 
 - **If you have RS-485 hardware,** the console asks you to open a [GitHub issue](https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/issues) once per Klipper start. Attach `tltg_box485_report.json` and `tltg_box485.log` from the `logs` folder in Fluidd. The log records what QIDI's code sends to and receives from each device, and the report summarizes the setup. Chip ids and USB serial numbers are replaced with codes that can't be traced back to your hardware. Nothing about how the hardware works is changed.
 - **To write the report yourself,** run `TLTG_RS_BOX_REPORT`. It says whether RS-485 hardware was found.
-- **Without RS-485 hardware,** nothing is written. QIDI's software looks for an RS-485 adapter every 2 seconds and logs `Can not find 485 device` each time. That's normal for USB Boxes; `klippy.log` now gets that line once an hour, with a count.
+- **Without RS-485 hardware,** nothing is written. QIDI's software looks for an RS-485 adapter and logs `Can not find 485 device` each time it's missing. That's normal for USB Boxes. Until RS-485 hardware has been seen, it now looks every 30 seconds instead of every 2, so a newly connected adapter can take up to 30 seconds to be found, and `klippy.log` gets that line once an hour, with a count.
 
 > [!WARNING]
 > Don't put a USB Box's id from `box.cfg` into `[box485] serial_port` in `printer.cfg`. It stops the `Can not find 485 device` lines, but QIDI's RS-485 code then reads that Box's connection and takes Klipper's messages, so the Box drops. The optimized configuration keeps the RS-485 code from opening a Klipper port and says so in the console. Set `serial_port` back to `/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0`.

@@ -12,8 +12,21 @@ if [ -z "${HOME:-}" ]; then
   echo "HOME is not set." >&2
   exit 1
 fi
-INSTALL_DIR=${HOME}/tltg-optimized-macros
 INSTALL_PARENT=${HOME}
+PRINTER_OWNER=
+if [ "$(id -u)" -eq 0 ]; then
+  # The installer runs as the user who owns printer_data, so unpack it in that
+  # user's home, owned by that user, rather than root's.
+  PRINTER_UID=$(stat -c %u "${TLTG_OPTIMIZED_PRINTER_DATA_ROOT:-/home/qidi/printer_data}" 2>/dev/null || true)
+  if [ -n "$PRINTER_UID" ] && [ "$PRINTER_UID" != 0 ]; then
+    PRINTER_ENTRY=$(getent passwd "$PRINTER_UID" || true)
+    if [ -n "$PRINTER_ENTRY" ]; then
+      INSTALL_PARENT=$(printf '%s\n' "$PRINTER_ENTRY" | cut -d: -f6)
+      PRINTER_OWNER=$(printf '%s\n' "$PRINTER_ENTRY" | cut -d: -f3,4)
+    fi
+  fi
+fi
+INSTALL_DIR=${INSTALL_PARENT}/tltg-optimized-macros
 
 for tool in curl tar mktemp rm mkdir mv grep find; do
   if ! command -v "$tool" >/dev/null 2>&1; then
@@ -79,6 +92,9 @@ fi
 rm -rf "$INSTALL_DIR"
 mkdir -p "$INSTALL_PARENT"
 mv "$STAGE_DIR/tltg-optimized-macros" "$INSTALL_DIR"
+if [ -n "$PRINTER_OWNER" ]; then
+  chown -R "$PRINTER_OWNER" "$INSTALL_DIR"
+fi
 
 cd "$INSTALL_DIR"
 ./install.sh "$@"

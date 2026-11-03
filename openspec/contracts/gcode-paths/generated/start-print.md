@@ -662,7 +662,7 @@ Direct visible macro calls in branch slice:
 
 Ordered invariants:
 
-- `box_available = printer["box_extras"] is defined or ("T_MANAGER" in printer.gcode.commands and ((printer.multi_color_controller|default({})).box_count|default(0)|int > 0 or (printer.box485|default({})).box_count|default(0)|int > 0))`
+- `box_available = printer.tltg_macro_status.box_available`
 - `OPTIMIZED_WAIT_HOTEND S={scrape_target} STATUS=clear_nozzle`
 - `TEMPERATURE_WAIT SENSOR={printer.toolhead.extruder} MAXIMUM={scrape_maximum}`
 - `{% if box_available %}`
@@ -709,7 +709,7 @@ Forbidden patterns:
 
 Condition: `PRE_SCRAPE=1 selects mixed-speed start wiping; omitted or zero retains fast non-start cleanup`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:622-668`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:629-675`
 
 Direct visible macro calls in branch slice:
 

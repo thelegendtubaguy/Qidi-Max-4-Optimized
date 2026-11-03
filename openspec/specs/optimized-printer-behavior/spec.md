@@ -182,6 +182,7 @@ Optimized macros SHALL keep external-spool runout policy independent from vendor
 #### Scenario: Resume follows vendor recovery unless the operator overrides the sensor
 - **WHEN** a paused print is resumed
 - **THEN** an active Box print resumes through the vendor Box resume command
+- **AND** before that command, the hotend is reheated in the waste chute to the temperature saved at pause, so the vendor's pre-heat cut cannot fail with `Extrude below minimum temp`
 - **AND** an external-spool print with automatic external pause disabled resumes without a filament-present gate
 - **AND** an external-spool print with automatic external pause enabled resumes only through a path that refuses to continue while the toolhead sensor reports no filament
 
@@ -560,7 +561,7 @@ When the USB Box hub sensor detects filament, the toolhead filament sensor does 
 - **THEN** the vendor command runs unchanged, except that an unload with nothing past the hub does not run, as above, and an unload of stranded filament during a print does not run and the console says to resume or cancel the print first
 
 ### Requirement: QIDI Box tool change only during a print
-Optimized configuration SHALL run the vendor tool change, `T_MANAGER` as called by `T0`–`T15`, only while a print is running or paused. Otherwise it SHALL move nothing and the console SHALL say how to load a slot instead.
+Optimized configuration SHALL run the vendor tool change, `T_MANAGER` as called by `T0`–`T15`, only while a print is running or paused. Otherwise it SHALL move nothing and the console SHALL say how to load a slot instead. During a print, a vendor tool-change step that raises an error instead of failing SHALL pause the tool-change flow on that step and pause the print, as a failed step does, unless Klipper has shut down.
 
 #### Scenario: Tool change outside a print
 - **WHEN** `T<n>` or `T_MANAGER T=<n>` runs with no print running or paused
@@ -569,6 +570,11 @@ Optimized configuration SHALL run the vendor tool change, `T_MANAGER` as called 
 #### Scenario: Tool change during a print
 - **WHEN** `T<n>` runs while a print is running or paused
 - **THEN** the vendor tool change runs unchanged
+
+#### Scenario: A tool-change step raises during a print
+- **WHEN** a step of the vendor tool change raises an error during a print, such as `Communication timeout during homing` from a Box motor move, and Klipper has not shut down
+- **THEN** the print pauses instead of ending, the tool-change flow is paused on that step, and the console names the tool, the step, and the error
+- **AND** `RESUME` runs the vendor's resume, which finishes the tool change before printing continues
 
 ### Requirement: Spoolman spools follow the loaded QIDI Box slot
 Optimized configuration SHALL keep an operator-assigned Spoolman spool for each QIDI Box slot and the external spool, and SHALL make the loaded slot's spool Moonraker's active spool whenever the slot recorded as loaded changes.
@@ -623,6 +629,7 @@ The optimized configuration SHALL detect QIDI RS-485 Boxes, buffers, and racks, 
 #### Scenario: Printer without RS-485 hardware
 - **WHEN** no RS-485 adapter, device, or saved RS-485 Box id is present
 - **THEN** no RS-485 log, report, or salt file is written unless `TLTG_RS_BOX_REPORT` runs
+- **AND** QIDI's code retries its missing adapter every 30 s instead of every 2 s, and detection runs every minute instead of every 10 s, until RS-485 hardware is seen
 
 #### Scenario: RS-485 hardware is attached
 - **WHEN** QIDI's RS-485 code opens its adapter or an RS-485 device or saved RS-485 Box id appears
@@ -660,7 +667,7 @@ When optimized print start calibrates a fresh adaptive mesh, it SHALL save the p
 - **THEN** it starts only after the background save finishes
 
 ### Requirement: Fast variable saves
-Optimized configuration SHALL make `SAVE_VARIABLE` leave `saved_variables.cfg` and the saved values Klipper reports exactly as QIDI's handler would, while skipping the write when the stored value would not change and not re-reading the file after a write. A completed write SHALL replace the file whole, so it is never left partly written. Names and values whose round trip through the file is not exact SHALL use QIDI's handler unchanged.
+Optimized configuration SHALL make `SAVE_VARIABLE` and the vendor Box modules' own variable saves leave `saved_variables.cfg` and the saved values Klipper reports exactly as the vendor code would, without rewriting an unchanged file or re-reading it after a write. A completed write SHALL replace the file whole. Names and values whose round trip through the file is not exact SHALL use the vendor code unchanged.
 
 #### Scenario: Unchanged value
 - **WHEN** `SAVE_VARIABLE` stores the value a variable already has, such as print end resetting retained-filament state that is already reset
@@ -669,6 +676,10 @@ Optimized configuration SHALL make `SAVE_VARIABLE` leave `saved_variables.cfg` a
 #### Scenario: Changed value
 - **WHEN** `SAVE_VARIABLE` stores a new value
 - **THEN** the file contents and the saved values Klipper reports match what QIDI's handler produces
+
+#### Scenario: Box print start and tool changes
+- **WHEN** `box_extras` or `box2base` `save_variable`, or `box485` `_save_variable`, saves retry, runout, slot, and tool-change variables, most of them unchanged
+- **THEN** only saves that change the file write it, and the file and saved values match what the vendor save produces, including a mixed-case name such as `BOX_DRYING_ROLL_ENABLE`
 
 ### Requirement: QIDI Box heater refresh
 Optimized configuration SHALL make each USB QIDI Box heater resend an unchanged output at most about one second after the last one it sent, so that a Klipper main-loop stall of up to about three seconds does not let the Box MCU's 5 s heater limit expire. Other heaters, heater limits, and heater verification SHALL be unchanged.
@@ -680,6 +691,81 @@ Optimized configuration SHALL make each USB QIDI Box heater resend an unchanged 
 #### Scenario: Other heaters keep Klipper's timing
 - **WHEN** the extruder, bed, or chamber heater holds a steady output
 - **THEN** it is resent on Klipper's normal schedule
+
+### Requirement: Klipper main-loop health
+Optimized configuration SHALL unregister the vendor Box load-cell timers (`_read_wei_timer`, `_init_probe_data_advance`) once they are stopped and the vendor object no longer holds them, and SHALL leave every other timer registered. It SHALL warn when Klipper's timers pile up or its main loop stays saturated, and SHALL report Klipper's recent load when an endstop sync times out.
+
+#### Scenario: Timers pile up or the main loop stays busy
+- **WHEN** Klipper's timer count grows 50 or more past its count a minute after starting, or its main thread stays at least 45% busy for five minutes
+- **THEN** the console and `klippy.log` say so, at most once an hour for each
+
+#### Scenario: Many Box loads in one Klipper session
+- **WHEN** a print runs hundreds of QIDI Box loads
+- **THEN** Klipper's timer count stays near its count after starting
+
+#### Scenario: Load-cell check still in use
+- **WHEN** a vendor load-cell timer is running or the vendor object still holds it
+- **THEN** it stays registered
+
+#### Scenario: Endstop sync timeout
+- **WHEN** a homing move fails with `Communication timeout during homing`
+- **THEN** the console and `klippy.log` name the MCUs involved, Klipper's main-thread load and largest timer delay over the previous 10 seconds, and the timer count, and the error is otherwise unchanged
+
+### Requirement: Macros read cheap printer facts
+Optimized macros SHALL NOT read `printer.configfile`, `printer.gcode`, `printer.multi_color_controller`, or `printer.box_extras`, whose whole status Klipper copies on its main loop. They SHALL read Box availability, whether `T_MANAGER` is registered, the loaded slot, and the configured `max_accel` from `tltg_macro_status`, which SHALL report the values those objects gave.
+
+#### Scenario: Filament change with a USB Box
+- **WHEN** a print's filament change and its temperature wait run
+- **THEN** the macros reach the same branches as before without copying the Box or configuration status
+
+#### Scenario: RS-485 Box
+- **WHEN** no `box_extras` exists and `T_MANAGER` is registered with a Box counted by `box485` or `multi_color_controller`
+- **THEN** the Box is available and the loaded slot is `multi_color_controller`'s `box.loaded_slot`
+
+#### Scenario: No Box
+- **WHEN** no `box_extras` exists and neither `box485` nor `multi_color_controller` counts a Box, or `T_MANAGER` is not registered
+- **THEN** no Box is available, and without `multi_color_controller` the loaded slot is empty
+
+### Requirement: Light status copies
+Optimized configuration SHALL copy `multi_color_controller`'s status, and each printer object's status a macro reads, without `copy.deepcopy` when it holds only plain dicts, lists, tuples, and values, and SHALL leave anything else to `copy.deepcopy`.
+
+#### Scenario: Box status for clients
+- **WHEN** Moonraker or a macro reads `multi_color_controller`'s status
+- **THEN** it receives the same values and types as with the vendor deep copy, unaffected by later vendor changes
+
+#### Scenario: Macro reads a printer object
+- **WHEN** a stock or optimized macro reads an object such as `printer.configfile` or `printer.toolhead`
+- **THEN** it receives the same values and types as with Klipper's deep copy, and changing them does not change the object
+
+### Requirement: Upstream Klipper fixes
+Optimized configuration SHALL apply upstream Klipper's fixes for homing endstop sync timing, MCU restart shutdowns, command waits on lost MCUs, TMC enable order, heater main-loop and stale-temperature checks, and concurrent timer runs, each only when the function it replaces matches the vendor original it was written for, and SHALL log which were applied and which were skipped.
+
+#### Scenario: Matching vendor Klipper
+- **WHEN** Klipper starts with the vendor functions these fixes were written for
+- **THEN** every fix is applied and `klippy.log` lists them
+
+#### Scenario: Changed vendor Klipper
+- **WHEN** a function a fix replaces differs from that original
+- **THEN** that fix is skipped, the function is unchanged, and `klippy.log` says so
+
+#### Scenario: Lost MCU
+- **WHEN** Klipper declares communication with an MCU lost while a command waits for that MCU's acknowledgement
+- **THEN** the waiting command and later ones fail with `No communication with MCU` as a G-code error
+
+#### Scenario: Main loop stops
+- **WHEN** Klipper's main loop stops for 5 s while a heater's readings keep arriving
+- **THEN** that heater's output is set to 0
+
+#### Scenario: Timer rescheduled while its run is paused
+- **WHEN** a timer's callback pauses and another task calls `update_timer` for it
+- **THEN** the callback is not started again until the paused run returns
+
+### Requirement: Cheaper status updates
+Optimized configuration SHALL replace the vendor once-a-second status update pass, only when it matches the vendor original, with one that sends each subscriber the same updates while skipping objects whose status is the same object as in the previous pass and comparing `multi_color_controller` values natively before the vendor nested comparison.
+
+#### Scenario: Subscriber updates
+- **WHEN** Moonraker is subscribed and printer objects change between passes
+- **THEN** each update carries only the changed fields, and only the changed nested values of `multi_color_controller`, as with the vendor pass
 
 ### Requirement: Box heater sensors stop polling after a shutdown
 Once Klipper has shut down, a failed read of a Box heater's AHT20 SHALL stop that sensor's polling instead of raising, so Klipper stays in its shutdown state with the original reason. While Klipper is not shut down, sensor read errors SHALL propagate unchanged.
