@@ -15,6 +15,8 @@ from pathlib import Path
 
 FIXTURES_ROOT = Path(__file__).resolve().parent / "fixtures"
 BASE_RUNTIME_FIXTURE = FIXTURES_ROOT / "runtime" / "base"
+from installer.runtime.manifest import load_manifest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MOONRAKER_QUERY_URL = "http://moonraker.invalid/printer/objects/query?print_stats"
 _TEMP_ROOTS: list[Path] = []
@@ -91,8 +93,14 @@ def fake_system_root(
     include_klipper_print_stats_manager: bool = False,
     include_nginx_site: bool = False,
     include_moonraker_asvc: bool = False,
+    qidi_kernel: bool = True,
 ) -> Path:
     root = temp_path("system-optimization-flow-")
+    if qidi_kernel:
+        zram = load_manifest(REPO_ROOT / "installer/package.yaml").system_optimizations.zram_swap
+        (root / "proc/sys/kernel").mkdir(parents=True)
+        (root / "proc/sys/kernel/osrelease").write_text(f"{zram.kernel_release}\n", encoding="utf-8")
+        (root / "proc/sys/kernel/version").write_text(f"{zram.kernel_version}\n", encoding="utf-8")
     (root / "etc/resolvconf/resolv.conf.d").mkdir(parents=True)
     (root / "etc/resolv.conf").write_text("nameserver 114.114.114.114\n", encoding="utf-8")
     (root / "etc/resolvconf/resolv.conf.d/head").write_text("nameserver 8.8.8.8\n", encoding="utf-8")

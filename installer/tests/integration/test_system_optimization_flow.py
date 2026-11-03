@@ -16,7 +16,10 @@ from installer.runtime import fluidd_box_filaments as fluidd_patch
 from installer.runtime import moonraker_allowed_services
 from installer.runtime import moonraker_speedups
 from installer.runtime import remote_screen
+from installer.runtime import cpu_governor
 from installer.runtime import restart_on_exit
+from installer.runtime import service_priority
+from installer.runtime import zram_swap
 from installer.runtime.fluidd_box_filaments import OPERATION as FLUIDD_BOX_OPERATION, PATCH_MARKER
 from installer.runtime.fluidd_filament_config import OPERATION as FILAMENT_CONFIG_OPERATION
 from installer.runtime.klipper_box_config import OPERATION as KLIPPER_BOX_OPERATION
@@ -155,13 +158,16 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             run=install_run,
         )
         self.assertEqual(install_idle_checks, 2)
-        # Every host change is in place before any service restarts, and each restarts once. The touchscreen app
-        # restarts after Moonraker answers again, and Klipper restarts once for both its host and source changes.
+        # Every host change is in place before any service restarts, and each restarts once. Zram swap starts first,
+        # the touchscreen app restarts after Moonraker answers again, and Klipper restarts once for its host and source
+        # changes.
         restarts = [
+            zram_swap.UNIT,
             "moonraker.service",
             "moonraker answered",
             remote_screen.UNIT,
             "qidi-client.service",
+            cpu_governor.SERVICE,
             "klipper.service via Moonraker",
         ]
         self.assertEqual(service_events[-len(restarts):], restarts)
@@ -169,6 +175,22 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         # Klipper and Moonraker restart after any exit outside systemd, without restarting them to apply it.
         for dropin in restart_on_exit.FILES.values():
             self.assertEqual((system_root / dropin.lstrip("/")).read_text(encoding="utf-8"), restart_on_exit.CONTENT)
+        # Klipper gets the CPU before Moonraker, and both before the touchscreen app.
+        for operation, dropin in service_priority.FILES.items():
+            self.assertIn(f"Nice={service_priority.NICE[operation]}\n", (system_root / dropin.lstrip("/")).read_text(encoding="utf-8"))
+        # Zram swap's modules and boot script are root-owned under /usr/local, and its unit is enabled.
+        zram = system_root / zram_swap.DESTINATION.lstrip("/")
+        zram_unit = system_root / zram_swap.UNIT_FILE.lstrip("/")
+        for module in manifest.system_optimizations.zram_swap.modules:
+            self.assertEqual((zram / f"{module.name}.ko").read_bytes(), (REPO_ROOT / "installer" / module.archive).read_bytes())
+        self.assertEqual((zram / zram_swap.SCRIPT).stat().st_mode & 0o777, 0o755)
+        self.assertIn("insmod", (zram / zram_swap.SCRIPT).read_text(encoding="utf-8"))
+        self.assertEqual(zram_unit.read_text(encoding="utf-8"), zram_swap.UNIT_CONTENT)
+        self.assertEqual(json.loads((system_root / "systemd" / f"{zram_swap.UNIT}.json").read_text(encoding="utf-8"))["enabled"], "enabled")
+        self.assertIn('GOVERNOR="performance"\n', (system_root / cpu_governor.FILE.lstrip("/")).read_text(encoding="utf-8"))
+        # They run already, and the installer recommends a reboot to confirm they start on their own.
+        self.assertTrue(paths.reboot_recommended_path.exists())
+        paths.reboot_recommended_path.unlink()
         self.assertEqual(install_responses.readline(), "unused\n")
         self.assertTrue((system_root / "etc/resolv.conf").is_symlink())
         self.assertIn(
@@ -258,6 +280,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             urlopen=moonraker_urlopen(),
         )
         self.assertEqual(reconciled["restore_preimages"][cache_id], prior_preimage)
+        # Runs that change none of them don't recommend another reboot.
+        self.assertFalse(paths.reboot_recommended_path.exists())
         self.assertEqual(fluidd.read_bytes(), fluidd_current)
         self.assertEqual(reconciled["restore_preimages"][FLUIDD_BOX_OPERATION], fluidd_preimage)
         self.assertEqual(os.readlink(filament_link), filament_config.target)
@@ -401,6 +425,12 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "disabled")
         for dropin in restart_on_exit.FILES.values():
             self.assertFalse((system_root / dropin.lstrip("/")).exists())
+        for dropin in service_priority.FILES.values():
+            self.assertFalse((system_root / dropin.lstrip("/")).exists())
+        # Zram swap and the CPU governor are optional OS optimizations, so declining restoration keeps them.
+        self.assertTrue((zram / zram_swap.MARKER).is_file())
+        self.assertEqual((system_root / cpu_governor.FILE.lstrip("/")).read_text(encoding="utf-8"), cpu_governor.CONTENT)
+        self.assertEqual(zram_unit.read_text(encoding="utf-8"), zram_swap.UNIT_CONTENT)
 
     def test_unreviewed_host_files_are_preserved_without_blocking_other_patches(self):
         printer_root = copy_base_runtime()
@@ -435,6 +465,26 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(ledger["outcomes"][restart_on_exit.KLIPPER_OPERATION]["status"], "unsupported")
         self.assertIn(restart_on_exit.MOONRAKER_OPERATION, ledger["restore_preimages"])
         self.assertIn(system_optimizations.MOONRAKER_CACHE_OPERATION, ledger["restore_preimages"])
+
+        # Zram swap that fails to start, such as modules the kernel rejects, leaves nothing behind.
+        host_run = fake_host_run(root)
+
+        def zram_fails(command, **kwargs):
+            if list(command)[-3:] == ["systemctl", "restart", zram_swap.UNIT]:
+                return CompletedProcess(command, 1, stdout="", stderr="insmod failed")
+            return host_run(command, **kwargs)
+
+        with self.assertRaises(SystemOptimizationApplyError):
+            apply_system_optimizations(
+                paths=paths, spec=manifest.system_optimizations,
+                ledger={**ledger, "policy": {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}},
+                reporter=PlainReporter(io.StringIO()), input_stream=None,
+                environ=env, source="yes_install", run=zram_fails,
+                urlopen=moonraker_urlopen(),
+            )
+        self.assertFalse((root / zram_swap.DESTINATION.lstrip("/")).exists())
+        self.assertFalse((root / zram_swap.UNIT_FILE.lstrip("/")).exists())
+        self.assertEqual(json.loads((root / "systemd" / f"{zram_swap.UNIT}.json").read_text(encoding="utf-8"))["enabled"], "disabled")
 
     def test_moonraker_cache_admission_and_restart_failure_preserve_source(self):
         for fault in ("unknown", "unknown_metascan", "symlink", "restart", "concurrent"):
@@ -621,6 +671,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         probe_helper = paths.managed_klipper_root / "klippy/extras/tltg_probe_test.py"
         probe_modified = probe_helper.read_bytes() + b"\n# operator modification\n"
         probe_helper.write_bytes(probe_modified)
+        zram = system_root / zram_swap.DESTINATION.lstrip("/")
+        (zram / zram_swap.MARKER).unlink()
         report = io.StringIO()
         run_uninstall(
             paths, manifest, compatibility, PlainReporter(report), input_stream=io.StringIO("yes\nyes\nno\n"),
@@ -631,6 +683,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(moonraker.read_bytes(), drifted)
         self.assertEqual(os.readlink(filament_link), "/home/qidi/operator_filaments")
         self.assertEqual(probe_helper.read_bytes(), probe_modified)
+        self.assertTrue(zram.is_dir())
+        self.assertFalse((system_root / zram_swap.UNIT_FILE.lstrip("/")).exists())
 
     def test_legacy_host_preimages_migrate_and_restore(self):
         printer_root = copy_base_runtime()
@@ -676,6 +730,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         run_uninstall(paths, manifest, compatibility, PlainReporter(io.StringIO()), input_stream=io.StringIO("yes\nyes\nno\n"), urlopen=moonraker_urlopen(), environ=env, run=host_run)
         self.assertEqual((system_root / "etc/apt/sources.list").read_text(encoding="utf-8"), "old apt\n")
         self.assertEqual((system_root / "home/qidi/QIDI_Client/access/account/process.gif").read_bytes(), b"old")
+        self.assertFalse((system_root / zram_swap.DESTINATION.lstrip("/")).exists())
 
     def test_legacy_migration_has_no_writes_before_preflight_dry_run_or_failed_plan(self):
         paths, manifest, env, root = self._legacy_host_context()
@@ -818,10 +873,20 @@ class SystemOptimizationFlowTests(unittest.TestCase):
     def test_rockchip_restores_full_admitted_mount_preimage(self):
         paths, manifest, env, root = self._host_context()
         (root / "mounts/root.options").write_text("ro,noatime,sync\n", encoding="utf-8")
+        # A kernel other than the build the zram modules were made for, such as one from a QIDI update, runs without them.
+        (root / "proc/sys/kernel/version").write_text("#5 SMP PREEMPT Mon Jan 5 10:00:00 CST 2026\n", encoding="utf-8")
         run_install(paths, manifest, PlainReporter(io.StringIO()), input_stream=io.StringIO("yes\nyes\nno\nno\n"), urlopen=moonraker_urlopen(saved_variables_path=paths.config_root / "saved_variables.cfg"), environ=env, run=fake_host_run(root))
+        outcomes = load_installed_state(paths.printer_data_root / manifest.state_file).system_ledger["outcomes"]
+        self.assertEqual(outcomes[zram_swap.OPERATION]["status"], "unsupported")
+        self.assertEqual(outcomes[zram_swap.UNIT_OPERATION]["status"], "skipped")
+        self.assertFalse((root / zram_swap.DESTINATION.lstrip("/")).exists())
+        self.assertFalse((root / zram_swap.UNIT_FILE.lstrip("/")).exists())
+        self.assertEqual((root / cpu_governor.FILE.lstrip("/")).read_text(encoding="utf-8"), cpu_governor.CONTENT)
         compatibility = load_supported_upgrade_sources(REPO_ROOT / "installer/supported_upgrade_sources.yaml")
         run_uninstall(paths, manifest, compatibility, PlainReporter(io.StringIO()), input_stream=io.StringIO("yes\nyes\n"), urlopen=moonraker_urlopen(), environ=env, run=fake_host_run(root))
         self.assertEqual((root / "mounts/root.options").read_text(encoding="utf-8"), "ro,noatime,sync\n")
+        # Accepted restoration puts back QIDI's ondemand governor.
+        self.assertFalse((root / cpu_governor.FILE.lstrip("/")).exists())
 
     def test_compensation_journal_blocks_until_all_services_recover(self):
         paths, manifest, env, root = self._host_context()
