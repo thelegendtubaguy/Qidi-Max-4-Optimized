@@ -18,7 +18,10 @@
 # the QIDI object no longer holds them. It also measures how busy Klipper's
 # main thread is and how late its timers run, warns when timers keep piling
 # up or the main loop stays saturated, and logs that context when an
-# endstop sync times out, so the next such failure explains itself. Its
+# endstop sync times out, so the next such failure explains itself. QIDI's
+# load-cell probe (probe_air, extras/air) reports a failed endstop sync as
+# "WEIGHT sensor error", the timeout included; the THR firmware never sends
+# the probe's own sensor-error reason, so that error gets the context too. Its
 # status feeds the timer count and main-thread load to Fluidd's System
 # Utilization charts.
 #
@@ -57,6 +60,9 @@ WARNING_REPEAT = 3600.
 # Window before an endstop sync timeout reported with it.
 TIMEOUT_CONTEXT = 10.
 HOMING_TIMEOUT = "Communication timeout during homing"
+PROBE_SYNC_ERROR = "WEIGHT sensor error"
+PROBE_SYNC_FAILURE = ("Load-cell probe endstop sync failure (QIDI reports it "
+                      "as \"%s\")" % (PROBE_SYNC_ERROR,))
 # Objects whose modules deep-copy whole statuses: QIDI's Box status, and
 # Klipper's macro access to every object's status.
 STATUS_COPIERS = ("multi_color_controller", "gcode_macro")
@@ -121,12 +127,9 @@ def _endstop_mcus(endstop):
     return names
 
 
-def _wrap_home_wait():
-    try:
-        import mcu
-    except ImportError:
-        return False
-    cls = getattr(mcu, "MCU_endstop", None)
+def _wrap_home_wait(cls, error, failure):
+    """Make cls.home_wait report the context of an endstop sync failure,
+    which it raises with error in the message. Returns True when it does."""
     original = getattr(cls, "home_wait", None)
     if original is None:
         return False
@@ -138,9 +141,9 @@ def _wrap_home_wait():
             return original(endstop, *args, **kwargs)
         except Exception as e:
             health = _current[0]
-            if health is not None and HOMING_TIMEOUT in str(e):
+            if health is not None and error in str(e):
                 try:
-                    health.note_homing_timeout(_endstop_mcus(endstop))
+                    health.note_homing_timeout(failure, _endstop_mcus(endstop))
                 except Exception:
                     logging.exception("tltg_klipper_health: homing timeout "
                                       "report failed")
@@ -215,13 +218,25 @@ class KlipperHealth:
         self._next_report = None
         self._waketime = None
         _current[0] = self
-        if not _wrap_home_wait():
+        try:
+            import mcu
+        except ImportError:
+            mcu = None
+        if not _wrap_home_wait(getattr(mcu, "MCU_endstop", None),
+                               HOMING_TIMEOUT, HOMING_TIMEOUT):
             logging.info("tltg_klipper_health: Klipper's endstop layout is "
                          "not as expected; homing timeouts are not reported")
         self.printer.register_event_handler("klippy:connect", self._connect)
         self.printer.register_event_handler("klippy:ready", self._ready)
 
     def _connect(self):
+        air = sys.modules.get("extras.air")
+        if air is not None and not _wrap_home_wait(
+                getattr(air, "WeighEndstopWrapper", None),
+                PROBE_SYNC_ERROR, PROBE_SYNC_FAILURE):
+            logging.info("tltg_klipper_health: QIDI's load-cell probe is not "
+                         "as expected; its endstop sync failures are not "
+                         "reported")
         for name in STATUS_COPIERS:
             obj = self.printer.lookup_object(name, None)
             if obj is not None and not lighten_status_copy(obj):
@@ -323,7 +338,7 @@ class KlipperHealth:
         self.gcode.respond_info(message)
 
     # ------------------------------------------------------- homing timeouts
-    def note_homing_timeout(self, mcus):
+    def note_homing_timeout(self, failure, mcus):
         eventtime = self.reactor.monotonic()
         load, peak, delay = self._window(eventtime, TIMEOUT_CONTEXT)
         if load is None:
@@ -334,7 +349,7 @@ class KlipperHealth:
                        % (round(load * 100), round(peak * 100),
                           round(delay * 1000)))
         message = ("%s on %s. In the %d s before it, %s, with %d timers."
-                   % (HOMING_TIMEOUT, " and ".join(mcus) or "an endstop",
+                   % (failure, " and ".join(mcus) or "an endstop",
                       TIMEOUT_CONTEXT, context, self.timer_count()))
         logging.warning("tltg_klipper_health: %s", message)
         self.gcode.respond_info(message)

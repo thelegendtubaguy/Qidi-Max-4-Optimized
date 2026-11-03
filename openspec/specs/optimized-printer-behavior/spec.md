@@ -693,7 +693,7 @@ Optimized configuration SHALL make each USB QIDI Box heater resend an unchanged 
 - **THEN** it is resent on Klipper's normal schedule
 
 ### Requirement: Klipper main-loop health
-Optimized configuration SHALL unregister the vendor Box load-cell timers (`_read_wei_timer`, `_init_probe_data_advance`) once they are stopped and the vendor object no longer holds them, and SHALL leave every other timer registered. It SHALL warn when Klipper's timers pile up or its main loop stays saturated, and SHALL report Klipper's recent load when an endstop sync times out.
+Optimized configuration SHALL unregister the vendor Box load-cell timers (`_read_wei_timer`, `_init_probe_data_advance`) once they are stopped and the vendor object no longer holds them, and SHALL leave every other timer registered. It SHALL warn when Klipper's timers pile up or its main loop stays saturated, and SHALL report Klipper's recent load when an endstop sync fails.
 
 #### Scenario: Timers pile up or the main loop stays busy
 - **WHEN** Klipper's timer count grows 50 or more past its count a minute after starting, or its main thread stays at least 45% busy for five minutes
@@ -708,7 +708,7 @@ Optimized configuration SHALL unregister the vendor Box load-cell timers (`_read
 - **THEN** it stays registered
 
 #### Scenario: Endstop sync timeout
-- **WHEN** a homing move fails with `Communication timeout during homing`
+- **WHEN** a homing move fails with `Communication timeout during homing`, or a load-cell probe move fails with `WEIGHT sensor error`, QIDI's report of a failed endstop sync
 - **THEN** the console and `klippy.log` name the MCUs involved, Klipper's main-thread load and largest timer delay over the previous 10 seconds, and the timer count, and the error is otherwise unchanged
 
 ### Requirement: Macros read cheap printer facts
