@@ -181,5 +181,73 @@ class BoxStatusCopyTest(unittest.TestCase):
         self.assertIsNot(getattr(module.copy, "deepcopy", None), klipper_health._deepcopy)
 
 
+class LoadCellProbeSyncFailureTest(unittest.TestCase):
+    """QIDI's load-cell probe (extras/air) raises "WEIGHT sensor error" for
+    any failed endstop sync, the timeout included."""
+
+    def setUp(self) -> None:
+        class Named:
+            def __init__(self, name):
+                self.name = name
+
+            def get_name(self):
+                return self.name
+
+        class Trsync:
+            def __init__(self, name):
+                self.mcu = Named(name)
+
+            def get_mcu(self):
+                return self.mcu
+
+        class WeighEndstopWrapper:
+            def __init__(self):
+                self._dispatch = types.SimpleNamespace(_trsyncs=[Trsync("THR"), Trsync("mcu")])
+                self.error = None
+
+            def home_wait(self, home_end_time):
+                if self.error:
+                    raise RuntimeError(self.error)
+                return home_end_time
+
+        air = types.ModuleType("extras.air")
+        air.WeighEndstopWrapper = WeighEndstopWrapper
+        sys.modules["extras.air"] = air
+        self.addCleanup(sys.modules.pop, "extras.air")
+
+        health = object.__new__(klipper_health.KlipperHealth)
+        health.printer = types.SimpleNamespace(lookup_object=lambda name, default=None: default)
+        health.reactor = Reactor()
+        health.reactor.monotonic = lambda: 20.
+        health.samples = collections.deque([(10., 1., 0.002), (15., 2.5, 0.040)])
+        self.messages = []
+        health.gcode = types.SimpleNamespace(respond_info=self.messages.append)
+        klipper_health._current[0] = health
+        self.addCleanup(klipper_health._current.__setitem__, 0, None)
+        health._connect()
+        self.endstop = WeighEndstopWrapper()
+
+    def test_sync_failure_reports_context_and_keeps_the_error(self) -> None:
+        self.assertEqual(self.endstop.home_wait(3.), 3.)
+        self.endstop.error = "WEIGHT sensor error"
+
+        with self.assertRaisesRegex(RuntimeError, "^WEIGHT sensor error$"):
+            self.endstop.home_wait(3.)
+
+        self.assertEqual(len(self.messages), 1)
+        self.assertIn('"WEIGHT sensor error"', self.messages[0])
+        self.assertIn("on THR and mcu", self.messages[0])
+        self.assertIn("30% busy", self.messages[0])
+        self.assertIn("40 ms late", self.messages[0])
+
+    def test_other_probe_errors_are_not_reported(self) -> None:
+        self.endstop.error = "Probe triggered prior to movement"
+
+        with self.assertRaises(RuntimeError):
+            self.endstop.home_wait(3.)
+
+        self.assertEqual(self.messages, [])
+
+
 if __name__ == "__main__":
     unittest.main()
