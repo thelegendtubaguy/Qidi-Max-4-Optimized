@@ -531,7 +531,7 @@
         "start": "{% set scrape_target = params.TARGET|default(km.start_extruder_probing_temp if km.start_extruder_probing_temp > 0 else 140)|int %}"
       },
       "must_include_order": [
-        "box_available = printer[\"box_extras\"] is defined or (\"T_MANAGER\" in printer.gcode.commands and ((printer.multi_color_controller|default({})).box_count|default(0)|int > 0 or (printer.box485|default({})).box_count|default(0)|int > 0))",
+        "box_available = printer.tltg_macro_status.box_available",
         "OPTIMIZED_WAIT_HOTEND S={scrape_target} STATUS=clear_nozzle",
         "TEMPERATURE_WAIT SENSOR={printer.toolhead.extruder} MAXIMUM={scrape_maximum}",
         "{% if box_available %}",
@@ -554,7 +554,7 @@
       "source_macro": "_OPTIMIZED_FINISH_START_SCRAPE",
       "condition": "fresh Box or external-spool scrape complete and vendor chute cleanup object available",
       "slice": {
-        "start": "{% set box_available = printer[\"box_extras\"] is defined or (\"T_MANAGER\" in printer.gcode.commands and ((printer.multi_color_controller|default({})).box_count|default(0)|int > 0 or (printer.box485|default({})).box_count|default(0)|int > 0)) %}"
+        "start": "{% set box_available = printer.tltg_macro_status.box_available %}"
       },
       "must_include_order": [
         "{% if box_available %}",

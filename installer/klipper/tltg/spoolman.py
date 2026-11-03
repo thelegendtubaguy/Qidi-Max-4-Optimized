@@ -45,7 +45,6 @@ class Spoolman:
         self.gcode = self.printer.lookup_object("gcode")
         self.webhooks = self.printer.lookup_object("webhooks")
         self.synced = UNSET
-        self.status_failed = False
         self.timer = None
         self.gcode.register_command(
             "TLTG_SPOOLMAN_SLOT", self.cmd_TLTG_SPOOLMAN_SLOT,
@@ -84,23 +83,15 @@ class Spoolman:
 
     def loaded_slot(self):
         """The slot QIDI records as feeding the toolhead, or None."""
-        if self._variables().get("enable_box") != 1:
+        variables = self._variables()
+        if variables.get("enable_box") != 1:
             return EXTERNAL_SLOT
-        box = self.printer.lookup_object("box_extras", None)
-        if box is None:
+        if self.printer.lookup_object("box_extras", None) is None:
             return EXTERNAL_SLOT
-        try:
-            status = box.get_status(self.reactor.monotonic())
-        except Exception:
-            if not self.status_failed:
-                logging.exception("tltg_spoolman: box_extras get_status "
-                                  "failed")
-            self.status_failed = True
-            return None
-        self.status_failed = False
-        if not hasattr(status, "get"):
-            return None
-        return _slot_number(status.get("loaded_slot"))
+        # box_extras reports the saved last_load_slot as loaded_slot; read
+        # it directly instead of building box_extras' whole status twice a
+        # second.
+        return _slot_number(variables.get("last_load_slot", "slot16"))
 
     # ------------------------------------------------------------ following
     def _check(self, eventtime):
