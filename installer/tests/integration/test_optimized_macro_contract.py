@@ -170,6 +170,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assert_ordered(
             resume,
             "{% if box_enabled %}",
+            "M109 S{resume_temp}",
             "TRY_RESUME_PRINT",
             "{% elif sensor.pause_enabled|int == 0 %}",
             "RESUME_PRINT",
