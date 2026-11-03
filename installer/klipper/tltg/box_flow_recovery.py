@@ -36,6 +36,14 @@
 # cooling and could end in QIDI's PAUSE, leaving the printer paused with no
 # print. T_MANAGER now runs only while a print is running or paused; otherwise
 # it says to load the slot instead.
+#
+# During a print, T_MANAGER runs its steps itself and reports them as flow 13.
+# A step that fails pauses that flow (box_extras._pause_print_retry_flow) and
+# sends PAUSE, and RESUME's TRY_RESUME_PRINT redoes the tool change from the
+# sensors. A step that raises instead, such as a Box motor move ending with
+# "Communication timeout during homing", escaped T_MANAGER and the print's
+# error handling cancelled the print. It now pauses the flow and the print the
+# same way, unless Klipper has shut down.
 
 import logging
 
@@ -250,7 +258,12 @@ class BoxFlowRecovery:
     # ------------------------------------------------------------ tool change
     def cmd_T_MANAGER(self, gcmd):
         if self._print_state() in ("printing", "paused"):
-            return self.originals["T_MANAGER"](gcmd)
+            try:
+                return self.originals["T_MANAGER"](gcmd)
+            except Exception as e:
+                if not self._pause_print_after_error(gcmd, e):
+                    raise
+                return None
         message = ("T%s not run: QIDI's tool change runs only during a print. "
                    "To load a slot, use Load on the QIDI Box card or "
                    "LOAD_FILAMENT_CONTROL SLOT=<n>."
@@ -258,6 +271,36 @@ class BoxFlowRecovery:
         logging.info("tltg_box_flow_recovery: %s", message)
         gcmd.respond_info(message)
         return None
+
+    def _pause_print_after_error(self, gcmd, error):
+        """Pause the print after QIDI's print-time tool change raised, as
+        QIDI does after a step that fails; False to let the error end it."""
+        if self.printer.is_shutdown():
+            return False
+        task = self._task()
+        step = getattr(task, "current_step", None)
+        if task is not None and step \
+                and not getattr(task, "is_paused", False) \
+                and not getattr(task, "is_cancelled", False):
+            extras = self.printer.lookup_object("box_extras", None)
+            pause_flow = getattr(extras, "_pause_print_retry_flow", None)
+            try:
+                if callable(pause_flow):
+                    pause_flow(self.manager, step)
+                else:
+                    task.is_paused = True
+            except Exception:
+                logging.exception("tltg_box_flow_recovery: pausing the tool "
+                                  "change flow failed")
+        message = ("T%s failed%s: %s. The print is paused; RESUME tries the "
+                   "tool change again."
+                   % (gcmd.get("T", ""), " at %s" % (step,) if step else "",
+                      error))
+        logging.warning("tltg_box_flow_recovery: %s", message)
+        self.gcode.respond_raw("!! " + message)
+        if self._print_state() == "printing":
+            self.gcode.run_script_from_command("PAUSE")
+        return True
 
     # --------------------------------------------------- unload and eject
     def cmd_UNLOAD_FILAMENT_CONTROL(self, gcmd):

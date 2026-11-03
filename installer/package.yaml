@@ -67,6 +67,7 @@ install:
       - "box_mcu_temperature.cfg"
       - "background_save_config.cfg"
       - "box_heater_refresh.cfg"
+      - "klipper_health.cfg"
       - "save_variables_fast.cfg"
       - "box_feed_motion.cfg"
       - "box_eject.cfg"
@@ -96,6 +97,9 @@ install:
     - id: box_heater_refresh
       source: "klipper/tltg/box_heater_refresh.py"
       destination: "klippy/extras/tltg_box_heater_refresh.py"
+    - id: klipper_health
+      source: "klipper/tltg/klipper_health.py"
+      destination: "klippy/extras/tltg_klipper_health.py"
     - id: save_variables_fast
       source: "klipper/tltg/save_variables_fast.py"
       destination: "klippy/extras/tltg_save_variables_fast.py"

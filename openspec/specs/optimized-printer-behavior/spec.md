@@ -560,7 +560,7 @@ When the USB Box hub sensor detects filament, the toolhead filament sensor does 
 - **THEN** the vendor command runs unchanged, except that an unload with nothing past the hub does not run, as above, and an unload of stranded filament during a print does not run and the console says to resume or cancel the print first
 
 ### Requirement: QIDI Box tool change only during a print
-Optimized configuration SHALL run the vendor tool change, `T_MANAGER` as called by `T0`–`T15`, only while a print is running or paused. Otherwise it SHALL move nothing and the console SHALL say how to load a slot instead.
+Optimized configuration SHALL run the vendor tool change, `T_MANAGER` as called by `T0`–`T15`, only while a print is running or paused. Otherwise it SHALL move nothing and the console SHALL say how to load a slot instead. During a print, a vendor tool-change step that raises an error instead of failing SHALL pause the tool-change flow on that step and pause the print, as a failed step does, unless Klipper has shut down.
 
 #### Scenario: Tool change outside a print
 - **WHEN** `T<n>` or `T_MANAGER T=<n>` runs with no print running or paused
@@ -569,6 +569,11 @@ Optimized configuration SHALL run the vendor tool change, `T_MANAGER` as called 
 #### Scenario: Tool change during a print
 - **WHEN** `T<n>` runs while a print is running or paused
 - **THEN** the vendor tool change runs unchanged
+
+#### Scenario: A tool-change step raises during a print
+- **WHEN** a step of the vendor tool change raises an error during a print, such as `Communication timeout during homing` from a Box motor move, and Klipper has not shut down
+- **THEN** the print pauses instead of ending, the tool-change flow is paused on that step, and the console names the tool, the step, and the error
+- **AND** `RESUME` runs the vendor's resume, which finishes the tool change before printing continues
 
 ### Requirement: Spoolman spools follow the loaded QIDI Box slot
 Optimized configuration SHALL keep an operator-assigned Spoolman spool for each QIDI Box slot and the external spool, and SHALL make the loaded slot's spool Moonraker's active spool whenever the slot recorded as loaded changes.
@@ -680,6 +685,25 @@ Optimized configuration SHALL make each USB QIDI Box heater resend an unchanged 
 #### Scenario: Other heaters keep Klipper's timing
 - **WHEN** the extruder, bed, or chamber heater holds a steady output
 - **THEN** it is resent on Klipper's normal schedule
+
+### Requirement: Klipper main-loop health
+Optimized configuration SHALL unregister the vendor Box load-cell timers (`_read_wei_timer`, `_init_probe_data_advance`) once they are stopped and the vendor object no longer holds them, and SHALL leave every other timer registered. It SHALL warn when Klipper's timers pile up or its main loop stays saturated, and SHALL report Klipper's recent load when an endstop sync times out.
+
+#### Scenario: Timers pile up or the main loop stays busy
+- **WHEN** Klipper's timer count grows 50 or more past its count a minute after starting, or its main thread stays at least 80% busy for five minutes
+- **THEN** the console and `klippy.log` say so, at most once an hour for each
+
+#### Scenario: Many Box loads in one Klipper session
+- **WHEN** a print runs hundreds of QIDI Box loads
+- **THEN** Klipper's timer count stays near its count after starting
+
+#### Scenario: Load-cell check still in use
+- **WHEN** a vendor load-cell timer is running or the vendor object still holds it
+- **THEN** it stays registered
+
+#### Scenario: Endstop sync timeout
+- **WHEN** a homing move fails with `Communication timeout during homing`
+- **THEN** the console and `klippy.log` name the MCUs involved, Klipper's main-thread load and largest timer delay over the previous 10 seconds, and the timer count, and the error is otherwise unchanged
 
 ### Requirement: Box heater sensors stop polling after a shutdown
 Once Klipper has shut down, a failed read of a Box heater's AHT20 SHALL stop that sensor's polling instead of raising, so Klipper stays in its shutdown state with the original reason. While Klipper is not shut down, sensor read errors SHALL propagate unchanged.

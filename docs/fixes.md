@@ -19,6 +19,12 @@ Boxes dropped with `Lost communication with MCU 'mcu_boxN'`, most often at print
 
 For a Box that still drops, the optional [Box firmware fix](firmware.md#qidi-box-shutdown-fix) keeps it connected so Klipper shows why, and the [Box link monitor](troubleshooting.md#box-link-monitor) records what happened.
 
+## Klipper slowing down during long Box prints
+
+Every QIDI Box load left three of QIDI's timers behind in Klipper, from the load-cell check that confirms the filament reached the nozzle. Klipper checks every timer many times a second, so it got busier with each filament change. After about 400 changes it was busy most of the time even while idle, and a Box motor move could fail with `Communication timeout during homing`, which cancelled the print. Those timers are now removed once QIDI is done with them, and a filament change that fails that way [pauses the print](qidi-box.md#failed-tool-changes-during-a-print) instead.
+
+Klipper also watches how busy it is. If its timers keep piling up, or it stays more than 80% busy for five minutes, the console says so, at most once an hour. If a homing move times out, the console says how busy Klipper was just before. `klippy.log` gets a `tltg_klipper_health` line every minute with the timer count and how busy Klipper was.
+
 ## Unknown Box filaments shutting Klipper down
 
 Loading a slot whose saved filament isn't in QIDI's list no longer shuts Klipper down. See [QIDI Box](qidi-box.md#filaments-missing-from-qidis-list).

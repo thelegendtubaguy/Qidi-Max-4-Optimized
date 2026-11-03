@@ -139,6 +139,10 @@ With QIDI's own code, `FLOW_STOP` on a paused flow never finished: every later c
 
 A step can also end with an error instead of failing, such as `Error during homing e_endstop: Communication timeout during homing` from a Box motor move. QIDI then left the flow running with the nozzle hot, and neither the card nor `FLOW_RETRY` could do anything with it. The flow is now paused on that step, with `Step BOX_LOAD failed. Pausing flow.` before the error, so Retry and Stop work as for any failed step.
 
+### Failed tool changes during a print
+
+When a step of a filament change during a print fails, QIDI pauses the print, and **Resume** finishes the change from wherever the filament stopped, then carries on printing. A step that ended with an error instead, such as `Error during homing b_endstop: Communication timeout during homing` while unloading, cancelled the print. It now pauses the print the same way, and the console says which step failed and why, for example `T1 failed at BOX_UNLOAD: Error during homing b_endstop: Communication timeout during homing. The print is paused; RESUME tries the tool change again.` Only a Klipper shutdown, such as a lost Box connection, still ends the print.
+
 ### Filament stopped between the hub and the toolhead
 
 A load that gets the filament to the Box hub but not to the toolhead, for example because the tube to the toolhead is longer than `FAST_LENGTH` allows for, leaves the filament in the tube between them. QIDI already counts that slot as loaded. Its Unload then does nothing but park the toolhead and report success, and its Eject heats the nozzle first.
