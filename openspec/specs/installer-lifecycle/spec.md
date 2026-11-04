@@ -190,10 +190,21 @@ The installer SHALL apply host OS optimizations only under explicit persisted po
 #### Scenario: Changed services restart once
 - **WHEN** an install, update, uninstall, or host recovery changes files that a running service loads
 - **THEN** every change in the operation is in place before any service restarts, and each changed service restarts once
+- **AND** adding or removing package services reloads systemd once, before those restarts, rather than once per service
 - **AND** a failed restart that a change requires fails the operation like any other host-operation failure
 - **AND** after restarting Moonraker, the installer waits a bounded time for Moonraker to answer and then restarts QIDI's touchscreen app, so the app does not keep showing a Moonraker outage
 - **AND** a Klipper restart already pending for source activation stands in for the host change's own Klipper restart
 - **AND** a step that rollback cannot undo, such as retiring QIDI bundle patches once the package Fluidd is served, runs only after the restarts before it succeed
+
+#### Scenario: Host changes report their progress
+- **WHEN** an install, update, or uninstall applies or restores host changes
+- **THEN** they say the step can take a few minutes, install and update name each change as they apply it, and every operation names each service as it restarts it
+- **AND** when an install or update turns off QIDI AI detection, the note to turn off the matching touchscreen settings comes after the host changes and their restarts finish
+
+#### Scenario: Synchronous root writes are repaired first
+- **WHEN** enabled OS optimizations repair QIDI's Rockchip service that remounts the root filesystem with `sync`
+- **THEN** the repair runs before the other host changes in the operation, so their file writes are not synchronous
+- **AND** its recovery record survives the later host changes until the installed state records the repair, so an interruption before then still rolls it back
 
 #### Scenario: Reconciliation retains bounded recovery state
 - **WHEN** repeated checks find host optimizations already current
@@ -586,6 +597,7 @@ Normal install and update SHALL serve the package's pinned build of the project'
 - **WHEN** install or update runs with the build in the package and a recognized Fluidd nginx site
 - **THEN** the build is extracted beside QIDI's bundle, readable by nginx, verified against the pinned checksum, and marked as package-owned
 - **AND** only then is the nginx site switched to serve it, in the same guarded change that adds the printer-screen route
+- **AND** the site sends the build's gzip copies of its text assets to browsers that accept gzip instead of compressing those assets on each request, and a site an earlier package version switched without that is updated in place
 - **AND** QIDI's bundled Fluidd files are not modified
 - **AND** a browser tab showing QIDI's Fluidd shows the build after one normal reload, including when QIDI's service worker had cached it
 

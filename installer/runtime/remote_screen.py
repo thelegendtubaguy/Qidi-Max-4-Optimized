@@ -19,6 +19,8 @@ SERVER_FILE = "/usr/local/lib/tltg_remote_screen.py"
 NGINX_SITE = "/etc/nginx/sites-available/fluidd"
 NGINX_QIDI_ROOT = f"\n    root {fluidd_build.QIDI_ROOT};\n"
 NGINX_BUILD_ROOT = f"\n    root {fluidd_build.DESTINATION};\n"
+# The package Fluidd ships a gzip copy of each text asset, so nginx sends it instead of compressing every request.
+NGINX_GZIP_STATIC = "    gzip_static on;\n"
 SERVER_PAYLOAD = Path(__file__).resolve().parents[1] / "system/tltg_remote_screen.py"
 # Package-created files start with a marker line so later package versions replace earlier ones.
 SERVER_MARKER = "# tltg-optimized:remote-screen-server\n"
@@ -120,7 +122,9 @@ def patch_nginx_site(text: str) -> str:
     build_root = NGINX_BUILD_ROOT.replace("\n", newline)
     if text.count(qidi_root) + text.count(build_root) != 1:
         raise InstallerError("Fluidd nginx site does not match the reviewed QIDI source; preserving it.")
-    text = text.replace(qidi_root, build_root, 1)
+    served = build_root + NGINX_GZIP_STATIC.replace("\n", newline)
+    if served not in text:
+        text = text.replace(qidi_root, build_root, 1).replace(build_root, served, 1)
     block = NGINX_BLOCK.replace("\n", newline)
     previous = NGINX_PREVIOUS.findall(text)
     if len(previous) == 1:
