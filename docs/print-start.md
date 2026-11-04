@@ -46,6 +46,18 @@ Set the filament profile's chamber **Target** and **Minimal** temperatures. With
 
 A Minimal of `0`, QIDI Studio, and older start G-code all keep the usual wait for 3 °C below the target.
 
+## Exhaust fan while heating the chamber
+
+Turning on the exhaust fan (`M106 P3`) no longer turns off the chamber heater. QIDI's turned it off, so a filament profile with its exhaust fan (air filtration) on during the print stopped heating the chamber as soon as the exhaust fan came on, without saying so. The heater now keeps its target, and when the exhaust fan turns on while the chamber heats, the console warns:
+
+`WARNING: Exhaust fan turned on at 40% while the chamber heater is set to 60°C. The heater stays on. If your filament profile turned it on, turn off the profile's exhaust fan (air filtration) to heat the chamber fully.`
+
+The exhaust pulls heat out of the chamber. If the chamber stays more than 5 °C below its target for long, or stops gaining while it heats, Klipper stops the print with `Heater chamber not heating at expected rate`. Before that can happen, the exhaust fan is turned off for the rest of the print, and the console warns:
+
+`WARNING: Exhaust fan turned off for the rest of the print. The chamber is at 56°C against its 60°C target and isn't keeping up; if it stays more than 5°C below for long, Klipper stops the print with 'Heater chamber not heating at expected rate'.`
+
+The fan is turned off when a chamber that had reached its target falls back to 4 °C below it, or when one that's still heating has gone 4 minutes without gaining 1 °C, half the 8 minutes Klipper allows. Later requests to turn the exhaust on during that print are ignored while the chamber heater is on, with a console note; the end-of-print exhaust still runs, since the chamber heater is off by then. The next print starts fresh. For filaments that need a heated chamber, turn off the exhaust fan in the filament profile.
+
 ## Staggered heating
 
 Off by default. Heats the bed, then the chamber, then the nozzle, with a pause between stages:
