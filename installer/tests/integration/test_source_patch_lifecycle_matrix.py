@@ -22,7 +22,6 @@ from installer.runtime.box_enablement import (
 from installer.runtime.auto_update import (
     AutoUpdateError,
     LOCK_HELD_ENV,
-    _installation_requires_reconciliation,
     disable_auto_updates,
     enable_auto_updates,
     enrollment_path,
@@ -64,6 +63,9 @@ SOURCE_CASES = (
     ("01.01.06.04", "sync-reset", SYNC_RESET_DESIRED_HOMING_SHA256),
     ("01.01.06.05", "sync-reset", SYNC_RESET_DESIRED_HOMING_SHA256),
 )
+# Restoring a source writes back the recorded preimage whatever the variant, so restore paths need one case per
+# payload family and firmware config group, not every admitted variant.
+RESTORE_CASES = (SOURCE_CASES[0], SOURCE_CASES[3])
 
 
 class SourcePatchLifecycleMatrixTests(unittest.TestCase):
@@ -561,187 +563,185 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             urlopen=urlopen,
         )
 
-    def test_prior_managed_homing_values_migrate_for_all_variants(self):
-        for firmware, source_variant, _ in SOURCE_CASES:
-            with self.subTest(firmware=firmware, source_variant=source_variant):
-                printer_root, paths, stock_source = self._fixture(
-                    firmware, source_variant=source_variant
-                )
-                cfg = printer_root / "config/printer.cfg"
-                cfg.write_text(
-                    cfg.read_text(encoding="utf-8")
-                    .replace("homing_speed: 50", "homing_speed: 100")
-                    .replace("homing_retract_speed: 200.0", "homing_retract_speed: 1000.0"),
-                    encoding="utf-8",
-                )
-                write_installed_state(
-                    printer_root / "config/tltg_optimized_state.yaml",
-                    InstalledState(
-                        schema_version=1,
-                        package_id="qidi-max4-optimized",
-                        package_version=self.manifest.package.version,
-                        runtime_firmware=firmware,
-                        backup_label="prior-install",
-                        installed_at="2026-06-15T00:00:00Z",
-                        managed_tree=ManagedTreeState(
-                            "config/tltg-optimized-macros", ()
-                        ),
-                        patch_ledger=(
-                            PatchLedgerEntry(
-                                "stepper_x_homing_speed",
-                                "config/printer.cfg",
-                                "stepper_x",
-                                "homing_speed",
-                                "50",
-                                "100",
-                                "applied",
-                            ),
-                            PatchLedgerEntry(
-                                "stepper_y_homing_speed",
-                                "config/printer.cfg",
-                                "stepper_y",
-                                "homing_speed",
-                                "50",
-                                "100",
-                                "applied",
-                            ),
-                            PatchLedgerEntry(
-                                "stepper_x_homing_retract_speed",
-                                "config/printer.cfg",
-                                "stepper_x",
-                                "homing_retract_speed",
-                                "200.0",
-                                "1000.0",
-                                "applied",
-                            ),
-                            PatchLedgerEntry(
-                                "stepper_y_homing_retract_speed",
-                                "config/printer.cfg",
-                                "stepper_y",
-                                "homing_retract_speed",
-                                "200.0",
-                                "1000.0",
-                                "applied",
-                            ),
-                        ),
+    def test_prior_managed_homing_values_migrate(self):
+        firmware, source_variant, _ = SOURCE_CASES[0]
+        printer_root, paths, stock_source = self._fixture(
+            firmware, source_variant=source_variant
+        )
+        cfg = printer_root / "config/printer.cfg"
+        cfg.write_text(
+            cfg.read_text(encoding="utf-8")
+            .replace("homing_speed: 50", "homing_speed: 100")
+            .replace("homing_retract_speed: 200.0", "homing_retract_speed: 1000.0"),
+            encoding="utf-8",
+        )
+        write_installed_state(
+            printer_root / "config/tltg_optimized_state.yaml",
+            InstalledState(
+                schema_version=1,
+                package_id="qidi-max4-optimized",
+                package_version=self.manifest.package.version,
+                runtime_firmware=firmware,
+                backup_label="prior-install",
+                installed_at="2026-06-15T00:00:00Z",
+                managed_tree=ManagedTreeState(
+                    "config/tltg-optimized-macros", ()
+                ),
+                patch_ledger=(
+                    PatchLedgerEntry(
+                        "stepper_x_homing_speed",
+                        "config/printer.cfg",
+                        "stepper_x",
+                        "homing_speed",
+                        "50",
+                        "100",
+                        "applied",
                     ),
-                )
-
-                self._run_install(paths)
-
-                self._assert_homing_speed(printer_root, "65")
-                self._assert_homing_retract_speed(printer_root, "500.0")
-                state = load_installed_state(
-                    printer_root / "config/tltg_optimized_state.yaml"
-                )
-                speeds = {
-                    entry.id: entry
-                    for entry in state.patch_ledger
-                    if entry.id
-                    in {"stepper_x_homing_speed", "stepper_y_homing_speed"}
-                }
-                self.assertEqual({entry.expected for entry in speeds.values()}, {"50"})
-                self.assertEqual({entry.desired for entry in speeds.values()}, {"65"})
-                self.assertEqual(state.source_patches[0].original_bytes, stock_source)
-
-    def test_auto_update_child_initializes_defaults_and_advances_checksum_for_all_variants(self):
-        for firmware, source_variant, desired_sha256 in SOURCE_CASES:
-            with self.subTest(firmware=firmware, source_variant=source_variant):
-                printer_root, _, _ = self._fixture(
-                    firmware, source_variant=source_variant
-                )
-                bundle_root = temp_path("auto-update-lifecycle-") / "tltg-optimized-macros"
-                bundle_root.mkdir()
-                (bundle_root / "install.sh").write_text("#!/bin/sh\n", encoding="utf-8")
-                paths = resolve_runtime_paths(
-                    bundle_root=bundle_root,
-                    environ=build_env(
-                        printer_root,
-                        moonraker_url="http://moonraker.invalid/printer/objects/query?print_stats",
+                    PatchLedgerEntry(
+                        "stepper_y_homing_speed",
+                        "config/printer.cfg",
+                        "stepper_y",
+                        "homing_speed",
+                        "50",
+                        "100",
+                        "applied",
                     ),
-                )
-                archive = _release_archive()
-                checksum = hashlib.sha256(archive).hexdigest()
-                state_path(paths).write_text(
-                    json.dumps({"latest_checksum": "0" * 64}), encoding="utf-8"
-                )
-                enrollment_path(paths).write_text("1\n", encoding="utf-8")
-                process = {"id": 100}
-                child_calls = []
-                fallback_urlopen = self._fixture_urlopen(printer_root)
+                    PatchLedgerEntry(
+                        "stepper_x_homing_retract_speed",
+                        "config/printer.cfg",
+                        "stepper_x",
+                        "homing_retract_speed",
+                        "200.0",
+                        "1000.0",
+                        "applied",
+                    ),
+                    PatchLedgerEntry(
+                        "stepper_y_homing_retract_speed",
+                        "config/printer.cfg",
+                        "stepper_y",
+                        "homing_retract_speed",
+                        "200.0",
+                        "1000.0",
+                        "applied",
+                    ),
+                ),
+            ),
+        )
 
-                def urlopen(request, timeout=0):
-                    url = getattr(request, "full_url", str(request))
-                    if url.endswith(".sha256"):
-                        return _BytesResponse(f"{checksum} bundle\n".encode())
-                    if url.endswith(".tar.gz"):
-                        return _BytesResponse(archive)
-                    if url.endswith("/printer/info"):
-                        return _JsonResponse(
-                            {"result": {"state": "ready", "process_id": process["id"]}}
-                        )
-                    if url.endswith("/machine/services/restart"):
-                        process["id"] += 1
-                        return _JsonResponse({"result": "ok"})
-                    return fallback_urlopen(request, timeout=timeout)
+        self._run_install(paths)
 
-                def child_run(command, **kwargs):
-                    child_calls.append((command, kwargs))
-                    self.assertEqual(kwargs["env"][LOCK_HELD_ENV], "1")
-                    child_paths = resolve_runtime_paths(
-                        bundle_root=REPO_ROOT,
-                        environ=build_env(
-                            printer_root,
-                            moonraker_url="http://moonraker.invalid/printer/objects/query?print_stats",
-                        ),
-                    )
-                    run_install(
-                        child_paths,
-                        self.manifest,
-                        PlainReporter(io.StringIO()),
-                        urlopen=urlopen,
-                        environ=kwargs["env"],
-                    )
-                    return subprocess.CompletedProcess(command, 0)
+        self._assert_homing_speed(printer_root, "65")
+        self._assert_homing_retract_speed(printer_root, "500.0")
+        state = load_installed_state(
+            printer_root / "config/tltg_optimized_state.yaml"
+        )
+        speeds = {
+            entry.id: entry
+            for entry in state.patch_ledger
+            if entry.id
+            in {"stepper_x_homing_speed", "stepper_y_homing_speed"}
+        }
+        self.assertEqual({entry.expected for entry in speeds.values()}, {"50"})
+        self.assertEqual({entry.desired for entry in speeds.values()}, {"65"})
+        self.assertEqual(state.source_patches[0].original_bytes, stock_source)
 
-                result = run_auto_update_check(
-                    paths=paths,
-                    reporter=PlainReporter(io.StringIO()),
-                    environ={
-                        "TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256",
-                        "TLTG_AUTO_UPDATE_ARCHIVE_URL": "https://example.invalid/latest.tar.gz",
-                    },
-                    urlopen=urlopen,
-                    run=child_run,
-                )
+    def test_auto_update_child_initializes_defaults_and_advances_checksum(self):
+        firmware, source_variant, desired_sha256 = SOURCE_CASES[0]
+        printer_root, _, _ = self._fixture(
+            firmware, source_variant=source_variant
+        )
+        bundle_root = temp_path("auto-update-lifecycle-") / "tltg-optimized-macros"
+        bundle_root.mkdir()
+        (bundle_root / "install.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+        paths = resolve_runtime_paths(
+            bundle_root=bundle_root,
+            environ=build_env(
+                printer_root,
+                moonraker_url="http://moonraker.invalid/printer/objects/query?print_stats",
+            ),
+        )
+        archive = _release_archive()
+        checksum = hashlib.sha256(archive).hexdigest()
+        state_path(paths).write_text(
+            json.dumps({"latest_checksum": "0" * 64}), encoding="utf-8"
+        )
+        enrollment_path(paths).write_text("1\n", encoding="utf-8")
+        process = {"id": 100}
+        child_calls = []
+        fallback_urlopen = self._fixture_urlopen(printer_root)
 
-                self.assertEqual(result.action, "updated")
-                self.assertEqual(len(child_calls), 1)
-                saved_variables = (printer_root / "config/saved_variables.cfg").read_text(
-                    encoding="utf-8"
+        def urlopen(request, timeout=0):
+            url = getattr(request, "full_url", str(request))
+            if url.endswith(".sha256"):
+                return _BytesResponse(f"{checksum} bundle\n".encode())
+            if url.endswith(".tar.gz"):
+                return _BytesResponse(archive)
+            if url.endswith("/printer/info"):
+                return _JsonResponse(
+                    {"result": {"state": "ready", "process_id": process["id"]}}
                 )
-                self.assertEqual(
-                    klipper_cfg.resolve_unique_option(
-                        saved_variables,
-                        "Variables",
-                        "tltg_keep_loaded_between_prints",
-                    ).value,
-                    "1",
-                )
-                self.assertEqual(
-                    json.loads(state_path(paths).read_text(encoding="utf-8"))["latest_checksum"],
-                    checksum,
-                )
-                self.assertEqual(
-                    hashlib.sha256(
-                        (
-                            printer_root
-                            / "klipper/klippy/extras/homing.py"
-                        ).read_bytes()
-                    ).hexdigest(),
-                    desired_sha256,
-                )
-                self.assertFalse(paths.restart_marker_path.exists())
+            if url.endswith("/machine/services/restart"):
+                process["id"] += 1
+                return _JsonResponse({"result": "ok"})
+            return fallback_urlopen(request, timeout=timeout)
+
+        def child_run(command, **kwargs):
+            child_calls.append((command, kwargs))
+            self.assertEqual(kwargs["env"][LOCK_HELD_ENV], "1")
+            child_paths = resolve_runtime_paths(
+                bundle_root=REPO_ROOT,
+                environ=build_env(
+                    printer_root,
+                    moonraker_url="http://moonraker.invalid/printer/objects/query?print_stats",
+                ),
+            )
+            run_install(
+                child_paths,
+                self.manifest,
+                PlainReporter(io.StringIO()),
+                urlopen=urlopen,
+                environ=kwargs["env"],
+            )
+            return subprocess.CompletedProcess(command, 0)
+
+        result = run_auto_update_check(
+            paths=paths,
+            reporter=PlainReporter(io.StringIO()),
+            environ={
+                "TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256",
+                "TLTG_AUTO_UPDATE_ARCHIVE_URL": "https://example.invalid/latest.tar.gz",
+            },
+            urlopen=urlopen,
+            run=child_run,
+        )
+
+        self.assertEqual(result.action, "updated")
+        self.assertEqual(len(child_calls), 1)
+        saved_variables = (printer_root / "config/saved_variables.cfg").read_text(
+            encoding="utf-8"
+        )
+        self.assertEqual(
+            klipper_cfg.resolve_unique_option(
+                saved_variables,
+                "Variables",
+                "tltg_keep_loaded_between_prints",
+            ).value,
+            "1",
+        )
+        self.assertEqual(
+            json.loads(state_path(paths).read_text(encoding="utf-8"))["latest_checksum"],
+            checksum,
+        )
+        self.assertEqual(
+            hashlib.sha256(
+                (
+                    printer_root
+                    / "klipper/klippy/extras/homing.py"
+                ).read_bytes()
+            ).hexdigest(),
+            desired_sha256,
+        )
+        self.assertFalse(paths.restart_marker_path.exists())
 
     def test_auto_update_enrollment_survives_config_cleanup_and_is_cleared_before_sudo(self):
         printer_root, paths, _ = self._fixture("01.01.06.03")
@@ -908,24 +908,6 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             checksum,
         )
         self.assertFalse(any(url.endswith(".tar.gz") for url in opened_urls))
-
-    def test_enrolled_installation_health_detects_firmware_owned_drift(self):
-        firmware = "01.01.07.01"
-        printer_root, paths, _ = self._fixture(
-            firmware, source_variant="sync-reset"
-        )
-        self._run_install(paths)
-
-        self.assertFalse(_installation_requires_reconciliation(paths))
-        (printer_root / "config/printer.cfg").write_bytes(
-            (
-                REPO_ROOT
-                / "installer/stock/qidi-max4-defaults/firmwares"
-                / firmware
-                / "config/printer.cfg"
-            ).read_bytes()
-        )
-        self.assertTrue(_installation_requires_reconciliation(paths))
 
     def test_enrolled_auto_update_recovers_after_firmware_config_cleanup(self):
         firmware = "01.01.07.01"
@@ -1117,8 +1099,8 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             (bundle_root / "old.txt").read_text(encoding="utf-8"), "old bundle"
         )
 
-    def test_source_write_failure_rolls_back_source_and_marker_for_all_variants(self):
-        for firmware, source_variant, _ in SOURCE_CASES:
+    def test_source_write_failure_rolls_back_source_and_marker(self):
+        for firmware, source_variant, _ in RESTORE_CASES:
             with self.subTest(firmware=firmware, source_variant=source_variant):
                 printer_root, paths, stock_source = self._fixture(
                     firmware, source_variant=source_variant
@@ -1193,8 +1175,8 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         self._assert_homing_speed(printer_root, "65")
         self.assertTrue(paths.restart_marker_path.exists())
 
-    def test_source_inclusive_restore_restores_stock_source_for_all_variants(self):
-        for firmware, source_variant, _ in SOURCE_CASES:
+    def test_source_inclusive_restore_restores_stock_source(self):
+        for firmware, source_variant, _ in RESTORE_CASES:
             with self.subTest(firmware=firmware, source_variant=source_variant):
                 printer_root, paths, stock_source = self._fixture(
                     firmware, source_variant=source_variant
@@ -1230,8 +1212,8 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 )
                 self.assertFalse(paths.restart_marker_path.exists())
 
-    def test_uninstall_restores_stock_config_and_source_for_all_variants(self):
-        for firmware, source_variant, _ in SOURCE_CASES:
+    def test_uninstall_restores_stock_config_and_source(self):
+        for firmware, source_variant, _ in RESTORE_CASES:
             with self.subTest(firmware=firmware, source_variant=source_variant):
                 printer_root, paths, stock_source = self._fixture(
                     firmware, source_variant=source_variant

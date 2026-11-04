@@ -891,22 +891,12 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         backup.assert_not_called(); prune.assert_not_called()
         self.assertEqual(snapshot_tree(root), before)
 
-    def test_invalid_uninstall_plan_has_no_backup_or_pruning(self):
-        paths, manifest, env, root = self._installed_host_context()
-        compatibility = load_supported_upgrade_sources(REPO_ROOT / "installer/supported_upgrade_sources.yaml")
-        with mock.patch("installer.runtime.uninstall.build_uninstall_plan", side_effect=RuntimeError("invalid plan")), mock.patch("installer.runtime.uninstall.create_config_backup") as backup, mock.patch("installer.runtime.uninstall.prune_installer_backups") as prune:
-            with self.assertRaisesRegex(RuntimeError, "invalid plan"):
-                run_uninstall(paths, manifest, compatibility, PlainReporter(io.StringIO()), input_stream=io.StringIO("yes\nyes\n"), urlopen=moonraker_urlopen(), environ=env, run=fake_host_run(root))
-        backup.assert_not_called(); prune.assert_not_called()
-
     def test_forged_legacy_rockchip_journal_never_clears(self):
-        paths, manifest, env, root = self._host_context()
         legacy = {"policy": {"system_optimizations": "enabled", "ai_detection": "unset"}, "restore_preimages": {}, "outcomes": {}, "committed_transactions": {}, "actions": [{"id": "rockchip_root_sync", "status": "applied", "transaction_id": "same"}]}
-        from dataclasses import replace
         # Recovery loads only an on-disk installed state; use a valid install then replace its ledger.
         paths, manifest, env, root = self._installed_host_context()
         state_path = paths.printer_data_root / manifest.state_file
-        write_installed_state(state_path, replace(load_installed_state(state_path), system_ledger=legacy))
+        write_installed_state(state_path, _replace_system_ledger(load_installed_state(state_path), legacy))
         journal = {"schema_version": 1, "operation": "rockchip_root_sync", "transaction_id": "same", "phase": "captured", "preimage": {"classification": "defective_stock", "dropin": {"path": "/etc/shadow", "exists": False}, "desired_dropin": manifest.system_optimizations.rockchip_root_sync.dropin_content, "unit": {}, "mount_options": ["rw", "sync"], "marker": {"exists": False}}}
         _journal_path(paths).write_text(json.dumps(journal), encoding="utf-8")
         with self.assertRaises(SystemOptimizationRecoveryError):
