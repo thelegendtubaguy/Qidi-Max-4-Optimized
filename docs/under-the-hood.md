@@ -41,7 +41,7 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 |---|---|
 | `~/tltg-fluidd` | This project's [Fluidd build](fluidd.md). Updates replace it whole. |
 | `~/fluidd` | QIDI's Fluidd, left untouched as the fallback. |
-| Fluidd's nginx configuration | Serves `~/tltg-fluidd` instead of `~/fluidd`, and adds a `/tltg-screen/` route for the Printer screen card. |
+| Fluidd's nginx configuration | Serves `~/tltg-fluidd` instead of `~/fluidd`, sending its ready-made `.gz` copies of scripts, styles, and images (`gzip_static`) instead of compressing them on each request, and adds a `/tltg-screen/` route for the Printer screen card. |
 | `tltg-remote-screen` service | Streams the touchscreen to the [Printer screen](fluidd.md#printer-screen) card, sending a new image only when the screen changes. It only listens on the printer itself, and Moonraker checks every connection. |
 | `~/printer_data/moonraker.asvc` | Adds `qidi-client`, so Fluidd can [restart the touchscreen app](fluidd.md#restart-the-touchscreen-app). Moonraker restarts. |
 

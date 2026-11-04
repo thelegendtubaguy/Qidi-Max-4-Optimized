@@ -343,7 +343,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual((speedups / "msgspec/_core.so").stat().st_mode & 0o777, 0o755)
         self.assertEqual((speedups / "uvloop/__init__.py").stat().st_mode & 0o777, 0o644)
         self.assertEqual(speedups_path.read_text(encoding="utf-8"), moonraker_speedups.PATH_CONTENT)
-        self.assertIn(b"\r\n    root /home/qidi/tltg-fluidd;\r\n", nginx_site.read_bytes())
+        self.assertIn(b"\r\n    root /home/qidi/tltg-fluidd;\r\n    gzip_static on;\r\n", nginx_site.read_bytes())
         self.assertIn(b"location /tltg-screen/ {\r\n", nginx_site.read_bytes())
         self.assertNotIn(b"\n", nginx_site.read_bytes().replace(b"\r\n", b""))
         self.assertEqual(fluidd.read_bytes(), fluidd_before)
@@ -356,17 +356,23 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         speedups_marker.write_text("0" * 64 + "\n", encoding="utf-8")
         screen_server.write_bytes(prior_server)
         reconciled["outcomes"][remote_screen.SERVER_OPERATION]["postflight"]["sha256"] = __import__("hashlib").sha256(prior_server).hexdigest()
+        # A site that an earlier version switched to the build, before it served the build's gzip copies.
+        prior_site = nginx_site.read_bytes().replace(b"    gzip_static on;\r\n", b"", 1)
+        nginx_site.write_bytes(prior_site)
+        reconciled["outcomes"][remote_screen.NGINX_OPERATION]["postflight"]["sha256"] = __import__("hashlib").sha256(prior_site).hexdigest()
         with self.assertRaises(SystemOptimizationApplyError):
             reconcile(reconciled, failing_restart(remote_screen.UNIT))
         self.assertEqual(marker.read_text(encoding="utf-8"), "0" * 64 + "\n")
         self.assertFalse(previous_build.exists())
         self.assertEqual(speedups_marker.read_text(encoding="utf-8"), "0" * 64 + "\n")
         self.assertFalse(previous_speedups.exists())
+        self.assertEqual(nginx_site.read_bytes(), prior_site)
         reconciled = reconcile(reconciled)
         self.assertEqual(marker.read_text(encoding="utf-8"), manifest.system_optimizations.fluidd_build.sha256 + "\n")
         self.assertFalse(previous_build.exists())
         self.assertEqual(speedups_marker.read_text(encoding="utf-8"), speedups_digest + "\n")
         self.assertFalse(previous_speedups.exists())
+        self.assertEqual(nginx_site.read_bytes().count(b"    gzip_static on;\r\n"), 1)
         write_installed_state(printer_root / manifest.state_file, _replace_system_ledger(state, reconciled))
 
         # Declining the system-restoration prompt keeps only the optional OS optimizations; everything install makes
@@ -437,6 +443,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         root = fake_system_root(include_moonraker_cache=True, include_fluidd_bundle=True, include_moonraker_asvc=True)
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
         env[SYSTEM_ROOT_ENV] = str(root)
+        boot_id = printer_root / "boot-id"
+        boot_id.write_text("boot-one\n", encoding="utf-8")
+        env["TLTG_OPTIMIZED_BOOT_ID_PATH"] = str(boot_id)
         paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
         manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
         fluidd = root / manifest.system_optimizations.fluidd_box_filament_ids.file.lstrip("/")
@@ -466,7 +475,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertIn(restart_on_exit.MOONRAKER_OPERATION, ledger["restore_preimages"])
         self.assertIn(system_optimizations.MOONRAKER_CACHE_OPERATION, ledger["restore_preimages"])
 
-        # Zram swap that fails to start, such as modules the kernel rejects, leaves nothing behind.
+        # Zram swap that fails to start, such as modules the kernel rejects, leaves nothing behind,
+        # including the root remount that ran before it.
         host_run = fake_host_run(root)
 
         def zram_fails(command, **kwargs):
@@ -485,6 +495,10 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertFalse((root / zram_swap.DESTINATION.lstrip("/")).exists())
         self.assertFalse((root / zram_swap.UNIT_FILE.lstrip("/")).exists())
         self.assertEqual(json.loads((root / "systemd" / f"{zram_swap.UNIT}.json").read_text(encoding="utf-8"))["enabled"], "disabled")
+        self.assertEqual((root / "mounts/root.options").read_text(encoding="utf-8"), "rw,relatime,sync\n")
+        self.assertFalse((root / manifest.system_optimizations.rockchip_root_sync.dropin.lstrip("/")).exists())
+        self.assertFalse(paths.host_reboot_marker_path.exists())
+        self.assertFalse(_journal_path(paths).exists())
 
     def test_moonraker_cache_admission_and_restart_failure_preserve_source(self):
         for fault in ("unknown", "unknown_metascan", "symlink", "restart", "concurrent"):
@@ -590,6 +604,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         host_run = fake_host_run(system_root)
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
         env[SYSTEM_ROOT_ENV] = str(system_root)
+        boot = printer_root / "boot-id"
+        boot.write_text("test-boot\n")
+        env["TLTG_OPTIMIZED_BOOT_ID_PATH"] = str(boot)
         paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
         manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
         legacy = {
@@ -630,6 +647,32 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                 urlopen=moonraker_urlopen(),
             )
         )
+        self.assertFalse(_journal_path(paths).exists())
+
+        # The remount runs before the other operations, and a crash before the installed state commits it still
+        # rolls it back.
+        mount_before = (system_root / "mounts/root.options").read_text(encoding="utf-8")
+        apply_system_optimizations(
+            paths=paths, spec=manifest.system_optimizations,
+            ledger={"policy": {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}},
+            reporter=PlainReporter(io.StringIO()), input_stream=None,
+            environ=env, source="yes_install", run=host_run,
+            urlopen=moonraker_urlopen(),
+        )
+        self.assertNotIn("sync", (system_root / "mounts/root.options").read_text(encoding="utf-8").strip().split(","))
+        self.assertTrue(
+            recover_pending_system_optimization(
+                paths=paths,
+                manifest=manifest,
+                reporter=PlainReporter(io.StringIO()),
+                input_stream=io.StringIO(),
+                environ=env,
+                run=host_run,
+                urlopen=moonraker_urlopen(),
+            )
+        )
+        self.assertEqual((system_root / "mounts/root.options").read_text(encoding="utf-8"), mount_before)
+        self.assertFalse((system_root / rockchip.dropin.lstrip("/")).exists())
         self.assertFalse(_journal_path(paths).exists())
 
     def test_uninstall_preserves_user_modified_host_state(self):
@@ -882,8 +925,17 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertFalse((root / zram_swap.DESTINATION.lstrip("/")).exists())
         self.assertFalse((root / zram_swap.UNIT_FILE.lstrip("/")).exists())
         self.assertEqual((root / cpu_governor.FILE.lstrip("/")).read_text(encoding="utf-8"), cpu_governor.CONTENT)
+        # An update that finds the repair already in place still lets uninstall put the mount back, including after
+        # an earlier version recorded that outcome without the mount options.
+        state_path = paths.printer_data_root / manifest.state_file
+        state = load_installed_state(state_path)
+        state.system_ledger["outcomes"]["rockchip_root_sync"] = {"status": "already_current_owned", "source": "yes_install", "postflight": {"classification": "already_current_owned"}}
+        write_installed_state(state_path, state)
+        run_install(paths, manifest, PlainReporter(io.StringIO()), input_stream=io.StringIO("yes\nyes\nno\nno\n"), urlopen=moonraker_urlopen(saved_variables_path=paths.config_root / "saved_variables.cfg"), environ=env, run=fake_host_run(root))
         compatibility = load_supported_upgrade_sources(REPO_ROOT / "installer/supported_upgrade_sources.yaml")
-        run_uninstall(paths, manifest, compatibility, PlainReporter(io.StringIO()), input_stream=io.StringIO("yes\nyes\n"), urlopen=moonraker_urlopen(), environ=env, run=fake_host_run(root))
+        report = io.StringIO()
+        run_uninstall(paths, manifest, compatibility, PlainReporter(report), input_stream=io.StringIO("yes\nyes\n"), urlopen=moonraker_urlopen(), environ=env, run=fake_host_run(root))
+        self.assertNotIn("Rockchip system state was modified", report.getvalue())
         self.assertEqual((root / "mounts/root.options").read_text(encoding="utf-8"), "ro,noatime,sync\n")
         # Accepted restoration puts back QIDI's ondemand governor.
         self.assertFalse((root / cpu_governor.FILE.lstrip("/")).exists())

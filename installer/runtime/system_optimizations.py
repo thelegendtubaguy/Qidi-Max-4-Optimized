@@ -117,6 +117,27 @@ MOONRAKER_SPEEDUPS_UPDATE_PREIMAGE = {"path": moonraker_speedups.DESTINATION, "e
 MOONRAKER_SERVICE = "moonraker.service"
 KLIPPER_SERVICE = "klipper.service"
 QIDICLIENT_SERVICE = "qidi-client.service"
+SERVICE_NAMES = {
+    zram_swap.UNIT: "zram swap",
+    "nginx.service": "the web server",
+    MOONRAKER_SERVICE: "Moonraker",
+    KLIPPER_SERVICE: "Klipper",
+    remote_screen.UNIT: "the Printer screen service",
+    QIDICLIENT_SERVICE: "the touchscreen",
+    cpu_governor.SERVICE: "the CPU governor",
+}
+STEP_LABELS = {
+    ROCKCHIP_ROOT_SYNC_OPERATION: "Speeding up file writes on the printer's storage",
+    "dns": "Updating DNS settings",
+    "apt_sources": "Updating APT sources",
+    "qidiclient_static_gifs": "Replacing touchscreen animations with still images",
+    MOONRAKER_METADATA_OPERATION: "Updating Moonraker metadata.py",
+    FILAMENT_CONFIG_OPERATION: "Linking the Fluidd filament config",
+    FLUIDD_BUILD_OPERATION: "Installing Fluidd",
+    MOONRAKER_SPEEDUPS_OPERATION: "Installing Moonraker speedups",
+    ZRAM_SWAP_OPERATION: "Installing zram swap",
+}
+SERVICE_STEP_NAMES = {"algo_app.service": "QIDI AI detection"}
 # Swap comes up before the services that use memory. nginx goes next so it never serves a removed Fluidd build while
 # Moonraker comes back. The touchscreen app goes last so it reconnects to the restarted Moonraker.
 RESTART_ORDER = (zram_swap.UNIT, "nginx.service", MOONRAKER_SERVICE, KLIPPER_SERVICE, remote_screen.UNIT, QIDICLIENT_SERVICE)
@@ -945,12 +966,13 @@ def restore_system_optimizations(
     sudo_password = None if _is_fake_root(root) else _sudo_password(
         reporter=reporter, input_stream=input_stream, environ=environ, run=run
     )
+    reporter.line(messages.SYSTEM_CHANGES_RESTORING)
     rockchip_restored = False
     outcomes = ledger.get("outcomes") if isinstance(ledger.get("outcomes"), dict) else {}
     # The Fluidd build goes last, after nginx stops serving it.
     order = [operation_id for operation_id in reversed(list(preimages)) if operation_id != FLUIDD_BUILD_OPERATION]
     order.extend(operation_id for operation_id in preimages if operation_id == FLUIDD_BUILD_OPERATION)
-    restarts = _ServiceRestarts(paths=paths, root=root, sudo_password=sudo_password, run=run, urlopen=urlopen)
+    restarts = _ServiceRestarts(paths=paths, root=root, sudo_password=sudo_password, run=run, urlopen=urlopen, reporter=reporter)
     try:
         for operation_id in order:
             preimage = preimages[operation_id]
@@ -1101,7 +1123,6 @@ def resolve_policy(
         question=messages.AI_DETECTION_PROMPT,
         instruction=messages.AI_DETECTION_PROMPT_INSTRUCTION,
     ):
-        reporter.line(AI_TOUCHSCREEN_WARNING)
         return {"system_optimizations": "enabled", "ai_detection": "disable"}
     return {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}
 
@@ -1123,7 +1144,9 @@ def apply_system_optimizations(
     sudo_password = None if _is_fake_root(root) else _sudo_password(
         reporter=reporter, input_stream=input_stream, environ=environ, run=run
     )
-    restarts = _ServiceRestarts(paths=paths, root=root, sudo_password=sudo_password, run=run, urlopen=urlopen)
+    if source not in {"auto_update_child", "auto_update_reconcile"}:
+        reporter.line(messages.SYSTEM_CHANGES_APPLYING)
+    restarts = _ServiceRestarts(paths=paths, root=root, sudo_password=sudo_password, run=run, urlopen=urlopen, reporter=reporter)
     actions = list(ledger.get("actions", [])) if isinstance(ledger.get("actions"), list) else []
     prior_action_count = len(actions)
     restore_preimages = dict(ledger.get("restore_preimages", {})) if isinstance(ledger.get("restore_preimages"), dict) else {}
@@ -1143,6 +1166,8 @@ def apply_system_optimizations(
         _validate_qidiclient_archive(paths.installer_root / spec.qidiclient_static_gifs.archive, spec.qidiclient_static_gifs.sha256)
     applied_any = False
     current_preimages: dict[str, Any] = {}
+    # The Rockchip journal stays until the installed state commits its transaction.
+    rockchip_journal: dict[str, Any] | None = None
     try:
         for operation_id in selected_ids:
             started_at = _now()
@@ -1260,6 +1285,7 @@ def apply_system_optimizations(
                         )
                     )
                     continue
+                _report_step(reporter, operation_id, spec)
                 preimage = {"path": config.link, "exists": False}
                 current_preimages[operation_id] = preimage
                 _write_host_journal(
@@ -1286,7 +1312,7 @@ def apply_system_optimizations(
                     )
                 )
                 restore_preimages.setdefault(operation_id, preimage)
-                atomic_delete(_journal_path(paths))
+                _settle_host_journal(paths, rockchip_journal)
                 applied_any = True
                 continue
             if operation_id == FLUIDD_BUILD_OPERATION:
@@ -1321,6 +1347,7 @@ def apply_system_optimizations(
                 destination = _map_path(root, fluidd_build.DESTINATION)
                 staging = _map_path(root, fluidd_build.STAGING)
                 previous = _map_path(root, fluidd_build.PREVIOUS)
+                _report_step(reporter, operation_id, spec)
                 for leftover in (staging, previous):
                     _reject_parent_symlink_path(leftover, root=root)
                     fluidd_build.discard(leftover)
@@ -1353,7 +1380,7 @@ def apply_system_optimizations(
                     )
                 )
                 restore_preimages.setdefault(operation_id, dict(FLUIDD_BUILD_PREIMAGE))
-                atomic_delete(_journal_path(paths))
+                _settle_host_journal(paths, rockchip_journal)
                 applied_any = True
                 continue
             if operation_id == MOONRAKER_SPEEDUPS_OPERATION:
@@ -1388,6 +1415,7 @@ def apply_system_optimizations(
                 destination = _map_path(root, moonraker_speedups.DESTINATION)
                 staging = _map_path(root, moonraker_speedups.STAGING)
                 previous = _map_path(root, moonraker_speedups.PREVIOUS)
+                _report_step(reporter, operation_id, spec)
                 for leftover in (staging, previous):
                     _reject_parent_symlink_path(leftover, root=root)
                     moonraker_speedups.discard(leftover)
@@ -1422,7 +1450,7 @@ def apply_system_optimizations(
                     )
                 )
                 restore_preimages.setdefault(operation_id, dict(MOONRAKER_SPEEDUPS_PREIMAGE))
-                atomic_delete(_journal_path(paths))
+                _settle_host_journal(paths, rockchip_journal)
                 applied_any = True
                 continue
             if operation_id == ZRAM_SWAP_OPERATION:
@@ -1450,6 +1478,7 @@ def apply_system_optimizations(
                         # The marker shows a package directory, so its restoration is removal.
                         restore_preimages.setdefault(operation_id, dict(ZRAM_SWAP_PREIMAGE))
                     continue
+                _report_step(reporter, operation_id, spec)
                 for leftover in (zram_swap.STAGING, zram_swap.PREVIOUS):
                     _reject_parent_symlink_path(_map_path(root, leftover), root=root)
                     _remove_root_tree(leftover, root=root, sudo_password=sudo_password, run=run)
@@ -1484,7 +1513,7 @@ def apply_system_optimizations(
                     )
                 )
                 restore_preimages.setdefault(operation_id, dict(ZRAM_SWAP_PREIMAGE))
-                atomic_delete(_journal_path(paths))
+                _settle_host_journal(paths, rockchip_journal)
                 applied_any = True
                 continue
             if operation_id == ROCKCHIP_ROOT_SYNC_OPERATION:
@@ -1498,6 +1527,10 @@ def apply_system_optimizations(
                 if classification in ROCKCHIP_UNSUPPORTED or classification in ROCKCHIP_ALREADY_CURRENT:
                     if classification in ROCKCHIP_UNSUPPORTED:
                         reporter.line(f"Rockchip root optimization preserved current state: {classification}.")
+                    postflight = {"classification": classification}
+                    if classification == "already_current_owned":
+                        # Uninstall restores the mount only while it still has the options last recorded here.
+                        postflight["mount_options"] = list(_root_mount_options(spec=spec.rockchip_root_sync, root=root, run=run))
                     actions.append(
                         _action_record(
                             operation_id=operation_id,
@@ -1505,12 +1538,13 @@ def apply_system_optimizations(
                             started_at=started_at,
                             preimage=None,
                             desired=_desired(operation_id, spec),
-                            postflight={"classification": classification},
+                            postflight=postflight,
                             source=source,
                             reconciled=False,
                         )
                     )
                     continue
+                _report_step(reporter, operation_id, spec)
                 preimage = _capture_rockchip_preimage(
                     paths=paths,
                     spec=spec.rockchip_root_sync,
@@ -1534,13 +1568,13 @@ def apply_system_optimizations(
                     force_mode=True,
                 )
                 current_preimages[operation_id] = preimage
-                _write_host_journal(
-                    paths,
-                    operation_id=operation_id,
-                    transaction_id=transaction_id,
-                    phase="apply",
-                    preimage=preimage,
-                )
+                rockchip_journal = {
+                    "operation_id": operation_id,
+                    "transaction_id": transaction_id,
+                    "phase": "apply",
+                    "preimage": preimage,
+                }
+                _write_host_journal(paths, **rockchip_journal)
                 _apply_rockchip(
                     spec=spec.rockchip_root_sync,
                     root=root,
@@ -1668,8 +1702,7 @@ def apply_system_optimizations(
                     )
                 )
                 continue
-            journal = {"operation": operation_id, "started_at": started_at}
-            _journal_path(paths).write_text(json.dumps(journal, indent=2), encoding="utf-8")
+            _report_step(reporter, operation_id, spec)
             if preimage is None:
                 preimage = _capture_operation_preimage(
                     operation_id,
@@ -1712,7 +1745,7 @@ def apply_system_optimizations(
             action = _action_record(
                 operation_id=operation_id,
                 status="applied",
-                started_at=journal["started_at"],
+                started_at=started_at,
                 preimage=preimage,
                 desired=_desired(operation_id, spec),
                 postflight=postflight,
@@ -1721,7 +1754,7 @@ def apply_system_optimizations(
             )
             actions.append(action)
             restore_preimages.setdefault(operation_id, preimage)
-            _journal_path(paths).unlink(missing_ok=True)
+            _settle_host_journal(paths, rockchip_journal)
             applied_any = True
         for operation_id in _policy_skipped_optional_service_operation_ids(spec, policy, selected_ids):
             started_at = _now()
@@ -1798,6 +1831,13 @@ def apply_system_optimizations(
     ):
         with suppress(HostRebootError, OSError):
             recommend_reboot(paths)
+    optional_services = {f"service_{item.service}" for item in spec.services.optional_disable}
+    if source not in {"auto_update_child", "auto_update_reconcile"} and any(
+        action.get("id") in optional_services and action.get("status") == "applied"
+        for action in actions[prior_action_count:]
+    ):
+        # Last, so the touchscreen app has already restarted when the operator turns its settings off.
+        reporter.line(AI_TOUCHSCREEN_WARNING)
     if source in {"auto_update_child", "auto_update_reconcile"}:
         reporter.line(
             "System optimizations reconciled."
@@ -2028,8 +2068,10 @@ def _apply_guarded_file_patch(operation_id: str, *, spec: SystemOptimizationsSpe
         else:
             run_sudo_ignore_failure(["rm", "-f", staged_path], run=run, password=sudo_password or "")
     if guarded.service_unit:
-        run_sudo_or_raise(["systemctl", "daemon-reload"], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
-        run_sudo_or_raise(["systemctl", "enable", guarded.service_unit], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
+        # enable reads the unit file itself; each reload takes seconds on the printer, so one before the restarts
+        # loads every new unit.
+        run_sudo_or_raise(["systemctl", "enable", "--no-reload", guarded.service_unit], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
+        restarts.reload_units()
     if guarded.reloads_units:
         restarts.reload_units()
     if guarded.restart_service:
@@ -2222,11 +2264,11 @@ def _restore_guarded_file_preimage(operation_id: str, preimage: dict[str, Any], 
 
 def _restore_guarded_file(guarded: _GuardedFilePatch, preimage: dict[str, Any], *, paths: RuntimePaths, root: Path, sudo_password: str | None, run, restarts: _ServiceRestarts) -> None:
     if guarded.service_unit:
-        run_sudo_ignore_failure(["systemctl", "disable", "--now", guarded.service_unit], run=run, password=sudo_password or "")
+        run_sudo_ignore_failure(["systemctl", "disable", "--now", "--no-reload", guarded.service_unit], run=run, password=sudo_password or "")
         restarts.discard(guarded.service_unit)
     _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
     if guarded.service_unit:
-        run_sudo_ignore_failure(["systemctl", "daemon-reload"], run=run, password=sudo_password or "")
+        restarts.reload_units()
     elif guarded.restart_service:
         restarts.request(guarded.restart_service, required=True)
     if guarded.reloads_units:
@@ -2510,8 +2552,9 @@ def _restart_service(service: str, *, root: Path, sudo_password: str | None, run
 class _ServiceRestarts:
     """Restarts each requested service once, after every host change in the transaction is in place."""
 
-    def __init__(self, *, paths: RuntimePaths, root: Path, sudo_password: str | None, run, urlopen) -> None:
+    def __init__(self, *, paths: RuntimePaths, root: Path, sudo_password: str | None, run, urlopen, reporter=None) -> None:
         self._paths = paths
+        self._reporter = reporter
         self._root = root
         self._sudo_password = sudo_password
         self._run = run
@@ -2541,6 +2584,8 @@ class _ServiceRestarts:
             # A pending Klipper source activation restarts Klipper after this transaction.
             if service == KLIPPER_SERVICE and self._paths.restart_marker_path.exists():
                 continue
+            if self._reporter is not None:
+                self._reporter.line(f"  Restarting {SERVICE_NAMES.get(service, service)}...")
             _restart_service(service, root=self._root, sudo_password=self._sudo_password, run=self._run, required=pending[service])
             if service == MOONRAKER_SERVICE and not self._moonraker_answers() and pending[service]:
                 raise SystemOptimizationError("Moonraker did not answer after its restart.")
@@ -2556,6 +2601,19 @@ class _ServiceRestarts:
                 if time.monotonic() >= deadline:
                     return False
             time.sleep(1)
+
+
+def _report_step(reporter, operation_id: str, spec: SystemOptimizationsSpec) -> None:
+    if operation_id in STEP_LABELS:
+        label = STEP_LABELS[operation_id]
+    elif operation_id.startswith("service_"):
+        service = _service_for_operation(operation_id, spec)
+        label = f"Turning off {SERVICE_STEP_NAMES.get(service, service)}"
+    elif operation_id in GUARDED_FILE_PATCHES:
+        label = f"Updating the {GUARDED_FILE_PATCHES[operation_id].label}"
+    else:
+        label = f"Applying {operation_id}"
+    reporter.line(f"  {label}...")
 
 
 def _restart_rank(service: str) -> int:
@@ -2997,8 +3055,11 @@ def _is_optional_operation(operation_id: str) -> bool:
 
 
 def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any]) -> tuple[str, ...]:
+    enabled = policy.get("system_optimizations") == "enabled"
+    # The root filesystem loses its sync option first, so the file writes after it aren't synchronous.
+    ids = [ROCKCHIP_ROOT_SYNC_OPERATION] if enabled else []
     # nginx switches to the package Fluidd only after it is installed.
-    ids = [
+    ids += [
         MOONRAKER_METADATA_OPERATION,
         MOONRAKER_CACHE_OPERATION,
         moonraker_klippy_apis.OPERATION,
@@ -3018,14 +3079,13 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         remote_screen.SERVER_OPERATION,
         remote_screen.NGINX_OPERATION,
     ]
-    if policy.get("system_optimizations") == "enabled":
+    if enabled:
         ids.extend(["dns", "apt_sources", "qidiclient_static_gifs"])
         ids.extend(f"service_{service}" for service in spec.services.disable)
         if policy.get("ai_detection") == "disable":
             ids.extend(f"service_{item.service}" for item in spec.services.optional_disable)
         # The unit goes after the modules it loads, so restoration stops it first.
         ids.extend([ZRAM_SWAP_OPERATION, zram_swap.UNIT_OPERATION, cpu_governor.OPERATION])
-        ids.append(ROCKCHIP_ROOT_SYNC_OPERATION)
     # QIDI's bundle goes last: restoring it after nginx serves the build is outside transaction rollback.
     ids.extend(FLUIDD_BUNDLE_OPERATIONS)
     return tuple(ids)
@@ -4029,6 +4089,14 @@ def _restore_preimage_for_operation(
         )
         return
     raise SystemOptimizationRecoveryError("System optimization journal operation is invalid.")
+
+def _settle_host_journal(paths: RuntimePaths, rockchip_journal: dict[str, Any] | None) -> None:
+    """End an operation's journal, falling back to the Rockchip journal this transaction left pending."""
+    if rockchip_journal is None:
+        atomic_delete(_journal_path(paths))
+    else:
+        _write_host_journal(paths, **rockchip_journal)
+
 
 def _clear_committed_rockchip_journal(paths: RuntimePaths, ledger: dict[str, Any]) -> None:
     path = _journal_path(paths)

@@ -16,10 +16,12 @@ The installer checks your firmware, the printer's state, and free space before w
 
 - **Toolhead board firmware fix** (firmware `01.01.07.01` only): asked first, before anything changes. The default is No. See [Firmware fixes](firmware.md).
 - **System hardening and OS optimizations**: see [below](#os-optimizations).
-- **Disable QIDI AI detection**: turns off QIDI's `algo_app` service.
+- **Disable QIDI AI detection**: turns off QIDI's `algo_app` service. When the installer has finished its system changes, it reminds you to also turn off Spaghetti Detection and Foreign Object Detection in the touchscreen's Settings -> Printing Options, so the screen matches.
 - **Automatic updates**: see [below](#automatic-updates).
 - **QIDI Box setup**, when Box support is off or tool numbers don't match slot numbers.
 - **Restarting Klipper** to apply the changes.
+
+The system changes, including restarting Moonraker and the touchscreen, take a little over a minute on a first install; the installer names each one as it goes.
 
 After installing, close every Fluidd tab and open Fluidd again.
 
