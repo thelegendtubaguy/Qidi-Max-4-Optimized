@@ -23,7 +23,7 @@ For a Box that still drops, the optional [Box firmware fix](firmware.md#qidi-box
 
 Every QIDI Box load left three of QIDI's timers behind in Klipper, from the load-cell check that confirms the filament reached the nozzle. Klipper checks every timer many times a second, so it got busier with each filament change. After about 400 changes it was busy most of the time even while idle, and a Box motor move could fail with `Communication timeout during homing`, which cancelled the print. Those timers are now removed once QIDI is done with them, and a filament change that fails that way [pauses the print](qidi-box.md#failed-tool-changes-during-a-print) instead.
 
-Klipper also watches how busy it is. If its timers keep piling up, or it stays more than 45% busy for five minutes, the console says so, at most once an hour. If a homing move times out, the console says how busy Klipper was just before. `klippy.log` gets a `tltg_klipper_health` line every minute with the timer count and how busy Klipper was.
+Klipper also watches how busy it is. If its timers keep piling up, or it stays more than 45% busy for five minutes, the console says so, at most once an hour. If a homing move times out, the console says how busy Klipper was just before. That includes the nozzle load-cell probe's `WEIGHT sensor error`, which is how QIDI reports a timed-out probe move, not a fault in the load cell. `klippy.log` gets a `tltg_klipper_health` line every minute with the timer count and how busy Klipper was.
 
 In Fluidd, the **System Utilization** card on the System page charts both: **Klipper Main Thread** under Klipper Load, and **Klipper Timers**. Klipper Load counts all of Klipper's threads; the main thread is the one that has to keep up. The timer count stays around 60.
 
@@ -38,6 +38,10 @@ Klipper also does less work on its main loop, so Box motor moves keep more headr
 - QIDI's once-a-second status update for Fluidd and the touchscreen skips macros whose values haven't changed and compares QIDI's Box status faster. Fluidd and the touchscreen receive the same updates.
 
 The timer and status changes come from the same module as the [fixes from newer Klipper](#fixes-from-newer-klipper), with the same check: each is skipped, and listed as skipped in `klippy.log`, if QIDI's code isn't exactly the version it was written for.
+
+## Klipper sharing the CPU with the touchscreen
+
+QIDI runs Klipper, Moonraker, and the touchscreen app at the same CPU priority, so a busy touchscreen app or Moonraker could delay Klipper. Klipper now gets the CPU first, then Moonraker, then the touchscreen app.
 
 ## Fixes from newer Klipper
 

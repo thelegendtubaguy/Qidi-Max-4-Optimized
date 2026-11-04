@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
@@ -41,6 +42,8 @@ from .models import (
     SystemRockchipRootSyncSpec,
     SystemServicesSpec,
     SystemWheelSpec,
+    SystemKernelModuleSpec,
+    SystemZramSwapSpec,
 )
 
 
@@ -398,6 +401,7 @@ def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec 
     wheels_raw = speedups_raw.get("wheels")
     if not isinstance(wheels_raw, list) or not wheels_raw:
         raise ManifestValidationError("Expected non-empty list at moonraker_speedups.wheels.")
+    zram_raw = _require_mapping(system_raw, "zram_swap")
     klipper_box_raw = _require_mapping(system_raw, "klipper_box_config")
     klipper_print_stats_raw = _require_mapping(system_raw, "klipper_print_stats_manager")
     filament_config_raw = _require_mapping(system_raw, "fluidd_filament_config")
@@ -470,6 +474,7 @@ def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec 
                 if _ensure_mapping_entry(item, "moonraker_speedups.wheels")
             ),
         ),
+        zram_swap=_parse_zram_swap(zram_raw),
         klipper_box_config=SystemMoonrakerMetadata3mfSpec(
             file=_validate_absolute_path(_require_str(klipper_box_raw, "file")),
             restart_service=_require_str(klipper_box_raw, "restart_service"),
@@ -483,6 +488,43 @@ def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec 
             target=_validate_absolute_path(_require_str(filament_config_raw, "target")),
         ),
         rockchip_root_sync=_parse_rockchip_root_sync(rockchip_raw),
+    )
+
+
+def _parse_zram_swap(raw: dict[str, Any]) -> SystemZramSwapSpec:
+    # Every value lands in the root-run boot script, so each is restricted to characters it can carry unquoted or
+    # inside single quotes.
+    kernel_release = _require_str(raw, "kernel_release")
+    kernel_version = _require_str(raw, "kernel_version")
+    if not re.fullmatch(r"[A-Za-z0-9._+-]+", kernel_release) or not re.fullmatch(r"[A-Za-z0-9#:._+ -]+", kernel_version):
+        raise ManifestValidationError("zram_swap kernel identity contains unsupported characters.")
+    modules = tuple(
+        SystemKernelModuleSpec(
+            name=_require_str(item, "name"),
+            archive=_validate_relative_path(_require_str(item, "archive"), allowed_roots=("system",)),
+            sha256=_require_sha256(item, "sha256"),
+        )
+        for item in _require_list_of_mapping(raw, "modules")
+    )
+    names = [module.name for module in modules]
+    if not modules or len(set(names)) != len(names) or not all(re.fullmatch(r"[a-z0-9_]+", name) for name in names):
+        raise ManifestValidationError("zram_swap.modules must name each module once, in lowercase.")
+    algorithm = _require_str(raw, "algorithm")
+    if not re.fullmatch(r"[a-z0-9-]+", algorithm):
+        raise ManifestValidationError("zram_swap.algorithm is invalid.")
+    size_mb = _require_int(raw, "size_mb")
+    swappiness = _require_int(raw, "swappiness")
+    page_cluster = _require_int(raw, "page_cluster")
+    if size_mb <= 0 or not 0 <= swappiness <= 100 or not 0 <= page_cluster <= 10:
+        raise ManifestValidationError("zram_swap size, swappiness, or page_cluster is out of range.")
+    return SystemZramSwapSpec(
+        kernel_release=kernel_release,
+        kernel_version=kernel_version,
+        modules=modules,
+        size_mb=size_mb,
+        algorithm=algorithm,
+        swappiness=swappiness,
+        page_cluster=page_cluster,
     )
 
 

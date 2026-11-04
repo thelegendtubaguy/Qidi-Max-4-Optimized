@@ -19,7 +19,7 @@ On QIDI firmware the toolhead board (THR) reads its accelerometer incorrectly, w
 Add `--dry-run` for a preview without touching the board. `--yes` alone and automatic updates never flash firmware.
 
 > [!IMPORTANT]
-> **After flashing, rerun input shaper calibration before printing.** The installer clears the old calibration from `printer.cfg`, since it was measured with the buggy firmware, so input shaping stays off until you recalibrate. The previous `printer.cfg` is kept with the recovery files. The installer does not run calibration for you.
+> **After flashing, run input shaper calibration before bed leveling or printing.** Your saved calibration stays in use, but it was measured with the buggy firmware. Run input shaper calibration on its own first: the screen's calibration page runs bed leveling before input shaping when both are checked. The installer does not run calibration for you.
 
 **What it checks:** the installer checks the board's firmware and bootloader before flashing. A board that already has the fix is left alone and keeps its calibration. It saves the stock firmware under `~/printer_data/.tltg_thr_firmware_backups/`, flashes only the toolhead board, and verifies the result before restarting services.
 

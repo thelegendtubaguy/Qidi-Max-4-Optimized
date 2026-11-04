@@ -18,6 +18,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
 from . import messages
+from . import cpu_governor
 from . import fluidd_build
 from . import fluidd_filament_config as filament_config
 from .fluidd_box_filaments import (
@@ -36,10 +37,12 @@ from . import moonraker_speedups
 from . import moonraker_spoolman
 from . import remote_screen
 from . import restart_on_exit
+from . import service_priority
+from . import zram_swap
 from .auto_update import current_auto_update_checksum
 from .errors import InstallerError
 from .fs_atomic import atomic_delete, atomic_write_text
-from .host_reboot import clear_host_reboot_marker, read_host_reboot_marker, write_host_reboot_marker
+from .host_reboot import HostRebootError, clear_host_reboot_marker, read_host_reboot_marker, recommend_reboot, write_host_reboot_marker
 from .interaction import confirm_yes, prompt_yes
 from .models import (
     InstalledState,
@@ -83,12 +86,24 @@ SERVICE_DISABLED_ACTIVE_STATES = frozenset({"inactive"})
 MOONRAKER_METADATA_OPERATION = "moonraker_metadata_3mf_plate_index"
 MOONRAKER_METADATA_PATCH_MARKER = "def _3mf_selected_plate_index(xml_data: str) -> int:"
 ROCKCHIP_ROOT_SYNC_OPERATION = "rockchip_root_sync"
+# Applied live, but a reboot confirms they start on their own and starts every service fresh.
+REBOOT_RECOMMENDING_OPERATIONS = frozenset({
+    zram_swap.OPERATION, zram_swap.UNIT_OPERATION, cpu_governor.OPERATION, *service_priority.SERVICES,
+})
 ROCKCHIP_UNSUPPORTED = frozenset({"unsupported", "conflicting_dropin", "unsafe_path"})
 ROCKCHIP_ALREADY_CURRENT = frozenset({"already_current_owned", "already_current_unowned"})
 FLUIDD_BUILD_OPERATION = fluidd_build.OPERATION
+ZRAM_SWAP_OPERATION = zram_swap.OPERATION
+# The modules directory is only ever created where nothing existed or over an earlier package directory, so
+# restoration is removal.
+ZRAM_SWAP_PREIMAGE = {"path": zram_swap.DESTINATION, "exists": False}
+ZRAM_SWAP_UPDATE_PREIMAGE = {"path": zram_swap.DESTINATION, "exists": True, "previous": zram_swap.PREVIOUS}
 # Policy and the uninstall prompt cover only these and the service operations; uninstall always undoes every other
 # host change, because install makes them regardless of policy.
-OPTIONAL_OPERATIONS = frozenset({"dns", "apt_sources", "qidiclient_static_gifs", ROCKCHIP_ROOT_SYNC_OPERATION})
+OPTIONAL_OPERATIONS = frozenset({
+    "dns", "apt_sources", "qidiclient_static_gifs", ROCKCHIP_ROOT_SYNC_OPERATION, ZRAM_SWAP_OPERATION, zram_swap.UNIT_OPERATION,
+    cpu_governor.OPERATION,
+})
 # QIDI's bundle is patched only while nginx serves it; serving the package build retires these patches.
 FLUIDD_BUNDLE_OPERATIONS = (FLUIDD_BOX_OPERATION, FLUIDD_SERVICE_WORKER_OPERATION)
 # The build is only ever installed where nothing existed or over an earlier package build, so restoration is removal.
@@ -102,9 +117,30 @@ MOONRAKER_SPEEDUPS_UPDATE_PREIMAGE = {"path": moonraker_speedups.DESTINATION, "e
 MOONRAKER_SERVICE = "moonraker.service"
 KLIPPER_SERVICE = "klipper.service"
 QIDICLIENT_SERVICE = "qidi-client.service"
-# nginx goes first so it never serves a removed Fluidd build while Moonraker comes back. The touchscreen app goes
-# last so it reconnects to the restarted Moonraker.
-RESTART_ORDER = ("nginx.service", MOONRAKER_SERVICE, KLIPPER_SERVICE, remote_screen.UNIT, QIDICLIENT_SERVICE)
+SERVICE_NAMES = {
+    zram_swap.UNIT: "zram swap",
+    "nginx.service": "the web server",
+    MOONRAKER_SERVICE: "Moonraker",
+    KLIPPER_SERVICE: "Klipper",
+    remote_screen.UNIT: "the Printer screen service",
+    QIDICLIENT_SERVICE: "the touchscreen",
+    cpu_governor.SERVICE: "the CPU governor",
+}
+STEP_LABELS = {
+    ROCKCHIP_ROOT_SYNC_OPERATION: "Speeding up file writes on the printer's storage",
+    "dns": "Updating DNS settings",
+    "apt_sources": "Updating APT sources",
+    "qidiclient_static_gifs": "Replacing touchscreen animations with still images",
+    MOONRAKER_METADATA_OPERATION: "Updating Moonraker metadata.py",
+    FILAMENT_CONFIG_OPERATION: "Linking the Fluidd filament config",
+    FLUIDD_BUILD_OPERATION: "Installing Fluidd",
+    MOONRAKER_SPEEDUPS_OPERATION: "Installing Moonraker speedups",
+    ZRAM_SWAP_OPERATION: "Installing zram swap",
+}
+SERVICE_STEP_NAMES = {"algo_app.service": "QIDI AI detection"}
+# Swap comes up before the services that use memory. nginx goes next so it never serves a removed Fluidd build while
+# Moonraker comes back. The touchscreen app goes last so it reconnects to the restarted Moonraker.
+RESTART_ORDER = (zram_swap.UNIT, "nginx.service", MOONRAKER_SERVICE, KLIPPER_SERVICE, remote_screen.UNIT, QIDICLIENT_SERVICE)
 MOONRAKER_READY_TIMEOUT_SECONDS = 120
 
 
@@ -220,6 +256,39 @@ GUARDED_FILE_PATCHES = {
         skip_unrecognized=True,
         create_if_missing=True,
         reloads_units=True,
+    ),
+    **{
+        operation: _GuardedFilePatch(
+            label=f"{service_priority.SERVICES[operation]} priority drop-in",
+            file=lambda spec, operation=operation: service_priority.FILES[operation],
+            patch=service_priority.patch_dropin(operation),
+            # Nice applies when the service starts.
+            restart_service=service_priority.SERVICES[operation],
+            missing_message=None,
+            skip_unrecognized=True,
+            create_if_missing=True,
+            reloads_units=True,
+        )
+        for operation in service_priority.SERVICES
+    },
+    cpu_governor.OPERATION: _GuardedFilePatch(
+        label="CPU governor settings",
+        file=lambda spec: cpu_governor.FILE,
+        patch=cpu_governor.patch_defaults,
+        restart_service=cpu_governor.SERVICE,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+    ),
+    zram_swap.UNIT_OPERATION: _GuardedFilePatch(
+        label="Zram swap service unit",
+        file=lambda spec: zram_swap.UNIT_FILE,
+        patch=zram_swap.patch_unit,
+        restart_service=zram_swap.UNIT,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+        service_unit=zram_swap.UNIT,
     ),
     # Unit before server: restore handles the server first, so disabling the unit drops the server's pending restart.
     remote_screen.UNIT_OPERATION: _GuardedFilePatch(
@@ -502,6 +571,21 @@ def maybe_emit_system_dry_run(
                 moonraker_speedups.FOREIGN: f"  - would preserve existing {moonraker_speedups.DESTINATION}",
             }[state])
             continue
+        if operation_id == ZRAM_SWAP_OPERATION and _system_root_allowed(paths=paths, environ=environ):
+            try:
+                state = _zram_swap_state(paths, manifest.system_optimizations, _system_root(environ))
+            except InstallerError as exc:
+                reporter.line(f"  - would fail {operation_id}: {getattr(exc, 'message', str(exc))}")
+                continue
+            reporter.line({
+                "missing": f"  - {operation_id}: the package has no zram modules",
+                "unsupported": f"  - {operation_id}: this kernel is not the QIDI build the modules are for",
+                zram_swap.ABSENT: f"  - would install zram swap modules at {zram_swap.DESTINATION}",
+                zram_swap.OUTDATED: f"  - would replace {zram_swap.DESTINATION}",
+                zram_swap.CURRENT: f"  - {operation_id}: already current",
+                zram_swap.FOREIGN: f"  - would preserve existing {zram_swap.DESTINATION}",
+            }[state])
+            continue
         if operation_id in GUARDED_FILE_PATCHES and _system_root_allowed(paths=paths, environ=environ):
             guarded = GUARDED_FILE_PATCHES[operation_id]
             root = _system_root(environ)
@@ -516,6 +600,9 @@ def maybe_emit_system_dry_run(
                         "klipper.service": " and restart Klipper",
                         "nginx.service": " and restart nginx",
                         remote_screen.UNIT: " and restart the printer screen service",
+                        QIDICLIENT_SERVICE: " and restart the touchscreen app",
+                        zram_swap.UNIT: " and start zram swap",
+                        cpu_governor.SERVICE: " and apply the CPU governor",
                     }.get(guarded.restart_service or "", "")
                     reporter.line(f"  - would apply {operation_id}{restart}")
                 else:
@@ -716,6 +803,88 @@ def _restore_moonraker_speedups(preimage: dict[str, Any], *, root: Path, restart
     restarts.request(MOONRAKER_SERVICE, required=True)
 
 
+def _zram_swap_contents(paths: RuntimePaths, spec: SystemOptimizationsSpec) -> dict[str, bytes]:
+    return zram_swap.files(spec.zram_swap, paths.installer_root)
+
+
+def _zram_swap_state(paths: RuntimePaths, spec: SystemOptimizationsSpec, root: Path) -> str:
+    if not zram_swap.bundled(spec.zram_swap, paths.installer_root):
+        return "missing"
+    if not zram_swap.kernel_supported(
+        spec.zram_swap,
+        osrelease=_map_path(root, zram_swap.OSRELEASE),
+        version=_map_path(root, zram_swap.VERSION),
+    ):
+        return "unsupported"
+    destination = _map_path(root, zram_swap.DESTINATION)
+    _reject_parent_symlink_path(destination, root=root)
+    return zram_swap.state(destination, _zram_swap_contents(paths, spec))
+
+
+def _zram_swap_current(paths: RuntimePaths, spec: SystemOptimizationsSpec, root: Path) -> bool:
+    try:
+        return _zram_swap_state(paths, spec, root) == zram_swap.CURRENT
+    except InstallerError:
+        return False
+
+
+def _stage_zram_swap(contents: dict[str, bytes], *, root: Path, sudo_password: str | None, run) -> None:
+    """Write the modules directory beside its destination, owned by root so only root can change what boot loads."""
+    if _is_fake_root(root):
+        zram_swap.write_tree(contents, _map_path(root, zram_swap.STAGING))
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        tree = Path(tmp) / "tree"
+        zram_swap.write_tree(contents, tree)
+        run_sudo_or_raise(["cp", "-R", str(tree), zram_swap.STAGING], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
+    run_sudo_or_raise(["chown", "-R", "root:root", zram_swap.STAGING], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
+
+
+def _move_root_path(source: str, target: str, *, root: Path, sudo_password: str | None, run) -> None:
+    if _is_fake_root(root):
+        _map_path(root, source).rename(_map_path(root, target))
+        return
+    run_sudo_or_raise(["mv", "-T", source, target], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
+
+
+def _remove_root_tree(path: str, *, root: Path, sudo_password: str | None, run) -> None:
+    mapped = _map_path(root, path)
+    if not mapped.exists() and not mapped.is_symlink():
+        return
+    if _is_fake_root(root):
+        if mapped.is_dir() and not mapped.is_symlink():
+            shutil.rmtree(mapped)
+        else:
+            mapped.unlink()
+        return
+    run_sudo_or_raise(["rm", "-rf", "--", path], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
+
+
+def _restore_zram_swap(preimage: dict[str, Any], *, root: Path, sudo_password: str | None, run) -> None:
+    destination = _map_path(root, zram_swap.DESTINATION)
+    previous = _map_path(root, zram_swap.PREVIOUS)
+    for path in (destination, previous, _map_path(root, zram_swap.REMOVING)):
+        _reject_parent_symlink_path(path, root=root)
+    if preimage.get("exists"):
+        # Without a moved-aside directory, the replaced modules are still in place.
+        if previous.is_symlink() or not previous.is_dir():
+            return
+        if destination.exists() or destination.is_symlink():
+            _remove_zram_swap(root=root, sudo_password=sudo_password, run=run)
+        _move_root_path(zram_swap.PREVIOUS, zram_swap.DESTINATION, root=root, sudo_password=sudo_password, run=run)
+    elif destination.exists() or destination.is_symlink():
+        _remove_zram_swap(root=root, sudo_password=sudo_password, run=run)
+
+
+def _remove_zram_swap(*, root: Path, sudo_password: str | None, run) -> None:
+    """Remove the package-owned modules directory, first moving it aside so boot never loads a partial tree."""
+    if zram_swap.installed_digest(_map_path(root, zram_swap.DESTINATION)) is None:
+        raise SystemOptimizationRecoveryError(f"{zram_swap.DESTINATION} is not a package-owned zram swap directory; preserving it.")
+    _remove_root_tree(zram_swap.REMOVING, root=root, sudo_password=sudo_password, run=run)
+    _move_root_path(zram_swap.DESTINATION, zram_swap.REMOVING, root=root, sudo_password=sudo_password, run=run)
+    _remove_root_tree(zram_swap.REMOVING, root=root, sudo_password=sudo_password, run=run)
+
+
 def _retire_fluidd_bundle_patch(
     operation_id: str,
     *,
@@ -797,12 +966,13 @@ def restore_system_optimizations(
     sudo_password = None if _is_fake_root(root) else _sudo_password(
         reporter=reporter, input_stream=input_stream, environ=environ, run=run
     )
+    reporter.line(messages.SYSTEM_CHANGES_RESTORING)
     rockchip_restored = False
     outcomes = ledger.get("outcomes") if isinstance(ledger.get("outcomes"), dict) else {}
     # The Fluidd build goes last, after nginx stops serving it.
     order = [operation_id for operation_id in reversed(list(preimages)) if operation_id != FLUIDD_BUILD_OPERATION]
     order.extend(operation_id for operation_id in preimages if operation_id == FLUIDD_BUILD_OPERATION)
-    restarts = _ServiceRestarts(paths=paths, root=root, sudo_password=sudo_password, run=run, urlopen=urlopen)
+    restarts = _ServiceRestarts(paths=paths, root=root, sudo_password=sudo_password, run=run, urlopen=urlopen, reporter=reporter)
     try:
         for operation_id in order:
             preimage = preimages[operation_id]
@@ -836,6 +1006,10 @@ def restore_system_optimizations(
             elif operation_id == MOONRAKER_SPEEDUPS_OPERATION:
                 if moonraker_speedups.installed_digest(_map_path(root, moonraker_speedups.DESTINATION)) is None:
                     reporter.line(f"{moonraker_speedups.DESTINATION} was replaced after install and was preserved.")
+                    continue
+            elif operation_id == ZRAM_SWAP_OPERATION:
+                if zram_swap.installed_digest(_map_path(root, zram_swap.DESTINATION)) is None:
+                    reporter.line(f"{zram_swap.DESTINATION} was replaced after install and was preserved.")
                     continue
             elif operation_id != ROCKCHIP_ROOT_SYNC_OPERATION and guarded is None and _operation_needs_apply(
                 operation_id, spec=manifest.system_optimizations, root=root, run=run
@@ -882,6 +1056,8 @@ def restore_system_optimizations(
                 _restore_fluidd_build(preimage, root=root)
             elif operation_id == MOONRAKER_SPEEDUPS_OPERATION:
                 _restore_moonraker_speedups(preimage, root=root, restarts=restarts)
+            elif operation_id == ZRAM_SWAP_OPERATION:
+                _restore_zram_swap(preimage, root=root, sudo_password=sudo_password, run=run)
             elif guarded is not None:
                 _restore_guarded_file(guarded, preimage, paths=paths, root=root, sudo_password=sudo_password, run=run, restarts=restarts)
             elif operation_id == ROCKCHIP_ROOT_SYNC_OPERATION:
@@ -947,7 +1123,6 @@ def resolve_policy(
         question=messages.AI_DETECTION_PROMPT,
         instruction=messages.AI_DETECTION_PROMPT_INSTRUCTION,
     ):
-        reporter.line(AI_TOUCHSCREEN_WARNING)
         return {"system_optimizations": "enabled", "ai_detection": "disable"}
     return {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}
 
@@ -969,8 +1144,11 @@ def apply_system_optimizations(
     sudo_password = None if _is_fake_root(root) else _sudo_password(
         reporter=reporter, input_stream=input_stream, environ=environ, run=run
     )
-    restarts = _ServiceRestarts(paths=paths, root=root, sudo_password=sudo_password, run=run, urlopen=urlopen)
+    if source not in {"auto_update_child", "auto_update_reconcile"}:
+        reporter.line(messages.SYSTEM_CHANGES_APPLYING)
+    restarts = _ServiceRestarts(paths=paths, root=root, sudo_password=sudo_password, run=run, urlopen=urlopen, reporter=reporter)
     actions = list(ledger.get("actions", [])) if isinstance(ledger.get("actions"), list) else []
+    prior_action_count = len(actions)
     restore_preimages = dict(ledger.get("restore_preimages", {})) if isinstance(ledger.get("restore_preimages"), dict) else {}
     initial_restore_preimages = dict(restore_preimages)
     policy = ledger.get("policy", {}) if isinstance(ledger.get("policy"), dict) else {}
@@ -988,6 +1166,8 @@ def apply_system_optimizations(
         _validate_qidiclient_archive(paths.installer_root / spec.qidiclient_static_gifs.archive, spec.qidiclient_static_gifs.sha256)
     applied_any = False
     current_preimages: dict[str, Any] = {}
+    # The Rockchip journal stays until the installed state commits its transaction.
+    rockchip_journal: dict[str, Any] | None = None
     try:
         for operation_id in selected_ids:
             started_at = _now()
@@ -1023,6 +1203,21 @@ def apply_system_optimizations(
                 _moonraker_env_present(root) and _moonraker_speedups_current(spec, root)
             ):
                 # Never point Moonraker at packages that aren't in place.
+                actions.append(
+                    _action_record(
+                        operation_id=operation_id,
+                        status="skipped",
+                        started_at=started_at,
+                        preimage=None,
+                        desired=_desired(operation_id, spec),
+                        postflight={"path": guarded.file(spec)},
+                        source=source,
+                        reconciled=False,
+                    )
+                )
+                continue
+            if operation_id == zram_swap.UNIT_OPERATION and not _zram_swap_current(paths, spec, root):
+                # Never start a unit whose modules aren't in place.
                 actions.append(
                     _action_record(
                         operation_id=operation_id,
@@ -1090,6 +1285,7 @@ def apply_system_optimizations(
                         )
                     )
                     continue
+                _report_step(reporter, operation_id, spec)
                 preimage = {"path": config.link, "exists": False}
                 current_preimages[operation_id] = preimage
                 _write_host_journal(
@@ -1116,7 +1312,7 @@ def apply_system_optimizations(
                     )
                 )
                 restore_preimages.setdefault(operation_id, preimage)
-                atomic_delete(_journal_path(paths))
+                _settle_host_journal(paths, rockchip_journal)
                 applied_any = True
                 continue
             if operation_id == FLUIDD_BUILD_OPERATION:
@@ -1151,6 +1347,7 @@ def apply_system_optimizations(
                 destination = _map_path(root, fluidd_build.DESTINATION)
                 staging = _map_path(root, fluidd_build.STAGING)
                 previous = _map_path(root, fluidd_build.PREVIOUS)
+                _report_step(reporter, operation_id, spec)
                 for leftover in (staging, previous):
                     _reject_parent_symlink_path(leftover, root=root)
                     fluidd_build.discard(leftover)
@@ -1183,7 +1380,7 @@ def apply_system_optimizations(
                     )
                 )
                 restore_preimages.setdefault(operation_id, dict(FLUIDD_BUILD_PREIMAGE))
-                atomic_delete(_journal_path(paths))
+                _settle_host_journal(paths, rockchip_journal)
                 applied_any = True
                 continue
             if operation_id == MOONRAKER_SPEEDUPS_OPERATION:
@@ -1218,6 +1415,7 @@ def apply_system_optimizations(
                 destination = _map_path(root, moonraker_speedups.DESTINATION)
                 staging = _map_path(root, moonraker_speedups.STAGING)
                 previous = _map_path(root, moonraker_speedups.PREVIOUS)
+                _report_step(reporter, operation_id, spec)
                 for leftover in (staging, previous):
                     _reject_parent_symlink_path(leftover, root=root)
                     moonraker_speedups.discard(leftover)
@@ -1252,7 +1450,70 @@ def apply_system_optimizations(
                     )
                 )
                 restore_preimages.setdefault(operation_id, dict(MOONRAKER_SPEEDUPS_PREIMAGE))
-                atomic_delete(_journal_path(paths))
+                _settle_host_journal(paths, rockchip_journal)
+                applied_any = True
+                continue
+            if operation_id == ZRAM_SWAP_OPERATION:
+                state = _zram_swap_state(paths, spec, root)
+                if state == "unsupported":
+                    reporter.line("Zram swap needs QIDI's kernel build that the package's modules are for; this kernel runs without it.")
+                elif state == zram_swap.FOREIGN:
+                    reporter.line(f"{zram_swap.DESTINATION} already exists and was preserved.")
+                if state in {"missing", "unsupported", zram_swap.FOREIGN, zram_swap.CURRENT}:
+                    if state == zram_swap.CURRENT and operation_id in restore_preimages:
+                        continue
+                    actions.append(
+                        _action_record(
+                            operation_id=operation_id,
+                            status={"missing": "missing", "unsupported": "unsupported", zram_swap.FOREIGN: "preserved"}.get(state, "already_current"),
+                            started_at=started_at,
+                            preimage=None,
+                            desired=_desired(operation_id, spec),
+                            postflight={"path": zram_swap.DESTINATION, "state": state},
+                            source=source,
+                            reconciled=False,
+                        )
+                    )
+                    if state == zram_swap.CURRENT:
+                        # The marker shows a package directory, so its restoration is removal.
+                        restore_preimages.setdefault(operation_id, dict(ZRAM_SWAP_PREIMAGE))
+                    continue
+                _report_step(reporter, operation_id, spec)
+                for leftover in (zram_swap.STAGING, zram_swap.PREVIOUS):
+                    _reject_parent_symlink_path(_map_path(root, leftover), root=root)
+                    _remove_root_tree(leftover, root=root, sudo_password=sudo_password, run=run)
+                _stage_zram_swap(_zram_swap_contents(paths, spec), root=root, sudo_password=sudo_password, run=run)
+                preimage = dict(ZRAM_SWAP_PREIMAGE if state == zram_swap.ABSENT else ZRAM_SWAP_UPDATE_PREIMAGE)
+                current_preimages[operation_id] = preimage
+                _write_host_journal(
+                    paths,
+                    operation_id=operation_id,
+                    transaction_id=uuid.uuid4().hex,
+                    phase="apply",
+                    preimage=preimage,
+                    preimages=current_preimages,
+                )
+                if state == zram_swap.OUTDATED:
+                    _move_root_path(zram_swap.DESTINATION, zram_swap.PREVIOUS, root=root, sudo_password=sudo_password, run=run)
+                    # A running unit keeps the old modules loaded until it restarts.
+                    restarts.request(zram_swap.UNIT)
+                _move_root_path(zram_swap.STAGING, zram_swap.DESTINATION, root=root, sudo_password=sudo_password, run=run)
+                if _zram_swap_state(paths, spec, root) != zram_swap.CURRENT:
+                    raise SystemOptimizationError("Zram swap modules failed postflight.")
+                actions.append(
+                    _action_record(
+                        operation_id=operation_id,
+                        status="applied",
+                        started_at=started_at,
+                        preimage=preimage,
+                        desired=_desired(operation_id, spec),
+                        postflight={"path": zram_swap.DESTINATION, "state": zram_swap.CURRENT},
+                        source=source,
+                        reconciled=source in {"auto_update_child", "auto_update_reconcile"},
+                    )
+                )
+                restore_preimages.setdefault(operation_id, dict(ZRAM_SWAP_PREIMAGE))
+                _settle_host_journal(paths, rockchip_journal)
                 applied_any = True
                 continue
             if operation_id == ROCKCHIP_ROOT_SYNC_OPERATION:
@@ -1266,6 +1527,10 @@ def apply_system_optimizations(
                 if classification in ROCKCHIP_UNSUPPORTED or classification in ROCKCHIP_ALREADY_CURRENT:
                     if classification in ROCKCHIP_UNSUPPORTED:
                         reporter.line(f"Rockchip root optimization preserved current state: {classification}.")
+                    postflight = {"classification": classification}
+                    if classification == "already_current_owned":
+                        # Uninstall restores the mount only while it still has the options last recorded here.
+                        postflight["mount_options"] = list(_root_mount_options(spec=spec.rockchip_root_sync, root=root, run=run))
                     actions.append(
                         _action_record(
                             operation_id=operation_id,
@@ -1273,12 +1538,13 @@ def apply_system_optimizations(
                             started_at=started_at,
                             preimage=None,
                             desired=_desired(operation_id, spec),
-                            postflight={"classification": classification},
+                            postflight=postflight,
                             source=source,
                             reconciled=False,
                         )
                     )
                     continue
+                _report_step(reporter, operation_id, spec)
                 preimage = _capture_rockchip_preimage(
                     paths=paths,
                     spec=spec.rockchip_root_sync,
@@ -1302,13 +1568,13 @@ def apply_system_optimizations(
                     force_mode=True,
                 )
                 current_preimages[operation_id] = preimage
-                _write_host_journal(
-                    paths,
-                    operation_id=operation_id,
-                    transaction_id=transaction_id,
-                    phase="apply",
-                    preimage=preimage,
-                )
+                rockchip_journal = {
+                    "operation_id": operation_id,
+                    "transaction_id": transaction_id,
+                    "phase": "apply",
+                    "preimage": preimage,
+                }
+                _write_host_journal(paths, **rockchip_journal)
                 _apply_rockchip(
                     spec=spec.rockchip_root_sync,
                     root=root,
@@ -1436,8 +1702,7 @@ def apply_system_optimizations(
                     )
                 )
                 continue
-            journal = {"operation": operation_id, "started_at": started_at}
-            _journal_path(paths).write_text(json.dumps(journal, indent=2), encoding="utf-8")
+            _report_step(reporter, operation_id, spec)
             if preimage is None:
                 preimage = _capture_operation_preimage(
                     operation_id,
@@ -1480,7 +1745,7 @@ def apply_system_optimizations(
             action = _action_record(
                 operation_id=operation_id,
                 status="applied",
-                started_at=journal["started_at"],
+                started_at=started_at,
                 preimage=preimage,
                 desired=_desired(operation_id, spec),
                 postflight=postflight,
@@ -1489,7 +1754,7 @@ def apply_system_optimizations(
             )
             actions.append(action)
             restore_preimages.setdefault(operation_id, preimage)
-            _journal_path(paths).unlink(missing_ok=True)
+            _settle_host_journal(paths, rockchip_journal)
             applied_any = True
         for operation_id in _policy_skipped_optional_service_operation_ids(spec, policy, selected_ids):
             started_at = _now()
@@ -1557,6 +1822,22 @@ def apply_system_optimizations(
         previous = _map_path(root, moonraker_speedups.PREVIOUS)
         _reject_parent_symlink_path(previous, root=root)
         moonraker_speedups.discard(previous)
+    with suppress(OSError, InstallerError):
+        _reject_parent_symlink_path(_map_path(root, zram_swap.PREVIOUS), root=root)
+        _remove_root_tree(zram_swap.PREVIOUS, root=root, sudo_password=sudo_password, run=run)
+    if any(
+        action.get("id") in REBOOT_RECOMMENDING_OPERATIONS and action.get("status") == "applied"
+        for action in actions[prior_action_count:]
+    ):
+        with suppress(HostRebootError, OSError):
+            recommend_reboot(paths)
+    optional_services = {f"service_{item.service}" for item in spec.services.optional_disable}
+    if source not in {"auto_update_child", "auto_update_reconcile"} and any(
+        action.get("id") in optional_services and action.get("status") == "applied"
+        for action in actions[prior_action_count:]
+    ):
+        # Last, so the touchscreen app has already restarted when the operator turns its settings off.
+        reporter.line(AI_TOUCHSCREEN_WARNING)
     if source in {"auto_update_child", "auto_update_reconcile"}:
         reporter.line(
             "System optimizations reconciled."
@@ -1787,8 +2068,10 @@ def _apply_guarded_file_patch(operation_id: str, *, spec: SystemOptimizationsSpe
         else:
             run_sudo_ignore_failure(["rm", "-f", staged_path], run=run, password=sudo_password or "")
     if guarded.service_unit:
-        run_sudo_or_raise(["systemctl", "daemon-reload"], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
-        run_sudo_or_raise(["systemctl", "enable", guarded.service_unit], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
+        # enable reads the unit file itself; each reload takes seconds on the printer, so one before the restarts
+        # loads every new unit.
+        run_sudo_or_raise(["systemctl", "enable", "--no-reload", guarded.service_unit], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
+        restarts.reload_units()
     if guarded.reloads_units:
         restarts.reload_units()
     if guarded.restart_service:
@@ -1947,6 +2230,8 @@ def _restore_preimage_map(preimages: dict[str, Any], *, paths: RuntimePaths, spe
             _restore_fluidd_build(preimage, root=root)
         elif operation_id == MOONRAKER_SPEEDUPS_OPERATION:
             _restore_moonraker_speedups(preimage, root=root, restarts=restarts)
+        elif operation_id == ZRAM_SWAP_OPERATION:
+            _restore_zram_swap(preimage, root=root, sudo_password=sudo_password, run=run)
         elif operation_id == MOONRAKER_METADATA_OPERATION:
             _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
             restarts.request(MOONRAKER_SERVICE)
@@ -1979,11 +2264,11 @@ def _restore_guarded_file_preimage(operation_id: str, preimage: dict[str, Any], 
 
 def _restore_guarded_file(guarded: _GuardedFilePatch, preimage: dict[str, Any], *, paths: RuntimePaths, root: Path, sudo_password: str | None, run, restarts: _ServiceRestarts) -> None:
     if guarded.service_unit:
-        run_sudo_ignore_failure(["systemctl", "disable", "--now", guarded.service_unit], run=run, password=sudo_password or "")
+        run_sudo_ignore_failure(["systemctl", "disable", "--now", "--no-reload", guarded.service_unit], run=run, password=sudo_password or "")
         restarts.discard(guarded.service_unit)
     _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
     if guarded.service_unit:
-        run_sudo_ignore_failure(["systemctl", "daemon-reload"], run=run, password=sudo_password or "")
+        restarts.reload_units()
     elif guarded.restart_service:
         restarts.request(guarded.restart_service, required=True)
     if guarded.reloads_units:
@@ -2029,6 +2314,12 @@ def _operation_matches_preimage(
         if preimage.get("exists"):
             previous = _map_path(root, moonraker_speedups.PREVIOUS)
             return not previous.exists() and not previous.is_symlink() and moonraker_speedups.installed_digest(destination) is not None
+        return not destination.exists() and not destination.is_symlink()
+    if operation_id == ZRAM_SWAP_OPERATION:
+        destination = _map_path(root, zram_swap.DESTINATION)
+        if preimage.get("exists"):
+            previous = _map_path(root, zram_swap.PREVIOUS)
+            return not previous.exists() and not previous.is_symlink() and zram_swap.installed_digest(destination) is not None
         return not destination.exists() and not destination.is_symlink()
     if operation_id in {"apt_sources", MOONRAKER_METADATA_OPERATION, *GUARDED_FILE_PATCHES}:
         item = preimage.get("file", preimage)
@@ -2261,8 +2552,9 @@ def _restart_service(service: str, *, root: Path, sudo_password: str | None, run
 class _ServiceRestarts:
     """Restarts each requested service once, after every host change in the transaction is in place."""
 
-    def __init__(self, *, paths: RuntimePaths, root: Path, sudo_password: str | None, run, urlopen) -> None:
+    def __init__(self, *, paths: RuntimePaths, root: Path, sudo_password: str | None, run, urlopen, reporter=None) -> None:
         self._paths = paths
+        self._reporter = reporter
         self._root = root
         self._sudo_password = sudo_password
         self._run = run
@@ -2292,6 +2584,8 @@ class _ServiceRestarts:
             # A pending Klipper source activation restarts Klipper after this transaction.
             if service == KLIPPER_SERVICE and self._paths.restart_marker_path.exists():
                 continue
+            if self._reporter is not None:
+                self._reporter.line(f"  Restarting {SERVICE_NAMES.get(service, service)}...")
             _restart_service(service, root=self._root, sudo_password=self._sudo_password, run=self._run, required=pending[service])
             if service == MOONRAKER_SERVICE and not self._moonraker_answers() and pending[service]:
                 raise SystemOptimizationError("Moonraker did not answer after its restart.")
@@ -2307,6 +2601,19 @@ class _ServiceRestarts:
                 if time.monotonic() >= deadline:
                     return False
             time.sleep(1)
+
+
+def _report_step(reporter, operation_id: str, spec: SystemOptimizationsSpec) -> None:
+    if operation_id in STEP_LABELS:
+        label = STEP_LABELS[operation_id]
+    elif operation_id.startswith("service_"):
+        service = _service_for_operation(operation_id, spec)
+        label = f"Turning off {SERVICE_STEP_NAMES.get(service, service)}"
+    elif operation_id in GUARDED_FILE_PATCHES:
+        label = f"Updating the {GUARDED_FILE_PATCHES[operation_id].label}"
+    else:
+        label = f"Applying {operation_id}"
+    reporter.line(f"  {label}...")
 
 
 def _restart_rank(service: str) -> int:
@@ -2748,8 +3055,11 @@ def _is_optional_operation(operation_id: str) -> bool:
 
 
 def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any]) -> tuple[str, ...]:
+    enabled = policy.get("system_optimizations") == "enabled"
+    # The root filesystem loses its sync option first, so the file writes after it aren't synchronous.
+    ids = [ROCKCHIP_ROOT_SYNC_OPERATION] if enabled else []
     # nginx switches to the package Fluidd only after it is installed.
-    ids = [
+    ids += [
         MOONRAKER_METADATA_OPERATION,
         MOONRAKER_CACHE_OPERATION,
         moonraker_klippy_apis.OPERATION,
@@ -2759,6 +3069,7 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         KLIPPER_PRINT_STATS_OPERATION,
         restart_on_exit.MOONRAKER_OPERATION,
         restart_on_exit.KLIPPER_OPERATION,
+        *service_priority.SERVICES,
         # The path file goes after the packages it points at, so restoration removes it first.
         MOONRAKER_SPEEDUPS_OPERATION,
         moonraker_speedups.PATH_OPERATION,
@@ -2768,12 +3079,13 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         remote_screen.SERVER_OPERATION,
         remote_screen.NGINX_OPERATION,
     ]
-    if policy.get("system_optimizations") == "enabled":
+    if enabled:
         ids.extend(["dns", "apt_sources", "qidiclient_static_gifs"])
         ids.extend(f"service_{service}" for service in spec.services.disable)
         if policy.get("ai_detection") == "disable":
             ids.extend(f"service_{item.service}" for item in spec.services.optional_disable)
-        ids.append(ROCKCHIP_ROOT_SYNC_OPERATION)
+        # The unit goes after the modules it loads, so restoration stops it first.
+        ids.extend([ZRAM_SWAP_OPERATION, zram_swap.UNIT_OPERATION, cpu_governor.OPERATION])
     # QIDI's bundle goes last: restoring it after nginx serves the build is outside transaction rollback.
     ids.extend(FLUIDD_BUNDLE_OPERATIONS)
     return tuple(ids)
@@ -2829,7 +3141,14 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
             "path": moonraker_speedups.DESTINATION,
             "wheels_digest": moonraker_speedups.digest(wheel.sha256 for wheel in spec.moonraker_speedups.wheels),
         }
-    if operation_id in (moonraker_klippy_apis.OPERATION, moonraker_spoolman.OPERATION, moonraker_allowed_services.OPERATION, moonraker_speedups.PATH_OPERATION, restart_on_exit.MOONRAKER_OPERATION, restart_on_exit.KLIPPER_OPERATION, remote_screen.UNIT_OPERATION, remote_screen.SERVER_OPERATION, remote_screen.NGINX_OPERATION):
+    if operation_id == ZRAM_SWAP_OPERATION:
+        return {"path": zram_swap.DESTINATION, "modules_sha256": [module.sha256 for module in spec.zram_swap.modules]}
+    if operation_id in (
+        moonraker_klippy_apis.OPERATION, moonraker_spoolman.OPERATION, moonraker_allowed_services.OPERATION,
+        moonraker_speedups.PATH_OPERATION, restart_on_exit.MOONRAKER_OPERATION, restart_on_exit.KLIPPER_OPERATION,
+        *service_priority.SERVICES, zram_swap.UNIT_OPERATION, cpu_governor.OPERATION,
+        remote_screen.UNIT_OPERATION, remote_screen.SERVER_OPERATION, remote_screen.NGINX_OPERATION,
+    ):
         guarded = GUARDED_FILE_PATCHES[operation_id]
         return {"path": guarded.file(spec), "restart_service": guarded.restart_service}
     if operation_id == MOONRAKER_METADATA_OPERATION:
@@ -3291,6 +3610,10 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             restart_on_exit.KLIPPER_OPERATION,
             MOONRAKER_SPEEDUPS_OPERATION,
             moonraker_speedups.PATH_OPERATION,
+            *service_priority.SERVICES,
+            ZRAM_SWAP_OPERATION,
+            zram_swap.UNIT_OPERATION,
+            cpu_governor.OPERATION,
             FILAMENT_CONFIG_OPERATION,
             FLUIDD_BUILD_OPERATION,
             remote_screen.UNIT_OPERATION,
@@ -3341,6 +3664,10 @@ def _validate_host_preimage(
     if operation_id == MOONRAKER_SPEEDUPS_OPERATION:
         if preimage not in (MOONRAKER_SPEEDUPS_PREIMAGE, MOONRAKER_SPEEDUPS_UPDATE_PREIMAGE):
             raise StateValidationError("Moonraker speedups restoration preimage is invalid.")
+        return
+    if operation_id == ZRAM_SWAP_OPERATION:
+        if preimage not in (ZRAM_SWAP_PREIMAGE, ZRAM_SWAP_UPDATE_PREIMAGE):
+            raise StateValidationError("Zram swap restoration preimage is invalid.")
         return
     if operation_id.startswith("service_"):
         expected_service = _service_for_operation(operation_id, spec)
@@ -3742,6 +4069,9 @@ def _restore_preimage_for_operation(
     if operation_id == MOONRAKER_SPEEDUPS_OPERATION:
         _restore_moonraker_speedups(preimage, root=root, restarts=restarts)
         return
+    if operation_id == ZRAM_SWAP_OPERATION:
+        _restore_zram_swap(preimage, root=root, sudo_password=sudo_password, run=run)
+        return
     if operation_id == MOONRAKER_METADATA_OPERATION:
         _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
         restarts.request(spec.moonraker_metadata_3mf.restart_service)
@@ -3759,6 +4089,14 @@ def _restore_preimage_for_operation(
         )
         return
     raise SystemOptimizationRecoveryError("System optimization journal operation is invalid.")
+
+def _settle_host_journal(paths: RuntimePaths, rockchip_journal: dict[str, Any] | None) -> None:
+    """End an operation's journal, falling back to the Rockchip journal this transaction left pending."""
+    if rockchip_journal is None:
+        atomic_delete(_journal_path(paths))
+    else:
+        _write_host_journal(paths, **rockchip_journal)
+
 
 def _clear_committed_rockchip_journal(paths: RuntimePaths, ledger: dict[str, Any]) -> None:
     path = _journal_path(paths)

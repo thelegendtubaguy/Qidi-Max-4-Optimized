@@ -127,4 +127,4 @@ sudo systemctl start qidi-client.service
 sudo systemctl start tltg-optimized-auto-update.timer
 ```
 
-Confirm Klipper is ready before printing. The restore does not change `printer.cfg`. The `printer.cfg` saved in a `thr-…` folder is the copy from before the installer cleared input shaper calibration; do not copy it over the current file, because that discards every configuration change made since. Rerun `M901` if you want input shaper calibration measured with the stock firmware.
+Confirm Klipper is ready before printing. The restore does not change `printer.cfg`. Installer versions before 26.11.03.1 saved a `printer.cfg` in the `thr-…` folder, the copy from before they cleared input shaper calibration; do not copy it over the current file, because that discards every configuration change made since. Rerun `M901` if you want input shaper calibration measured with the stock firmware.

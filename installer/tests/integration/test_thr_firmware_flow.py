@@ -170,6 +170,7 @@ class ThrFirmwareFlowTests(unittest.TestCase):
             for patched, timer in itertools.product((False, True), repeat=2):
                 with self.subTest(profile=profile.sha256, patched=patched, timer=timer):
                     paths, printer, reporter = self.fixture(profile=profile, patched=patched, timer=timer)
+                    config = (paths.config_root / 'printer.cfg').read_bytes()
                     if not timer:
                         printer.idle_state = 'Idle'
                     printer.restarting_queries = 3
@@ -183,10 +184,7 @@ class ThrFirmwareFlowTests(unittest.TestCase):
                     self.assertTrue(evidence['verified'])
                     self.assertEqual(evidence['application_sha256'], printer.manifest['thr']['patched_sha256'])
                     self.assertEqual((directories[0] / 'before/bootloader.bin').read_bytes(), printer.boot)
-                    printer_cfg = (paths.config_root / 'printer.cfg').read_text()
-                    self.assertEqual('#*# shaper_freq_x' in printer_cfg, patched)
-                    self.assertIn('#*# [input_shaper]', printer_cfg)
-                    self.assertEqual((directories[0] / 'printer.cfg').is_file(), not patched)
+                    self.assertEqual((paths.config_root / 'printer.cfg').read_bytes(), config)
                     if not patched:
                         self.assertEqual((directories[0] / 'before/application.bin').read_bytes(), printer.stock)
                         self.execute(paths, printer, reporter)
@@ -294,7 +292,7 @@ class ThrFirmwareFlowTests(unittest.TestCase):
                 if verified:
                     self.execute(paths, printer, reporter)
                     self.assertFalse((paths.printer_data_root / THR_RECOVERY_MARKER).exists())
-                    self.assertNotIn('#*# shaper_freq_x', (paths.config_root / 'printer.cfg').read_text())
+                    self.assertIn('#*# shaper_freq_x', (paths.config_root / 'printer.cfg').read_text())
                 else:
                     with self.assertRaises(thr_firmware.ThrFirmwareError):
                         self.execute(paths, printer, reporter)

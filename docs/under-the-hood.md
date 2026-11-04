@@ -25,13 +25,14 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 
 | What | Change | Restarts |
 |---|---|---|
-| `klippy/extras/tltg_*.py` | Added modules for the Box link monitor, Box processor temperature, Box heater refresh, background mesh save, faster `SAVE_VARIABLE` and Box variable saves, cheap printer facts for the optimized macros, [fixes from newer Klipper](fixes.md#fixes-from-newer-klipper), cheaper Klipper timer checks and status updates, Box load/unload speed, Box eject, unknown Box filaments, stuck Box loads, Box slot jogs, Box flow stop and stranded-filament recovery, [Spoolman spools for each slot](spoolman.md), the [RS-485 Box monitor](qidi-box.md#rs-485-boxes), the load-cell check, and [Klipper's health check](fixes.md#klipper-slowing-down-during-long-box-prints). | Klipper |
+| `klippy/extras/tltg_*.py` | Added modules for the Box link monitor, Box processor temperature, Box heater refresh, background mesh save, faster `SAVE_VARIABLE` and Box variable saves, cheap printer facts for the optimized macros, printer warnings for Fluidd's warning banner and the console, [fixes from newer Klipper](fixes.md#fixes-from-newer-klipper), cheaper Klipper timer checks and status updates, Box load/unload speed, Box eject, unknown Box filaments, stuck Box loads, Box slot jogs, Box flow stop and stranded-filament recovery, [Spoolman spools for each slot](spoolman.md), the [RS-485 Box monitor](qidi-box.md#rs-485-boxes), the load-cell check, and [Klipper's health check](fixes.md#klipper-slowing-down-during-long-box-prints). | Klipper |
 | `klippy/extras/homing.py` | Replaced with this project's version of QIDI's homing code, for the faster homing. QIDI's closed-loop homing checks stay in place. | Klipper |
 | `klippy/extras/print_stats_manager.py` | Keeps the [real shutdown reason](fixes.md#the-real-error-instead-of-mcu-shutdown) on screen. | Klipper, once |
 | `klippy/extras/box_config.py` | Lets Fluidd set Box heater targets, capped at 65 °C. | Klipper, once |
 | Moonraker `file_manager.py` and `metadata.py` | The [3MF metadata cache and plate fix](fixes.md#multi-plate-3mf-files). | Moonraker, when the patch changes |
 | Moonraker `spoolman.py` | Charges the new spool from the start of each filament change, keeps the Spoolman connection from dropping, and passes a spool picked in Fluidd to the [loaded slot](spoolman.md). | Moonraker, once |
 | `~/tltg-moonraker-speedups` and `tltg-moonraker-speedups.pth` in `~/moonraker-env` | Adds `msgspec` and `uvloop`, which Moonraker uses when it can import them, to QIDI's Moonraker. Moonraker builds the JSON it sends to Fluidd and the touchscreen with `msgspec` and runs its event loop on `uvloop`, using less CPU. Nothing in QIDI's `~/moonraker-env` is replaced. | Moonraker, when the packages change |
+| `/etc/systemd/system/{klipper,moonraker,qidi-client}.service.d/tltg-priority.conf` | Gives Klipper the CPU before Moonraker, and both before the touchscreen app (nice -10, -5, and 5). | Each service, once |
 | `/etc/systemd/system/{moonraker,klipper}.service.d/tltg-restart-on-exit.conf` | Turns off `RemainAfterExit` in QIDI's Moonraker and Klipper services, so systemd starts them again 10 seconds after they stop without systemd stopping them. Before, they stayed down until a restart or reboot while still reported as running. | None |
 
 ## Fluidd and the web server
@@ -40,7 +41,7 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 |---|---|
 | `~/tltg-fluidd` | This project's [Fluidd build](fluidd.md). Updates replace it whole. |
 | `~/fluidd` | QIDI's Fluidd, left untouched as the fallback. |
-| Fluidd's nginx configuration | Serves `~/tltg-fluidd` instead of `~/fluidd`, and adds a `/tltg-screen/` route for the Printer screen card. |
+| Fluidd's nginx configuration | Serves `~/tltg-fluidd` instead of `~/fluidd`, sending its ready-made `.gz` copies of scripts, styles, and images (`gzip_static`) instead of compressing them on each request, and adds a `/tltg-screen/` route for the Printer screen card. |
 | `tltg-remote-screen` service | Streams the touchscreen to the [Printer screen](fluidd.md#printer-screen) card, sending a new image only when the screen changes. It only listens on the printer itself, and Moonraker checks every connection. |
 | `~/printer_data/moonraker.asvc` | Adds `qidi-client`, so Fluidd can [restart the touchscreen app](fluidd.md#restart-the-touchscreen-app). Moonraker restarts. |
 
@@ -52,9 +53,11 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 | `/etc/systemd/system/tltg-optimized-auto-update.{service,timer}` | Only if you turn on [automatic updates](install.md#automatic-updates). |
 | `~/printer_data/logs/tltg_box485.log`, `tltg_box485_report.json`, and `~/printer_data/.tltg_box485_salt` | Written only when [RS-485 Box hardware](qidi-box.md#rs-485-boxes) is detected or `TLTG_RS_BOX_REPORT` runs. The salt keeps the codes that replace hardware ids the same on this printer. |
 | DNS, package sources, `xl2tpd`, `bluetooth`, `algo_app`, `rockchip.service`, touchscreen images | Only if you choose the [OS optimizations](install.md#os-optimizations). |
+| `/etc/default/cpufrequtils` | Sets QIDI's CPU frequency service to the `performance` governor instead of `ondemand`. Only with the OS optimizations. Uninstall removes the file, which puts `ondemand` back. |
+| `/usr/local/lib/tltg-zram-swap/` and `/etc/systemd/system/tltg-zram-swap.service` | The [zram swap](install.md#zram-swap) kernel modules and the boot service that loads them and turns on swap, setting `vm.swappiness` to 80 and `vm.page-cluster` to 0. Only with the OS optimizations, and only on QIDI's kernel build. Stopping the service turns swap off and puts the kernel's defaults back. |
 
 ## What uninstall does
 
-Uninstall removes the optimized macros and added modules, restores every QIDI file above, points the web server back at QIDI's Fluidd, removes `~/tltg-fluidd`, Moonraker's `msgspec` and `uvloop`, the Printer screen service, the Moonraker and Klipper restart-on-exit settings, and the filament folder link, and restores Moonraker's service list. It asks before undoing the OS optimizations. Files you changed after installing are kept and listed.
+Uninstall removes the optimized macros and added modules, restores every QIDI file above, points the web server back at QIDI's Fluidd, removes `~/tltg-fluidd`, Moonraker's `msgspec` and `uvloop`, the Printer screen service, the Moonraker and Klipper restart-on-exit settings, the service priorities, and the filament folder link, and restores Moonraker's service list. It asks before undoing the OS optimizations. Files you changed after installing are kept and listed.
 
 Firmware is never changed by install, update, or uninstall unless you [ask for it](firmware.md).

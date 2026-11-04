@@ -6,7 +6,7 @@ package:
   id: qidi-max4-optimized
   display_name: QIDI Max 4 Optimized
   printer_model: qidi-max4
-  version: "26.11.02.1"
+  version: "26.11.03.1"
 firmware:
   supported:
     - "01.01.06.03"
@@ -79,6 +79,8 @@ install:
       - "spoolman.cfg"
       - "macro_status.cfg"
       - "klipper_fixes.cfg"
+      - "input_shaper.cfg"
+      - "printer_warnings.cfg"
 
   ensure_lines:
     - id: include_optimized_macros
@@ -105,6 +107,9 @@ install:
     - id: macro_status
       source: "klipper/tltg/macro_status.py"
       destination: "klippy/extras/tltg_macro_status.py"
+    - id: printer_warnings
+      source: "klipper/tltg/printer_warnings.py"
+      destination: "klippy/extras/tltg_printer_warnings.py"
     - id: klipper_fixes
       source: "klipper/tltg/klipper_fixes.py"
       destination: "klippy/extras/tltg_klipper_fixes.py"
@@ -537,10 +542,10 @@ system_optimizations:
     service_worker: /home/qidi/fluidd/sw.js
   # The project's Fluidd fork release; the bundle builder downloads and verifies it.
   fluidd_build:
-    version: v1.37.7-tltg-a73fa74
-    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-a73fa74/fluidd.zip
+    version: v1.37.7-tltg-c1b7d04
+    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-c1b7d04/fluidd.zip
     archive: system/fluidd.zip
-    sha256: 74e775fc4d74af670b5768c9ea79f67ea6db98a3ceb3e05b7495cc6f4efba8fb
+    sha256: 45a775ddb3d5858327323759a6959826528c2626bf9d9154359d13df7bc1c8e4
   # Wheels for QIDI's Moonraker virtualenv (Python 3.9, aarch64); the bundle builder downloads and verifies them.
   moonraker_speedups:
     wheels:
@@ -550,6 +555,31 @@ system_optimizations:
       - url: https://files.pythonhosted.org/packages/d4/f0/855cfe0abc7e51a05b13311a017fcc967142067180f24cdcfe7ba047e4f3/uvloop-0.23.0-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl
         archive: system/moonraker-speedups/uvloop-0.23.0-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl
         sha256: 55d6f4135d914305929fe9e9c44d8b5383a9b3fa1bee3bfcf60ee97e01af07ea
+  # Compressed swap in RAM for QIDI's kernel, which ships without zram. The modules load only on this exact kernel
+  # build; scripts/build_zram_modules.py rebuilds them from kernel/ and checks these hashes.
+  zram_swap:
+    kernel_release: 5.10.160
+    kernel_version: "#4 SMP PREEMPT Wed Sep 3 15:21:57 CST 2025"
+    modules:
+      - name: lz4_compress
+        archive: system/zram/lz4_compress.ko
+        sha256: 6c1bfdc54fbde4bc6fefbffb8a67b50d56fc254abbdbc41b48d8e6c875482213
+      - name: lz4_decompress
+        archive: system/zram/lz4_decompress.ko
+        sha256: 9dadc31be2afc4f9035eded5341b5be9c7867fcd6c7af57ad60a8cf8a76a5e4f
+      - name: lz4
+        archive: system/zram/lz4.ko
+        sha256: 1d8f4610fad85b01269e02b340b7627cf9d782713341a24bd3d7bc546fda91a4
+      - name: zsmalloc
+        archive: system/zram/zsmalloc.ko
+        sha256: 5a6d04bcd42f19b25e93480764adc118864b99370a738776552b84591bece330
+      - name: zram
+        archive: system/zram/zram.ko
+        sha256: 7183b7acaafde783dd1b7aa1ae97ecde69b785b1d48af4cb79320167080e559c
+    size_mb: 256
+    algorithm: lz4
+    swappiness: 80
+    page_cluster: 0
   klipper_box_config:
     file: /home/qidi/klipper/klippy/extras/box_config.py
     restart_service: klipper.service

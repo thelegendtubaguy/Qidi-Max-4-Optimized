@@ -218,32 +218,57 @@ def arm_auto_update_reboot_followup(
     return True
 
 
-def maybe_schedule_host_reboot(
+def recommend_reboot(paths: RuntimePaths) -> None:
+    """Recommend a reboot until the host next boots."""
+    atomic_write_text(paths.reboot_recommended_path, current_boot_id(paths) + "\n", mode=0o600, force_mode=True)
+
+
+def reboot_recommended(paths: RuntimePaths) -> bool:
+    """Whether a reboot is still recommended; a recommendation from an earlier boot is dropped."""
+    path = paths.reboot_recommended_path
+    if not path.exists():
+        return False
+    try:
+        current = path.read_text(encoding="utf-8").strip() == current_boot_id(paths)
+    except (OSError, HostRebootError):
+        return False
+    if not current:
+        atomic_delete(path)
+    return current
+
+
+def maybe_offer_recommended_reboot(
     paths: RuntimePaths,
     *,
     reporter,
     input_stream,
     environ: dict[str, str],
     explicit: bool = False,
-    automatic: bool = False,
     urlopen=urllib.request.urlopen,
     run=subprocess.run,
 ) -> bool:
-    marker = read_host_reboot_marker(paths)
-    if marker is None or marker.boot_id != current_boot_id(paths):
+    if not reboot_recommended(paths):
         return False
-    if not explicit and not automatic:
-        if input_stream is None:
-            reporter.line(messages.HOST_REBOOT_PENDING)
-            return False
-        if not prompt_yes(
+    if not explicit and (
+        input_stream is None
+        or not prompt_yes(
             reporter=reporter,
             input_stream=input_stream,
-            question=messages.HOST_REBOOT_PROMPT,
-            instruction=messages.HOST_REBOOT_PROMPT_INSTRUCTION,
-        ):
-            reporter.line(messages.HOST_REBOOT_PENDING)
-            return False
+            question=messages.REBOOT_RECOMMENDED_PROMPT,
+            instruction=messages.REBOOT_RECOMMENDED_PROMPT_INSTRUCTION,
+        )
+    ):
+        reporter.line(messages.REBOOT_RECOMMENDED)
+        return False
+    if not _schedule_reboot(paths, reporter=reporter, input_stream=input_stream, environ=environ, urlopen=urlopen, run=run):
+        reporter.line(messages.REBOOT_RECOMMENDED)
+        return False
+    reporter.line(messages.REBOOT_SCHEDULED)
+    return True
+
+
+def _schedule_reboot(paths: RuntimePaths, *, reporter, input_stream, environ: dict[str, str], urlopen, run) -> bool:
+    """Schedule complete-host-reboot, which checks the printer is still idle before rebooting."""
     try:
         safety.ensure_printer_idle(paths.moonraker_url, urlopen=urlopen)
     except ActivePrintError:
@@ -280,6 +305,37 @@ def maybe_schedule_host_reboot(
     except SudoError:
         reporter.line(messages.HOST_REBOOT_SCHEDULE_FAILED)
         return False
+    return True
+
+
+def maybe_schedule_host_reboot(
+    paths: RuntimePaths,
+    *,
+    reporter,
+    input_stream,
+    environ: dict[str, str],
+    explicit: bool = False,
+    automatic: bool = False,
+    urlopen=urllib.request.urlopen,
+    run=subprocess.run,
+) -> bool:
+    marker = read_host_reboot_marker(paths)
+    if marker is None or marker.boot_id != current_boot_id(paths):
+        return False
+    if not explicit and not automatic:
+        if input_stream is None:
+            reporter.line(messages.HOST_REBOOT_PENDING)
+            return False
+        if not prompt_yes(
+            reporter=reporter,
+            input_stream=input_stream,
+            question=messages.HOST_REBOOT_PROMPT,
+            instruction=messages.HOST_REBOOT_PROMPT_INSTRUCTION,
+        ):
+            reporter.line(messages.HOST_REBOOT_PENDING)
+            return False
+    if not _schedule_reboot(paths, reporter=reporter, input_stream=input_stream, environ=environ, urlopen=urlopen, run=run):
+        return False
     reporter.line(messages.HOST_REBOOT_SCHEDULED)
     return True
 
@@ -289,12 +345,18 @@ def perform_scheduled_host_reboot(
     *,
     reporter,
     environ: dict[str, str],
+    recommended: bool = False,
     urlopen=urllib.request.urlopen,
     run=subprocess.run,
 ) -> bool:
-    marker = read_host_reboot_marker(paths)
-    if marker is None or marker.boot_id != current_boot_id(paths):
-        return False
+    """Reboot for the pending Rockchip marker, or for a recommendation when recommended is set."""
+    if recommended:
+        if not reboot_recommended(paths):
+            return False
+    else:
+        marker = read_host_reboot_marker(paths)
+        if marker is None or marker.boot_id != current_boot_id(paths):
+            return False
     try:
         safety.ensure_printer_idle(paths.moonraker_url, urlopen=urlopen)
     except ActivePrintError:

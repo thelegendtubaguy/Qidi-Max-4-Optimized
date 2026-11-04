@@ -26,6 +26,22 @@ Optimized configuration SHALL reduce homing, probing, mesh, and filament-transit
 - **AND** temporary motion settings are restored
 - **AND** Z tilt and the selected fresh adaptive or named saved-mesh preparation run without redundant homing or stale active mesh state
 
+#### Scenario: Unshaped axes use QIDI's default input shaper
+- **WHEN** Klipper starts, or X/Y homing finishes, with `[input_shaper]` loaded and no live frequency on X or Y
+- **THEN** each such axis gets QIDI's stock calibration, EI at 54.4 Hz on X and MZV at 36.2 Hz on Y, at runtime only, without writing `printer.cfg`
+- **AND** after X/Y homing it is applied before the move to the Z homing point
+
+#### Scenario: Homing limits acceleration until input shaper calibration is saved
+- **WHEN** homing finishes and X or Y lacks a saved input shaper calibration, counting one waiting for `SAVE_CONFIG`, or has no live shaper frequency
+- **THEN** acceleration is set to the lower of `[printer] max_accel` and QIDI's post-homing 10000 mm/s² instead of `max_accel`
+- **AND** once both axes have a saved calibration and a live frequency, including after calibration without a restart, homing restores `max_accel`, even when a measured calibration equals QIDI's stock values
+
+#### Scenario: Printer warnings are published as status
+- **WHEN** X or Y lacks a saved input shaper calibration or a live shaper frequency
+- **THEN** Klipper status `tltg_printer_warnings.warnings` lists one `error` entry with an id, a title, and a message that names the acceleration limit, saying input shaping is off while an axis has no live frequency, and otherwise that QIDI's default shaper is in use
+- **AND** the list is empty once both axes have a saved calibration and a live frequency
+- **AND** the startup and homing console warnings print each listed entry, so the console and any status reader show the same text
+
 #### Scenario: Runtime Z offset survives preparation
 - **WHEN** start G-code captures the saved runtime Z offset
 - **THEN** the offset is cleared before homing, tilt, and mesh preparation
@@ -693,7 +709,7 @@ Optimized configuration SHALL make each USB QIDI Box heater resend an unchanged 
 - **THEN** it is resent on Klipper's normal schedule
 
 ### Requirement: Klipper main-loop health
-Optimized configuration SHALL unregister the vendor Box load-cell timers (`_read_wei_timer`, `_init_probe_data_advance`) once they are stopped and the vendor object no longer holds them, and SHALL leave every other timer registered. It SHALL warn when Klipper's timers pile up or its main loop stays saturated, and SHALL report Klipper's recent load when an endstop sync times out.
+Optimized configuration SHALL unregister the vendor Box load-cell timers (`_read_wei_timer`, `_init_probe_data_advance`) once they are stopped and the vendor object no longer holds them, and SHALL leave every other timer registered. It SHALL warn when Klipper's timers pile up or its main loop stays saturated, and SHALL report Klipper's recent load when an endstop sync fails.
 
 #### Scenario: Timers pile up or the main loop stays busy
 - **WHEN** Klipper's timer count grows 50 or more past its count a minute after starting, or its main thread stays at least 45% busy for five minutes
@@ -708,7 +724,7 @@ Optimized configuration SHALL unregister the vendor Box load-cell timers (`_read
 - **THEN** it stays registered
 
 #### Scenario: Endstop sync timeout
-- **WHEN** a homing move fails with `Communication timeout during homing`
+- **WHEN** a homing move fails with `Communication timeout during homing`, or a load-cell probe move fails with `WEIGHT sensor error`, QIDI's report of a failed endstop sync
 - **THEN** the console and `klippy.log` name the MCUs involved, Klipper's main-thread load and largest timer delay over the previous 10 seconds, and the timer count, and the error is otherwise unchanged
 
 ### Requirement: Macros read cheap printer facts

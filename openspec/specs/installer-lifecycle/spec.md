@@ -190,10 +190,21 @@ The installer SHALL apply host OS optimizations only under explicit persisted po
 #### Scenario: Changed services restart once
 - **WHEN** an install, update, uninstall, or host recovery changes files that a running service loads
 - **THEN** every change in the operation is in place before any service restarts, and each changed service restarts once
+- **AND** adding or removing package services reloads systemd once, before those restarts, rather than once per service
 - **AND** a failed restart that a change requires fails the operation like any other host-operation failure
 - **AND** after restarting Moonraker, the installer waits a bounded time for Moonraker to answer and then restarts QIDI's touchscreen app, so the app does not keep showing a Moonraker outage
 - **AND** a Klipper restart already pending for source activation stands in for the host change's own Klipper restart
 - **AND** a step that rollback cannot undo, such as retiring QIDI bundle patches once the package Fluidd is served, runs only after the restarts before it succeed
+
+#### Scenario: Host changes report their progress
+- **WHEN** an install, update, or uninstall applies or restores host changes
+- **THEN** they say the step can take a few minutes, install and update name each change as they apply it, and every operation names each service as it restarts it
+- **AND** when an install or update turns off QIDI AI detection, the note to turn off the matching touchscreen settings comes after the host changes and their restarts finish
+
+#### Scenario: Synchronous root writes are repaired first
+- **WHEN** enabled OS optimizations repair QIDI's Rockchip service that remounts the root filesystem with `sync`
+- **THEN** the repair runs before the other host changes in the operation, so their file writes are not synchronous
+- **AND** its recovery record survives the later host changes until the installed state records the repair, so an interruption before then still rolls it back
 
 #### Scenario: Reconciliation retains bounded recovery state
 - **WHEN** repeated checks find host optimizations already current
@@ -425,8 +436,8 @@ The installer SHALL ask supported interactive installations whether to flash the
 #### Scenario: Firmware option is explicitly selected
 - **WHEN** an operator explicitly accepts the interactive question or selects the install-only THR firmware option
 - **THEN** the installer explains the firmware/recovery risk and performs the operation under the installer lock after configuration installation and required activation
-- **AND** the interactive question and README warn that input shaper calibration must be rerun after flashing; the installer does not initiate calibration
-- **AND** after a verified transfer, and before Klipper restarts, the saved `SAVE_CONFIG` input shaper values are cleared while an empty `[input_shaper]` section remains, with the prior `printer.cfg` retained in the recovery files; an already-patched board keeps its calibration
+- **AND** the interactive question and README warn that input shaper calibration must be rerun after flashing, and a verified flash ends by telling the operator to run it before bed leveling or printing; the installer does not initiate calibration
+- **AND** the THR operation never changes `printer.cfg`, so the saved input shaper calibration stays in effect until the operator recalibrates
 - **AND** dry-run reports the proposed firmware work without service changes, serial access, or firmware backup creation
 
 ### Requirement: Optional THR transfer is admitted and byte-verified
@@ -586,6 +597,7 @@ Normal install and update SHALL serve the package's pinned build of the project'
 - **WHEN** install or update runs with the build in the package and a recognized Fluidd nginx site
 - **THEN** the build is extracted beside QIDI's bundle, readable by nginx, verified against the pinned checksum, and marked as package-owned
 - **AND** only then is the nginx site switched to serve it, in the same guarded change that adds the printer-screen route
+- **AND** the site sends the build's gzip copies of its text assets to browsers that accept gzip instead of compressing those assets on each request, and a site an earlier package version switched without that is updated in place
 - **AND** QIDI's bundled Fluidd files are not modified
 - **AND** a browser tab showing QIDI's Fluidd shows the build after one normal reload, including when QIDI's service worker had cached it
 
@@ -639,6 +651,68 @@ Normal install and update SHALL make systemd start Klipper and Moonraker again w
 - **WHEN** a file already exists at the package's drop-in path without the package marker
 - **THEN** install and update leave it unchanged and report it
 - **AND** uninstall removes only an unchanged package drop-in
+
+### Requirement: Print-critical services get the CPU first
+Normal install and update SHALL run Klipper at a higher CPU priority than Moonraker, and Moonraker at a higher CPU priority than QIDI's touchscreen app, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches.
+
+#### Scenario: Priorities apply when each service starts
+- **WHEN** install or update adds or changes a service's priority drop-in
+- **THEN** systemd runs Klipper at nice -10, Moonraker at nice -5, and the touchscreen app at nice 5 once each service restarts
+- **AND** the installer restarts each changed service once, after every other host change in the transaction
+
+#### Scenario: Operator unit changes are preserved
+- **WHEN** a file already exists at a priority drop-in path without the package marker
+- **THEN** install and update leave it unchanged and report it
+- **AND** uninstall removes only an unchanged package drop-in
+
+### Requirement: Compressed swap in RAM
+As an optional OS optimization, the installer SHALL give QIDI's kernel compressed swap in RAM (zram) from kernel modules built for that exact kernel build, carried checksum-verified in the release bundle and reproducible from the repository, and SHALL keep the change reversible.
+
+#### Scenario: Swap starts on the kernel the modules were built for
+- **WHEN** OS optimizations are enabled and the running kernel's release and version string match the build recorded in the package manifest
+- **THEN** the installer writes the verified modules and a boot script into a root-owned, package-marked directory, then installs, enables, and starts a unit that loads the modules and turns on lz4-compressed zram swap with the manifest's size, swappiness, and page cluster
+- **AND** the unit starts before the other services the transaction restarts; a unit that fails to start rolls back the unit and the directory
+- **AND** an update with different modules or settings replaces the directory whole, and a later failure in the same operation brings back the replaced one
+
+#### Scenario: Other kernels run without swap
+- **WHEN** the running kernel is not the recorded build, the bundle has no modules, or the directory exists without the package's marker
+- **THEN** the installer leaves the host unchanged, never installs the unit, and records why
+- **AND** at boot the script loads no modules when the kernel no longer matches, such as after a QIDI update
+
+#### Scenario: Swap deployment remains reversible
+- **WHEN** uninstall restores optional OS optimizations
+- **THEN** it stops and removes an unchanged unit, which turns swap off, restores the kernel's default swappiness and page cluster, and unloads the modules, then removes the package-owned directory
+- **AND** a directory that lost the package's marker or a unit changed after install is preserved and reported
+- **AND** declining restoration leaves swap running
+
+### Requirement: Full-speed CPU governor
+As an optional OS optimization, the installer SHALL have QIDI's CPU frequency service run the `performance` governor instead of `ondemand`, and SHALL keep the change reversible.
+
+#### Scenario: The CPU runs at full speed
+- **WHEN** OS optimizations are enabled and the CPU frequency service's settings file is absent or the package's
+- **THEN** the installer writes the package's settings selecting `performance` and restarts the service, which applies them now and at every boot
+- **AND** an existing settings file without the package marker is left unchanged and reported
+
+#### Scenario: Governor change remains reversible
+- **WHEN** uninstall restores optional OS optimizations and the package's settings file is unchanged
+- **THEN** it removes the file and restarts the service, which returns the CPU to `ondemand`
+- **AND** declining restoration leaves the CPU at full speed
+
+### Requirement: Reboot offered after host tuning
+After an install that applies zram swap, the CPU governor, or a service priority, the installer SHALL tell the operator to reboot the printer and offer to do it for them, without ever rebooting during a print.
+
+#### Scenario: An interactive install offers the reboot
+- **WHEN** an interactive install applied any of those changes in this boot and no Rockchip reboot is pending
+- **THEN** the installer asks whether to reboot the printer now, and otherwise tells the operator to reboot it
+- **AND** an accepted reboot, or `--reboot-host`, schedules a reboot about 10 seconds later that runs only if the printer is still idle
+
+#### Scenario: Non-interactive runs never reboot unasked
+- **WHEN** an install runs with `--yes` without `--reboot-host`, or as an automatic update
+- **THEN** the installer reboots nothing; a `--yes` install tells the operator to reboot
+
+#### Scenario: The offer lasts until the next boot
+- **WHEN** the printer has rebooted since those changes, or a later install changed none of them
+- **THEN** the installer does not offer the reboot
 
 ### Requirement: Moonraker Spoolman accounting for QIDI Box changes
 Normal install and update SHALL patch QIDI's Moonraker Spoolman component, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches.

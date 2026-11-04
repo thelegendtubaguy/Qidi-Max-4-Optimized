@@ -23,6 +23,7 @@ from .demo import resolve_demo_tui_delay_seconds, run_demo
 from .errors import ActivePrintError, InstallerError, OperationCancelled, PrinterStateError
 from .host_reboot import (
     HostRebootError,
+    maybe_offer_recommended_reboot,
     maybe_schedule_host_reboot,
     perform_scheduled_host_reboot,
     read_host_reboot_marker,
@@ -154,6 +155,13 @@ def main(
                         paths,
                         reporter=reporter,
                         environ=env,
+                    )
+                elif read_host_reboot_marker(paths) is None:
+                    perform_scheduled_host_reboot(
+                        paths,
+                        reporter=reporter,
+                        environ=env,
+                        recommended=True,
                     )
             return 0
 
@@ -390,6 +398,15 @@ def main(
             )
         ):
             maybe_schedule_host_reboot(
+                paths,
+                reporter=reporter,
+                input_stream=input_stream,
+                environ=env,
+                explicit=args.reboot_host,
+            )
+        elif not lock_inherited and args.mode == "install" and read_host_reboot_marker(paths) is None:
+            # Without a pending Rockchip reboot, offer the reboot that host tuning changes recommend.
+            maybe_offer_recommended_reboot(
                 paths,
                 reporter=reporter,
                 input_stream=input_stream,
