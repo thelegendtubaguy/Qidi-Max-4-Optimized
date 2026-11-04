@@ -93,6 +93,9 @@ allowed_patch_targets:
 - file: config/klipper-macros-qd/heaters.cfg
   section: gcode_macro m109.0
   option: __section__
+- file: config/klipper-macros-qd/fans.cfg
+  section: gcode_macro M106
+  option: __section__
 source_patches:
 - id: qidi_homing
   destination: klippy/extras/homing.py

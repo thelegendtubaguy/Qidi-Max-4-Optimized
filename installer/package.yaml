@@ -6,7 +6,7 @@ package:
   id: qidi-max4-optimized
   display_name: QIDI Max 4 Optimized
   printer_model: qidi-max4
-  version: "26.11.03.1"
+  version: "26.11.04.1"
 firmware:
   supported:
     - "01.01.06.03"
@@ -143,6 +143,9 @@ install:
     - id: probe_test
       source: "klipper/tltg/probe_test.py"
       destination: "klippy/extras/tltg_probe_test.py"
+    - id: chamber_exhaust_guard
+      source: "klipper/tltg/chamber_exhaust_guard.py"
+      destination: "klippy/extras/tltg_chamber_exhaust_guard.py"
 
   source_patches:
     - id: qidi_homing
@@ -475,6 +478,13 @@ patches:
       variants:
         - firmwares: ["01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01"]
           expected_normalized_sha256: "50260f1efe090bd27f49c61a34b960989cfa2cdff5656bc5193cbbfc6a387b77"
+
+    - id: fans_m106
+      file: "config/klipper-macros-qd/fans.cfg"
+      section: "gcode_macro M106"
+      variants:
+        - firmwares: ["01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01"]
+          expected_normalized_sha256: "07741866908f39c8c37ec70f47cc682aeb5c0d2e38396cd5ba64c6915b1d2bf0"
 
     - id: kinematics_homing_override
       file: "config/klipper-macros-qd/kinematics.cfg"
