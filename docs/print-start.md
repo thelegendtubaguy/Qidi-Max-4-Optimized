@@ -7,12 +7,20 @@ Prints sliced with this project's [start G-code](install.md#slicer-start-g-code)
 ## What's faster
 
 - **Homing:** X and Y home at 65 mm/s instead of 50, back off 20 mm instead of 50, and print preparation doesn't home anything twice. QIDI's closed-loop homing checks stay in place.
-- **Leveling and bed mesh:** the moves between probe points run at 600 mm/s instead of 150. Saving the new mesh no longer freezes Klipper for over two seconds.
+- **Leveling and bed mesh:** the moves between probe points run at 600 mm/s instead of 150, at your printer's full acceleration (30000 mm/s²) instead of QIDI's 10000. Saving the new mesh no longer freezes Klipper for over two seconds.
 - **Filament handling:** less fixed waiting around the cutter, chute wipes, and saving settings. The [QIDI Box](qidi-box.md#load-and-unload-speed) loads and unloads faster.
 - **Filament stays loaded** between prints, so the next print with the same slot skips the unload and reload. See [below](#end-of-print-filament).
 - **Filament changes** to a slot that's already loaded skip heating to the filament-change temperature and waiting to cool back down, saving about 25 seconds per change.
 
 The start also cleans the nozzle at the rear chute and scrapes it on the rear of the bed before leveling, and draws the front prime line just ahead of your print when there's room.
+
+### No input shaper calibration
+
+If an axis has no input shaper, for example because no calibration is saved, Klipper gives it QIDI's stock calibration: EI at 54.4 Hz on X and MZV at 36.2 Hz on Y. It's applied at startup and after every X/Y home, before the toolhead moves to home Z. Nothing is written to `printer.cfg`, so your own calibration replaces QIDI's as soon as it runs.
+
+Until a calibration is saved for both axes, homing keeps acceleration at QIDI's 10000 mm/s² instead of raising it to 30000, so leveling and bed mesh moves run at QIDI's acceleration. Fluidd shows a red banner on every page, and the console warns at startup and after every home: `WARNING: No input shaper calibration is saved. TLTG Optimizations is utilizing Qidi's default shaper and limiting acceleration during homing and meshing to 10000 mm/s².` A calibration you've just run counts as saved before `SAVE_CONFIG`, so the next home goes back to full acceleration without a restart. While an axis has no input shaper at all, before the next home applies QIDI's, or for good if `printer.cfg` has no `[input_shaper]` section, the warning says `Input shaping is off.` instead, with the same acceleration limit.
+
+Without any input shaping, moves at full speed and acceleration shake the toolhead hard enough that some printers may skip belts or lose position. QIDI's calibration is close on most printers but not tuned to yours, so run input shaper calibration when possible. Run it on its own: the touchscreen's calibration page runs bed leveling first when both are checked. Accelerations your slicer sets during a print are not limited, and no slicer G-code changes are needed.
 
 ## Reuse a saved bed mesh
 

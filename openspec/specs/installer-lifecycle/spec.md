@@ -425,8 +425,8 @@ The installer SHALL ask supported interactive installations whether to flash the
 #### Scenario: Firmware option is explicitly selected
 - **WHEN** an operator explicitly accepts the interactive question or selects the install-only THR firmware option
 - **THEN** the installer explains the firmware/recovery risk and performs the operation under the installer lock after configuration installation and required activation
-- **AND** the interactive question and README warn that input shaper calibration must be rerun after flashing; the installer does not initiate calibration
-- **AND** after a verified transfer, and before Klipper restarts, the saved `SAVE_CONFIG` input shaper values are cleared while an empty `[input_shaper]` section remains, with the prior `printer.cfg` retained in the recovery files; an already-patched board keeps its calibration
+- **AND** the interactive question and README warn that input shaper calibration must be rerun after flashing, and a verified flash ends by telling the operator to run it before bed leveling or printing; the installer does not initiate calibration
+- **AND** the THR operation never changes `printer.cfg`, so the saved input shaper calibration stays in effect until the operator recalibrates
 - **AND** dry-run reports the proposed firmware work without service changes, serial access, or firmware backup creation
 
 ### Requirement: Optional THR transfer is admitted and byte-verified

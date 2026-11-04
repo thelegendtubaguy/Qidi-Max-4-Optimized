@@ -394,11 +394,21 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertNotIn("_OPTIMIZED_HOME_Z_FROM_SAFE_POINT_RAW", public_gcode)
 
         raw_gcode = self._macro_gcode("_OPTIMIZED_HOME_Z_FROM_SAFE_POINT_RAW")
-        self.assertIn("printer.tltg_macro_status.max_accel", raw_gcode)
-        self.assertLess(raw_gcode.index("G28.6245197 Z"), raw_gcode.index("SET_VELOCITY_LIMIT ACCEL={default_accel}"))
+        self.assertLess(raw_gcode.index("G28.6245197 Z"), raw_gcode.index("_OPTIMIZED_RESTORE_DEFAULT_ACCEL"))
 
         optimized_text = "\n".join(path.read_text(encoding="utf-8") for path in sorted(OPTIMIZED_MACRO_ROOT.glob("*.cfg")))
         self.assertEqual(optimized_text.count("G28.6245197 Z"), 1)
+
+    def test_homing_holds_unshaped_printers_below_max_accel(self):
+        homing_override = self._section_gcode(OPTIMIZED_MACRO_ROOT / "kinematics.cfg", "homing_override")
+        self.assertGreater(homing_override.index("_OPTIMIZED_RESTORE_DEFAULT_ACCEL WARN=1"), homing_override.rindex("action_raise_error"))
+        restore_xy = self._macro_gcode("_OPTIMIZED_RESTORE_XY_HOMING_STATE")
+        self.assertTrue(restore_xy.rstrip().endswith("_OPTIMIZED_RESTORE_INPUT_SHAPER"))
+        full_home = homing_override[:homing_override.index("{% if xy_home %}")]
+        self.assertLess(full_home.index("_OPTIMIZED_RESTORE_XY_HOMING_STATE"), full_home.index("_OPTIMIZED_HOME_Z_FROM_SAFE_POINT_RAW"))
+        restore = self._macro_gcode("_OPTIMIZED_RESTORE_DEFAULT_ACCEL")
+        self.assertIn("{% if status.input_shaper.saved and not status.input_shaper.unshaped_axes %}", restore)
+        self.assertIn("[status.max_accel|float, opt.unshaped_accel|float]|min", restore)
 
         homing_override = self._section_gcode(OPTIMIZED_MACRO_ROOT / "kinematics.cfg", "homing_override")
         self.assertEqual(homing_override.count("_OPTIMIZED_HOME_Z_FROM_SAFE_POINT_RAW"), 2)
@@ -886,7 +896,7 @@ class MacroStatusTest(unittest.TestCase):
     """The facts macros read must match what they read before from the
     printer objects, for each way a Box connects."""
 
-    def status(self, objects, commands=()):
+    def status(self, objects, commands=(), startup=None):
         class Printer:
             def lookup_object(self, name, default=None):
                 return objects.get(name, default)
@@ -895,6 +905,7 @@ class MacroStatusTest(unittest.TestCase):
         status.printer = Printer()
         status.gcode = _Status(status_commands={name: {} for name in commands})
         status.max_accel = 20000.
+        status.startup_shaper_freq = startup or {}
         status.status_failed = set()
         return status.get_status(1.)
 
@@ -935,3 +946,73 @@ class MacroStatusTest(unittest.TestCase):
         self.assertEqual(self.status({"multi_color_controller": rs485})["loaded_slot"], "slot9")
         self.assertEqual(self.status({})["loaded_slot"], "")
         self.assertEqual(self.status({})["max_accel"], 20000.)
+
+    def test_input_shaper_reports_live_and_saved_calibration(self) -> None:
+        class FileConfig:
+            def __init__(self, options):
+                self.options = options
+
+            def has_option(self, section, option):
+                return section == "input_shaper" and option in self.options
+
+            def get(self, section, option):
+                return self.options[option]
+
+        def objects(freq_x, freq_y, autosave=None):
+            shapers = [_Status(axis=axis, params=_Status(shaper_freq=f)) for axis, f in (("x", freq_x), ("y", freq_y))]
+            return {"input_shaper": _Status(get_shapers=lambda: shapers),
+                    "configfile": _Status(autosave=_Status(fileconfig=FileConfig(autosave or {})))}
+
+        self.assertEqual(self.status({})["input_shaper"], {"loaded": False, "unshaped_axes": "xy", "saved": False})
+        self.assertEqual(self.status(objects(0., 0.))["input_shaper"]["unshaped_axes"], "xy")
+        self.assertEqual(self.status(objects(51.8, 0.))["input_shaper"]["unshaped_axes"], "y")
+        # QIDI's stock values applied with nothing saved.
+        stock = self.status(objects(54.4, 36.2))["input_shaper"]
+        self.assertEqual((stock["unshaped_axes"], stock["saved"]), ("", False))
+        # A measured calibration that equals QIDI's stock values is still saved.
+        measured = objects(54.4, 36.2, {"shaper_freq_x": "54.4", "shaper_freq_y": "36.2"})
+        self.assertIs(self.status(measured)["input_shaper"]["saved"], True)
+        self.assertIs(self.status(objects(51.8, 41.6), startup={"x": 51.8, "y": 41.6})["input_shaper"]["saved"], True)
+        self.assertIs(self.status(objects(51.8, 41.6, {"shaper_freq_y": "0"}), startup={"x": 51.8, "y": 41.6})["input_shaper"]["saved"], False)
+
+
+spec = importlib.util.spec_from_file_location(
+    "tltg_printer_warnings", REPO_ROOT / "installer/klipper/tltg/printer_warnings.py"
+)
+printer_warnings = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(printer_warnings)
+
+
+class PrinterWarningsTest(unittest.TestCase):
+    """Fluidd's banner and the console show one error while an axis has no
+    input shaper or no saved calibration, and none once both have one."""
+
+    def warnings(self, shaper, unshaped_accel=10000):
+        objects = {
+            "tltg_macro_status": _Status(max_accel=30000., input_shaper=lambda: shaper),
+            "gcode_macro _tltg_optimized_globals": _Status(variables={"unshaped_accel": unshaped_accel}),
+        }
+
+        class Printer:
+            def lookup_object(self, name, default=None):
+                return objects.get(name, default)
+
+        warnings = object.__new__(printer_warnings.PrinterWarnings)
+        warnings.printer = Printer()
+        warnings.failed = False
+        return warnings.get_status(1.)["warnings"]
+
+    def test_input_shaper_states(self) -> None:
+        self.assertEqual(self.warnings({"loaded": True, "unshaped_axes": "", "saved": True}), [])
+
+        stock, = self.warnings({"loaded": True, "unshaped_axes": "", "saved": False})
+        self.assertEqual((stock["id"], stock["level"]), ("input_shaper_uncalibrated", "error"))
+        self.assertIn("10000 mm/s²", stock["message"])
+
+        for shaper in ({"loaded": True, "unshaped_axes": "y", "saved": False},
+                       {"loaded": True, "unshaped_axes": "x", "saved": True},
+                       {"loaded": False, "unshaped_axes": "xy", "saved": False}):
+            off, = self.warnings(shaper)
+            self.assertEqual((off["id"], off["level"]), ("input_shaper_off", "error"))
+        capped, = self.warnings({"loaded": True, "unshaped_axes": "", "saved": False}, unshaped_accel=40000)
+        self.assertIn("30000 mm/s²", capped["message"])
