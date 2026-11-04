@@ -181,6 +181,29 @@ Optimized print start SHALL accept a chamber startup minimum independently of th
 - **AND** subsequent filament preparation uses the same minimum rather than waiting for the full target
 - **AND** prior no-argument starts preserve their active-target heating behavior
 
+### Requirement: Exhaust fan leaves the chamber heater on
+`M106 P3` SHALL set the exhaust fan without changing the chamber heater target, replacing QIDI's `M106`, which set the chamber target to zero whenever P3 was set above zero. The other fan indexes SHALL keep QIDI's behavior.
+
+#### Scenario: Exhaust turned on while the chamber heats
+- **WHEN** `M106 P3` turns the exhaust fan on from off while the chamber heater has a positive target
+- **THEN** the chamber heater keeps its target
+- **AND** the console warns that the exhaust fan is on while the chamber heats, naming the fan speed and chamber target, and that the filament profile's exhaust fan can be turned off
+
+#### Scenario: Exhaust turned off before the chamber heater check fails
+- **WHEN** the exhaust fan is on while the chamber heater has a positive target
+- **AND** the chamber either falls back to within 1 °C below the lower edge of the chamber heater check's hysteresis band after reaching the band, starts accruing heater-check error, or goes half the check's gain time without the required gain while approaching its target
+- **THEN** the exhaust fan is turned off before the check can stop the printer, and the console warns with the chamber temperature and target
+- **AND** during a print, later `M106 P3` requests above zero leave the fan off while the chamber heater has a positive target, until no print is running or paused
+- **AND** the chamber heater target and the heater check are unchanged
+
+#### Scenario: Chamber keeping up leaves the exhaust on
+- **WHEN** the exhaust fan is on and the chamber stays within the band or keeps gaining at the heater check's required rate
+- **THEN** the exhaust fan is left at its requested speed
+
+#### Scenario: Exhaust speed changes without a repeated warning
+- **WHEN** `M106 P3` sets the exhaust fan while it is already on, sets it off, or sets it while the chamber heater has no target
+- **THEN** the fan speed changes and no warning is printed
+
 ### Requirement: Filament and QIDI Box state lifecycle
 Optimized macros SHALL keep external-spool runout policy independent from vendor Box recovery, retain filament only when the saved preference equals `1` and physical Box state is provable, and normalize tool mappings only at safe lifecycle boundaries. Box-dependent behavior SHALL use one transport-independent Box-availability definition.
 

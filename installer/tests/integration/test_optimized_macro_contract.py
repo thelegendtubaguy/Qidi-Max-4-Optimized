@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import types
 import unittest
 
 from installer.tests.helpers import REPO_ROOT
@@ -67,6 +68,12 @@ class OptimizedMacroContractTests(unittest.TestCase):
             {command.upper() for command in commands},
             {"_TLTG_TEST_PROBE"},
         )
+
+    def test_exhaust_fan_leaves_the_chamber_heater_on(self):
+        gcode = self._macro_gcode("M106")
+        self.assertIn("SET_FAN_SPEED FAN=chamber_circulation_fan", gcode)
+        self.assertNotIn("SET_HEATER_TEMPERATURE", gcode)
+        self.assertNotIn("M141", gcode)
 
     def test_cancel_on_error_reenables_bed_mesh_without_moving(self):
         gcode = self._macro_gcode("OPTIMIZED_CANCEL_PRINT_ON_ERROR")
@@ -1016,3 +1023,141 @@ class PrinterWarningsTest(unittest.TestCase):
             self.assertEqual((off["id"], off["level"]), ("input_shaper_off", "error"))
         capped, = self.warnings({"loaded": True, "unshaped_axes": "", "saved": False}, unshaped_accel=40000)
         self.assertIn("30000 mm/s²", capped["message"])
+
+
+spec = importlib.util.spec_from_file_location(
+    "tltg_chamber_exhaust_guard", REPO_ROOT / "installer/klipper/tltg/chamber_exhaust_guard.py"
+)
+chamber_exhaust_guard = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(chamber_exhaust_guard)
+
+
+class _ChamberCheck:
+    """QIDI's verify_heater check for the chamber (printer.cfg's limits)."""
+
+    def __init__(self, temp, target):
+        self.hysteresis, self.max_error = 5., 300.
+        self.heating_gain, self.check_gain_time = 1., 480.
+        self.approaching_target = self.starting_approach = False
+        self.last_target = target if temp >= target - self.hysteresis else 0.
+        self.goal_temp = self.error = 0.
+        self.goal_systime = 9999999999999999.
+        self.faulted = False
+
+    def check_event(self, eventtime, temp, target):
+        if temp >= target - self.hysteresis or target <= 0.:
+            self.approaching_target = self.starting_approach = False
+            if temp <= target + self.hysteresis:
+                self.error = 0.
+            self.last_target = target
+            return
+        self.error += (target - self.hysteresis) - temp
+        if not self.approaching_target:
+            if target != self.last_target:
+                self.approaching_target = self.starting_approach = True
+                self.goal_temp = temp + self.heating_gain
+                self.goal_systime = eventtime + self.check_gain_time
+            elif self.error >= self.max_error:
+                self.faulted = True
+        elif temp >= self.goal_temp:
+            self.starting_approach = False
+            self.error = 0.
+            self.goal_temp = temp + self.heating_gain
+            self.goal_systime = eventtime + self.check_gain_time
+        elif eventtime >= self.goal_systime:
+            self.approaching_target = False
+        elif self.starting_approach:
+            self.goal_temp = min(self.goal_temp, temp + self.heating_gain)
+        self.last_target = target
+
+
+class ChamberExhaustGuardTest(unittest.TestCase):
+    """The exhaust fan is turned off before Klipper's chamber heater check
+    stops the printer, and stays off for the rest of the print."""
+
+    def run_print(self, temp, target, exhaust_rate, seconds=1800, guard=True, state="printing"):
+        sim = types.SimpleNamespace(now=0., temp=temp, fan=0.6, pending=[], messages=[], scripts=[],
+                                    state=state)
+        check = _ChamberCheck(temp, target)
+        callbacks = []
+
+        class Reactor:
+            NOW, NEVER = 0., 9999999999999999.
+
+            def register_callback(self, callback):
+                callbacks.append(callback)
+
+            def monotonic(self):
+                return sim.now
+
+        class GCode:
+            def run_script(self, script):
+                sim.scripts.append(script)
+                # QIDI's fan applies the speed once queued moves reach it.
+                sim.pending.append((sim.now + 2., 0.))
+
+            def respond_info(self, message):
+                sim.messages.append(message)
+
+        guard_obj = object.__new__(chamber_exhaust_guard.ChamberExhaustGuard)
+        guard_obj.printer = types.SimpleNamespace(is_shutdown=lambda: False)
+        guard_obj.reactor = Reactor()
+        guard_obj.gcode = GCode()
+        guard_obj.check = check
+        guard_obj.heater = types.SimpleNamespace(get_temp=lambda e: (sim.temp, target))
+        guard_obj.fan = types.SimpleNamespace(get_status=lambda e: {"speed": sim.fan})
+        guard_obj.print_stats = types.SimpleNamespace(get_status=lambda e: {"state": sim.state})
+        guard_obj.stopped = guard_obj.stopping = False
+        guard_obj.peak = guard_obj.peak_target = None
+
+        for second in range(seconds):
+            sim.now = float(second)
+            for due, speed in [p for p in sim.pending if p[0] <= sim.now]:
+                sim.fan = speed
+                sim.pending.remove((due, speed))
+            # The exhaust pulls the chamber down; the heater alone recovers it.
+            sim.temp = min(target, sim.temp + (exhaust_rate if sim.fan > 0 else 0.05))
+            check.check_event(sim.now, sim.temp, target)
+            if check.faulted:
+                break
+            if guard:
+                guard_obj._sample(sim.now)
+                while callbacks:
+                    callbacks.pop(0)(sim.now)
+        return sim, check, guard_obj
+
+    def test_holding_chamber_turns_the_exhaust_off_before_the_check_fails(self) -> None:
+        _, unguarded, _ = self.run_print(60., 60., -0.1, guard=False)
+        self.assertTrue(unguarded.faulted)
+
+        sim, check, guard = self.run_print(60., 60., -0.1)
+        self.assertFalse(check.faulted)
+        self.assertEqual((sim.fan, sim.scripts), (0., ["SET_FAN_SPEED FAN=chamber_circulation_fan SPEED=0"]))
+        self.assertEqual(len(sim.messages), 1)
+        self.assertIn("for the rest of the print", sim.messages[0])
+        self.assertIs(guard.get_status()["stopped"], True)
+
+        sim.state = "complete"
+        guard._sample(sim.now + 1.)
+        self.assertIs(guard.get_status()["stopped"], False)
+
+    def test_stalled_heating_turns_the_exhaust_off_before_the_check_fails(self) -> None:
+        _, unguarded, _ = self.run_print(50., 60., 0.0, guard=False)
+        self.assertTrue(unguarded.faulted)
+
+        sim, check, _ = self.run_print(50., 60., 0.0)
+        self.assertFalse(check.faulted)
+        self.assertEqual(sim.fan, 0.)
+
+    def test_chamber_keeping_up_leaves_the_exhaust_on(self) -> None:
+        for temp, rate in ((50., 0.01), (60., 0.)):
+            sim, check, _ = self.run_print(temp, 60., rate)
+            self.assertFalse(check.faulted)
+            self.assertEqual((sim.fan, sim.messages), (0.6, []))
+
+    def test_outside_a_print_the_exhaust_is_turned_off_but_not_held_off(self) -> None:
+        sim, check, guard = self.run_print(60., 60., -0.1, state="standby")
+        self.assertFalse(check.faulted)
+        self.assertEqual(sim.fan, 0.)
+        self.assertNotIn("rest of the print", sim.messages[0])
+        self.assertIs(guard.get_status()["stopped"], False)
