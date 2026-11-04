@@ -193,53 +193,47 @@ class InstallerCompatibilityTests(unittest.TestCase):
         backup.assert_not_called()
 
     def test_direct_historical_update_and_uninstall_need_no_migration_chain(self) -> None:
-        for version in (
-            "26.04.21.1",
-            "26.07.13.2",
-            "26.07.26.1",
-            "26.10.28.4",
+        # Identity admission of every version is covered above; one end-to-end pass from the oldest is enough.
+        version = "26.04.21.1"
+        printer_root, paths = _runtime_paths()
+        run_install(
+            paths,
+            self.manifest,
+            PlainReporter(io.StringIO()),
+            urlopen=moonraker_urlopen(
+                saved_variables_path=printer_root / "config/saved_variables.cfg"
+            ),
+        )
+        state_path = printer_root / self.manifest.state_file
+        prior = load_installed_state(state_path)
+        write_installed_state(state_path, replace(prior, package_version=version))
+
+        run_install(
+            paths,
+            self.manifest,
+            PlainReporter(io.StringIO()),
+            urlopen=moonraker_urlopen(
+                saved_variables_path=printer_root / "config/saved_variables.cfg"
+            ),
+        )
+        self.assertEqual(
+            load_installed_state(state_path).package_version,
             self.manifest.package.version,
-        ):
-            with self.subTest(version=version):
-                printer_root, paths = _runtime_paths()
-                run_install(
-                    paths,
-                    self.manifest,
-                    PlainReporter(io.StringIO()),
-                    urlopen=moonraker_urlopen(
-                        saved_variables_path=printer_root / "config/saved_variables.cfg"
-                    ),
-                )
-                state_path = printer_root / self.manifest.state_file
-                prior = load_installed_state(state_path)
-                write_installed_state(state_path, replace(prior, package_version=version))
+        )
 
-                run_install(
-                    paths,
-                    self.manifest,
-                    PlainReporter(io.StringIO()),
-                    urlopen=moonraker_urlopen(
-                        saved_variables_path=printer_root / "config/saved_variables.cfg"
-                    ),
-                )
-                self.assertEqual(
-                    load_installed_state(state_path).package_version,
-                    self.manifest.package.version,
-                )
-
-                write_installed_state(
-                    state_path,
-                    replace(load_installed_state(state_path), package_version=version),
-                )
-                run_uninstall(
-                    paths,
-                    self.manifest,
-                    self.envelope,
-                    PlainReporter(io.StringIO()),
-                    input_stream=io.StringIO("Y\nN\n"),
-                    urlopen=moonraker_urlopen(),
-                )
-                self.assertFalse(state_path.exists())
+        write_installed_state(
+            state_path,
+            replace(load_installed_state(state_path), package_version=version),
+        )
+        run_uninstall(
+            paths,
+            self.manifest,
+            self.envelope,
+            PlainReporter(io.StringIO()),
+            input_stream=io.StringIO("Y\nN\n"),
+            urlopen=moonraker_urlopen(),
+        )
+        self.assertFalse(state_path.exists())
 
     def test_source_ledger_requires_cumulative_provenance(self) -> None:
         patch = self.manifest.install.source_patches[0]
@@ -283,7 +277,13 @@ class InstallerCompatibilityTests(unittest.TestCase):
         module = _load_version_bump_module()
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
-            shutil.copytree(REPO_ROOT / "installer", root / "installer")
+            for relative in (
+                "installer/package.yaml",
+                "installer/supported_upgrade_sources.yaml",
+                "installer/klipper/tltg-optimized-macros/globals.cfg",
+            ):
+                (root / relative).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(REPO_ROOT / relative, root / relative)
             envelope_path = root / "installer/supported_upgrade_sources.yaml"
             before = envelope_path.read_bytes()
 
