@@ -49,38 +49,6 @@ def _query(paths, names, urlopen, subject="THR firmware"):
     return status
 
 
-def strip_input_shaper_calibration(text):
-    header = text.find("\n#*# <---------------------- SAVE_CONFIG ---------------------->")
-    if header < 0:
-        return text
-    lines = text[header:].splitlines(keepends=True)
-    kept, in_section = [], False
-    for line in lines:
-        content = line[4:].strip() if line.startswith("#*# ") else None
-        if content and content.startswith("["):
-            in_section = content == "[input_shaper]"
-        elif in_section and content:
-            continue
-        kept.append(line)
-    return text[:header] + "".join(kept)
-
-
-def _clear_input_shaper_calibration(paths, directory, reporter):
-    printer_cfg = paths.config_root / "printer.cfg"
-    try:
-        ensure_runtime_path_has_no_symlink_components(printer_data_root=paths.printer_data_root, target=printer_cfg)
-        text = printer_cfg.read_text()
-        cleared = strip_input_shaper_calibration(text)
-        if cleared == text:
-            return
-        atomic_write_text(directory / "printer.cfg", text, mode=0o600)
-        atomic_write_text(printer_cfg, cleared)
-    except (OSError, InstallerError):
-        reporter.line("Could not clear the saved input shaper calibration from printer.cfg; rerun input shaper calibration to replace it.")
-        return
-    reporter.line("Cleared the saved input shaper calibration from printer.cfg; input shaping stays off until you recalibrate.")
-
-
 def check_thr_printer_ready(paths, *, urlopen=urllib.request.urlopen, subject="THR firmware"):
     try:
         names = ("print_stats", "webhooks", "idle_timeout", "heaters")
@@ -252,8 +220,6 @@ def flash_thr_firmware(
             evidence = protocol.verify_readback(app if fell_back else image, after, manifest, expected_bootloader=boot)
         atomic_write_text(directory / "verification.json", json.dumps(evidence, indent=2) + "\n", mode=0o600)
         verified = True
-        if firmware_may_have_changed and not fell_back:
-            _clear_input_shaper_calibration(paths, directory, reporter)
     except Exception as exc:
         raise ThrFirmwareError("THR firmware operation failed; configuration installation is retained. Recovery files: " + str(directory) + ". " + str(exc)) from exc
     finally:
@@ -279,4 +245,4 @@ def flash_thr_firmware(
         return
     reporter.line("THR FIFO firmware verified; bootloader unchanged and previous service states restored.")
     if firmware_may_have_changed:
-        reporter.line("Rerun input shaper calibration before printing. The installer has not run calibration.")
+        reporter.line("Run input shaper calibration now, before bed leveling or printing: your saved calibration was measured with the old THR firmware. The installer has not run calibration.")

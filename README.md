@@ -21,7 +21,7 @@ A faster, fixed, and more capable QIDI Max 4: optimized Klipper macros, slicer s
 4. In OrcaSlicer 2.4.0 or later, subscribe to the [OrcaCloud bundle](https://cloud.orcaslicer.com/b/4c4b3b74c745). For QIDI Studio or older Orca, [copy the start G-code by hand](docs/install.md#slicer-start-g-code).
 5. Slice using the printer profile `Qidi X-Max 4 0.4 nozzle - TLTG Optimized GCode`. Optionally, make a copy and customize it.
 
-On firmware `01.01.07.01`, the installer first asks whether to flash a fix for the toolhead board's accelerometer. **The default is No.** If you say yes, **rerun input shaper calibration before printing**; see [Firmware fixes](docs/firmware.md).
+On firmware `01.01.07.01`, the installer first asks whether to flash a fix for the toolhead board's accelerometer. **The default is No.** If you say yes, **run input shaper calibration before bed leveling or printing**; see [Firmware fixes](docs/firmware.md).
 
 [Dry run, automatic updates, updating, and uninstalling →](docs/install.md)
 

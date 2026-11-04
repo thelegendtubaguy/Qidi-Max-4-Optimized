@@ -79,6 +79,8 @@ install:
       - "spoolman.cfg"
       - "macro_status.cfg"
       - "klipper_fixes.cfg"
+      - "input_shaper.cfg"
+      - "printer_warnings.cfg"
 
   ensure_lines:
     - id: include_optimized_macros
@@ -105,6 +107,9 @@ install:
     - id: macro_status
       source: "klipper/tltg/macro_status.py"
       destination: "klippy/extras/tltg_macro_status.py"
+    - id: printer_warnings
+      source: "klipper/tltg/printer_warnings.py"
+      destination: "klippy/extras/tltg_printer_warnings.py"
     - id: klipper_fixes
       source: "klipper/tltg/klipper_fixes.py"
       destination: "klippy/extras/tltg_klipper_fixes.py"
@@ -537,10 +542,10 @@ system_optimizations:
     service_worker: /home/qidi/fluidd/sw.js
   # The project's Fluidd fork release; the bundle builder downloads and verifies it.
   fluidd_build:
-    version: v1.37.7-tltg-a73fa74
-    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-a73fa74/fluidd.zip
+    version: v1.37.7-tltg-4703af0
+    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-4703af0/fluidd.zip
     archive: system/fluidd.zip
-    sha256: 74e775fc4d74af670b5768c9ea79f67ea6db98a3ceb3e05b7495cc6f4efba8fb
+    sha256: 93101e1c528717548e38e6d0b8192cfef98a82210f5bbac9a4fcd4324a8d6734
   # Wheels for QIDI's Moonraker virtualenv (Python 3.9, aarch64); the bundle builder downloads and verifies them.
   moonraker_speedups:
     wheels:

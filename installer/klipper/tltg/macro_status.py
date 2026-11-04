@@ -15,10 +15,16 @@
 #   loaded_slot    the slot multi_color_controller reports as loaded, or ""
 #                  without it
 #   max_accel      [printer] max_accel from printer.cfg
+#   input_shaper   loaded: [input_shaper] exists, so SET_INPUT_SHAPER works
+#                  unshaped_axes: axes whose live shaper has no frequency, so
+#                  calibration and SET_INPUT_SHAPER count without a restart
+#                  saved: both axes have a frequency in printer.cfg, including
+#                  a calibration waiting for SAVE_CONFIG
 
 import logging
 
 VENDOR_TOOL_CHANGE = "T_MANAGER"
+SHAPER_AXES = ("x", "y")
 
 
 class MacroStatus:
@@ -26,6 +32,12 @@ class MacroStatus:
         self.printer = config.get_printer()
         self.gcode = self.printer.lookup_object("gcode")
         self.max_accel = config.getsection("printer").getfloat("max_accel")
+        self.startup_shaper_freq = {}
+        if config.has_section("input_shaper"):
+            section = config.getsection("input_shaper")
+            for axis in SHAPER_AXES:
+                self.startup_shaper_freq[axis] = section.getfloat(
+                    "shaper_freq_" + axis, 0., note_valid=False)
         self.status_failed = set()
 
     def _status(self, name, eventtime):
@@ -80,6 +92,39 @@ class MacroStatus:
         box = self._status("multi_color_controller", eventtime).get("box")
         return box.get("loaded_slot", "") if hasattr(box, "get") else ""
 
+    def unshaped_axes(self, input_shaper):
+        if input_shaper is None:
+            return "".join(SHAPER_AXES)
+        try:
+            return "".join(shaper.axis for shaper in input_shaper.get_shapers()
+                           if not shaper.params.shaper_freq > 0.)
+        except Exception:
+            if "input_shaper" not in self.status_failed:
+                logging.exception("tltg_macro_status: input_shaper check failed")
+            self.status_failed.add("input_shaper")
+            return ""
+
+    def saved_shaper_freq(self, axis):
+        # SHAPER_CALIBRATE stores its result in configfile's autosave, which
+        # also holds the SAVE_CONFIG values printer.cfg was loaded with.
+        configfile = self.printer.lookup_object("configfile", None)
+        autosave = getattr(getattr(configfile, "autosave", None), "fileconfig", None)
+        option = "shaper_freq_" + axis
+        try:
+            if autosave is not None and autosave.has_option("input_shaper", option):
+                return float(autosave.get("input_shaper", option))
+        except ValueError:
+            return 0.
+        return self.startup_shaper_freq.get(axis, 0.)
+
+    def input_shaper(self):
+        input_shaper = self.printer.lookup_object("input_shaper", None)
+        return {
+            "loaded": input_shaper is not None,
+            "unshaped_axes": self.unshaped_axes(input_shaper),
+            "saved": all(self.saved_shaper_freq(axis) > 0. for axis in SHAPER_AXES),
+        }
+
     def get_status(self, eventtime=None):
         if eventtime is None:
             eventtime = self.printer.get_reactor().monotonic()
@@ -88,6 +133,7 @@ class MacroStatus:
             "vendor_flow": self.vendor_flow(),
             "loaded_slot": self.loaded_slot(eventtime),
             "max_accel": self.max_accel,
+            "input_shaper": self.input_shaper(),
         }
 
 
