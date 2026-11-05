@@ -1,0 +1,58 @@
+name: Feature request
+description: Suggest something Valve Oil could do, or do better.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The problem or annoyance, in terms of what happens on the printer today.
+      placeholder: "Every print start spends 40 seconds ... when ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to happen instead?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Print start or end
+        - Filament changes
+        - QIDI Box
+        - Spoolman
+        - Fluidd
+        - Installer or updates
+        - Slicer profiles or G-code
+        - Tools and calibration
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: printer
+    attributes:
+      label: Printer
+      multiple: true
+      options:
+        - QIDI Max 4
+        - QIDI Plus 5
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do today instead
+      description: Workarounds, other projects or printers that do this well, or settings you've tried.
+    validations:
+      required: false
