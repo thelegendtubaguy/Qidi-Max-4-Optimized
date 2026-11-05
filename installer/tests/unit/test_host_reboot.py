@@ -9,8 +9,8 @@ from pathlib import Path
 from installer.runtime.host_reboot import (
     HostRebootError,
     arm_auto_update_reboot_followup,
-    maybe_offer_recommended_reboot,
     maybe_schedule_host_reboot,
+    maybe_schedule_recommended_reboot,
     perform_scheduled_host_reboot,
     read_host_reboot_marker,
     recommend_reboot,
@@ -161,41 +161,37 @@ class HostRebootTests(unittest.TestCase):
         self.assertIn("--on-active=30s", calls[1])
         self.assertNotIn("reboot", calls[1])
 
-    def test_recommended_reboot_is_offered_once_per_boot_and_rechecks_idle_before_rebooting(self):
+    def test_recommended_reboot_is_scheduled_once_per_boot_and_rechecks_idle_before_rebooting(self):
         calls: list[list[str]] = []
 
         def run(command, **kwargs):
             calls.append(command)
             return subprocess.CompletedProcess(command, 0)
 
-        def offer(input_stream, explicit=False):
+        def schedule(state="standby"):
             report = io.StringIO()
-            scheduled = maybe_offer_recommended_reboot(
+            scheduled = maybe_schedule_recommended_reboot(
                 self.paths,
                 reporter=PlainReporter(report),
-                input_stream=input_stream,
+                input_stream=None,
                 environ={},
-                explicit=explicit,
-                urlopen=moonraker_urlopen("standby"),
+                urlopen=moonraker_urlopen(state),
                 run=run,
             )
             return scheduled, report.getvalue()
 
-        # Nothing applied, nothing offered.
-        self.assertEqual(offer(io.StringIO("y\n")), (False, ""))
+        # Nothing applied, no reboot.
+        self.assertEqual(schedule(), (False, ""))
         recommend_reboot(self.paths)
-        # Declined, or without a terminal, the installer says to reboot and does nothing else.
-        for stream in (io.StringIO("n\n"), None):
-            scheduled, report = offer(stream)
-            self.assertFalse(scheduled)
-            self.assertIn("sudo reboot", report)
+        # During a print the installer says to reboot and does nothing else.
+        scheduled, report = schedule("printing")
+        self.assertFalse(scheduled)
+        self.assertIn("sudo reboot", report)
         self.assertEqual(calls, [])
-        # Accepted, or asked for with --reboot-host, the reboot is delayed through complete-host-reboot.
-        for stream, explicit in ((io.StringIO("y\n"), False), (None, True)):
-            calls.clear()
-            self.assertTrue(offer(stream, explicit)[0])
-            self.assertIn("--on-active=10s", calls[-1])
-            self.assertIn("complete-host-reboot", calls[-1])
+        # Otherwise it reboots without asking, delayed through complete-host-reboot.
+        self.assertTrue(schedule()[0])
+        self.assertIn("--on-active=10s", calls[-1])
+        self.assertIn("complete-host-reboot", calls[-1])
         calls.clear()
         self.assertFalse(
             perform_scheduled_host_reboot(
@@ -213,8 +209,64 @@ class HostRebootTests(unittest.TestCase):
         self.assertEqual(calls[-1][-2:], ["systemctl", "reboot"])
         # Any reboot satisfies the recommendation.
         self.boot_id.write_text("boot-two\n", encoding="utf-8")
-        self.assertEqual(offer(io.StringIO("y\n")), (False, ""))
+        self.assertEqual(schedule(), (False, ""))
         self.assertFalse(self.paths.reboot_recommended_path.exists())
+
+    def test_automatic_update_reboots_only_after_klipper_has_been_idle(self):
+        def klipper(*, still_for=600.0, target=0.0, print_state="standby", command="Ready", webhooks="ready"):
+            return moonraker_urlopen(raw_payload={"result": {"status": {
+                "heaters": {"available_heaters": ["extruder", "heater_generic heater_box1"]},
+                "print_stats": {"state": print_state},
+                "webhooks": {"state": webhooks},
+                "idle_timeout": {"state": command},
+                "toolhead": {"print_time": 1000.0, "estimated_print_time": 1000.0 + still_for},
+                "extruder": {"target": 0.0},
+                "heater_generic heater_box1": {"target": target},
+            }}})
+
+        calls: list[list[str]] = []
+
+        def run(command, **kwargs):
+            calls.append(command)
+            return subprocess.CompletedProcess(command, 0)
+
+        recommend_reboot(self.paths)
+        self._write_marker(source="auto_update_reconcile")
+        busy = {
+            "moved recently": klipper(still_for=599.0),
+            "Box drying": klipper(target=50.0),
+            "running a command": klipper(command="Printing"),
+            "paused": klipper(print_state="paused"),
+            "shut down": klipper(webhooks="shutdown"),
+            "unreadable": moonraker_urlopen("standby"),
+        }
+        for reason, urlopen in busy.items():
+            with self.subTest(reason=reason):
+                self.assertFalse(maybe_schedule_recommended_reboot(
+                    self.paths, reporter=PlainReporter(io.StringIO()), input_stream=None, environ={},
+                    require_klipper_idle=True, urlopen=urlopen, run=run,
+                ))
+                self.assertFalse(maybe_schedule_host_reboot(
+                    self.paths, reporter=PlainReporter(io.StringIO()), input_stream=None, environ={},
+                    automatic=True, require_klipper_idle=True, urlopen=urlopen, run=run,
+                ))
+                self.assertFalse(perform_scheduled_host_reboot(
+                    self.paths, reporter=PlainReporter(io.StringIO()), environ={},
+                    require_klipper_idle=True, urlopen=urlopen, run=run,
+                ))
+                self.assertEqual(calls, [])
+
+        self.assertTrue(maybe_schedule_host_reboot(
+            self.paths, reporter=PlainReporter(io.StringIO()), input_stream=None, environ={},
+            automatic=True, require_klipper_idle=True, urlopen=klipper(), run=run,
+        ))
+        # The delayed reboot checks Klipper again before it runs.
+        self.assertEqual(calls[-1][-3:], ["complete-host-reboot", "--plain", "--require-klipper-idle"])
+        self.assertTrue(perform_scheduled_host_reboot(
+            self.paths, reporter=PlainReporter(io.StringIO()), environ={},
+            require_klipper_idle=True, urlopen=klipper(), run=run,
+        ))
+        self.assertEqual(calls[-1][-2:], ["systemctl", "reboot"])
 
 
 if __name__ == "__main__":

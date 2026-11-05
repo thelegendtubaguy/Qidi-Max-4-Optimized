@@ -359,10 +359,8 @@ def maybe_apply_system_optimizations(
         reporter=reporter,
         input_stream=input_stream,
         cli_options=cli_options,
-        auto_update_child=auto_update_child,
+        ai_detection_running=lambda: _ai_detection_running(spec, paths=paths, environ=environ, run=run),
     )
-    if policy is None:
-        return state
     ledger = _ledger_with_policy(state.system_ledger, policy)
     if not _system_root_allowed(paths=paths, environ=environ):
         reporter.debug(event="system_optimizations.skipped", reason="non-default-system-root")
@@ -471,13 +469,10 @@ def maybe_reconcile_system_optimizations(
         state = load_installed_state(state_path)
     except StateValidationError:
         return
-    policy = state.system_ledger.get("policy") if isinstance(state.system_ledger, dict) else None
-    if not isinstance(policy, dict):
-        return
-    ledger = _ledger_with_policy(state.system_ledger, {
-        "system_optimizations": str(policy.get("system_optimizations", "disabled")),
-        "ai_detection": str(policy.get("ai_detection", "unset")),
-    })
+    ledger = _ledger_with_policy(
+        state.system_ledger,
+        _noninteractive_policy(state.system_ledger, SystemOptimizationCliOptions()),
+    )
     if not _system_root_allowed(paths=paths, environ=environ):
         return
     try:
@@ -519,12 +514,8 @@ def maybe_emit_system_dry_run(
     if manifest.system_optimizations is None:
         return
     prior_ledger = prior_state.system_ledger if prior_state is not None else None
-    policy = _noninteractive_policy(prior_ledger, cli_options, auto_update_child=False)
-    if policy is None:
-        policy = {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}
+    policy = _noninteractive_policy(prior_ledger, cli_options)
     reporter.line("System optimizations dry-run:")
-    if policy.get("system_optimizations") != "enabled":
-        reporter.line("  - optional OS optimizations skipped by policy")
     for operation_id in _selected_operation_ids(manifest.system_optimizations, policy):
         if operation_id in FLUIDD_BUNDLE_OPERATIONS and _system_root_allowed(paths=paths, environ=environ):
             if _fluidd_build_served(manifest.system_optimizations, _system_root(environ)):
@@ -1095,28 +1086,15 @@ def resolve_policy(
     reporter,
     input_stream,
     cli_options: SystemOptimizationCliOptions,
-    auto_update_child: bool,
-) -> dict[str, str] | None:
-    explicit = _noninteractive_policy(
-        prior_ledger,
-        cli_options,
-        auto_update_child=auto_update_child,
-        interactive=input_stream is not None,
-    )
-    if explicit is not None:
-        return explicit
-    if auto_update_child:
-        return None
-    if input_stream is None:
-        return {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}
-    if not confirm_yes(
-        reporter=reporter,
-        input_stream=input_stream,
-        question=messages.SYSTEM_OPTIMIZATIONS_PROMPT,
-        instruction=messages.SYSTEM_OPTIMIZATIONS_PROMPT_INSTRUCTION,
-        cancel_message=messages.SYSTEM_OPTIMIZATIONS_SKIPPED,
-    ):
-        return {"system_optimizations": "disabled", "ai_detection": "unset"}
+    ai_detection_running: Callable[[], bool],
+) -> dict[str, str]:
+    """Every install and update applies the OS optimizations; only whether AI detection stays on is the operator's."""
+    policy = _noninteractive_policy(prior_ledger, cli_options)
+    if cli_options.disable_ai_detection or cli_options.keep_ai_detection or input_stream is None:
+        return policy
+    # The operator is asked only while AI detection is on; otherwise their earlier choice stands.
+    if not ai_detection_running():
+        return policy
     if prompt_yes(
         reporter=reporter,
         input_stream=input_stream,
@@ -1125,6 +1103,17 @@ def resolve_policy(
     ):
         return {"system_optimizations": "enabled", "ai_detection": "disable"}
     return {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}
+
+
+def _ai_detection_running(spec: SystemOptimizationsSpec, *, paths: RuntimePaths, environ: dict[str, str], run) -> bool:
+    if not _system_root_allowed(paths=paths, environ=environ):
+        return True
+    root = _system_root(environ)
+    for item in spec.services.optional_disable:
+        state = _service_state(item.service, root=root, run=run)
+        if state["exists"] and not _service_state_is_disabled(state):
+            return True
+    return False
 
 
 def apply_system_optimizations(
@@ -3240,30 +3229,15 @@ def _validate_archive_members(members: list[tarfile.TarInfo]) -> None:
 def _noninteractive_policy(
     prior_ledger: dict[str, Any] | None,
     cli_options: SystemOptimizationCliOptions,
-    *,
-    auto_update_child: bool,
-    interactive: bool = False,
-) -> dict[str, str] | None:
-    if cli_options.skip_system_optimizations:
-        return {"system_optimizations": "disabled", "ai_detection": "unset"}
-    prior_policy = prior_ledger.get("policy") if isinstance(prior_ledger, dict) else None
-    use_prior_policy = (
-        isinstance(prior_policy, dict)
-        and (auto_update_child or not interactive)
-        and not (cli_options.disable_ai_detection or cli_options.keep_ai_detection)
-    )
-    if use_prior_policy:
-        return {
-            "system_optimizations": str(prior_policy.get("system_optimizations", "disabled")),
-            "ai_detection": str(prior_policy.get("ai_detection", "unset")),
-        }
-    if auto_update_child:
-        return None
+) -> dict[str, str]:
+    """Enable the OS optimizations whatever an earlier install chose, keeping its AI detection choice unless a flag overrides it."""
     if cli_options.disable_ai_detection:
         return {"system_optimizations": "enabled", "ai_detection": "disable"}
     if cli_options.keep_ai_detection:
         return {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}
-    return None
+    prior_policy = prior_ledger.get("policy") if isinstance(prior_ledger, dict) else None
+    disable = isinstance(prior_policy, dict) and prior_policy.get("ai_detection") == "disable"
+    return {"system_optimizations": "enabled", "ai_detection": "disable" if disable else "keep_enabled"}
 
 
 def system_ledger_needs_migration(ledger: dict[str, Any] | None) -> bool:

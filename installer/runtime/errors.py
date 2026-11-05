@@ -53,6 +53,11 @@ class ActivePrintError(InstallerError):
         super().__init__(messages.CANNOT_CONTINUE_ACTIVE_PRINT)
 
 
+class KlipperBusyError(InstallerError):
+    def __init__(self):
+        super().__init__(messages.KLIPPER_BUSY)
+
+
 class FreeSpaceError(InstallerError):
     def __init__(self):
         super().__init__(messages.NOT_ENOUGH_FREE_SPACE)

@@ -448,7 +448,6 @@ class InstalledState:
 
 @dataclass(frozen=True)
 class SystemOptimizationCliOptions:
-    skip_system_optimizations: bool = False
     disable_ai_detection: bool = False
     keep_ai_detection: bool = False
     keep_system_optimizations: bool = False

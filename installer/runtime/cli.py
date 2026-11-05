@@ -23,7 +23,7 @@ from .demo import resolve_demo_tui_delay_seconds, run_demo
 from .errors import ActivePrintError, InstallerError, OperationCancelled, PrinterStateError
 from .host_reboot import (
     HostRebootError,
-    maybe_offer_recommended_reboot,
+    maybe_schedule_recommended_reboot,
     maybe_schedule_host_reboot,
     perform_scheduled_host_reboot,
     read_host_reboot_marker,
@@ -155,6 +155,7 @@ def main(
                         paths,
                         reporter=reporter,
                         environ=env,
+                        require_klipper_idle=args.require_klipper_idle,
                     )
                 elif read_host_reboot_marker(paths) is None:
                     perform_scheduled_host_reboot(
@@ -162,6 +163,7 @@ def main(
                         reporter=reporter,
                         environ=env,
                         recommended=True,
+                        require_klipper_idle=args.require_klipper_idle,
                     )
             return 0
 
@@ -208,6 +210,7 @@ def main(
                         input_stream=None,
                         environ=env,
                         automatic=True,
+                        require_klipper_idle=True,
                     )
                     reporter.debug(
                         event="cli.complete",
@@ -254,6 +257,15 @@ def main(
                         input_stream=None,
                         environ=env,
                         automatic=True,
+                        require_klipper_idle=True,
+                    )
+                elif pending_reboot is None:
+                    maybe_schedule_recommended_reboot(
+                        paths,
+                        reporter=reporter,
+                        input_stream=None,
+                        environ=env,
+                        require_klipper_idle=True,
                     )
                 reporter.debug(
                     event="cli.complete",
@@ -386,7 +398,9 @@ def main(
                     system_options=_system_options_from_args(args),
                 )
         if args.dry_run:
-            if args.reboot_host:
+            if args.mode == "install":
+                reporter.line("Host reboot dry-run: would schedule a delayed reboot after successful completion if a system change needs one.")
+            elif args.reboot_host:
                 reporter.line("Host reboot dry-run: would schedule a delayed reboot after successful completion.")
         elif (
             not lock_inherited
@@ -403,15 +417,15 @@ def main(
                 input_stream=input_stream,
                 environ=env,
                 explicit=args.reboot_host,
+                automatic=args.mode == "install",
             )
         elif not lock_inherited and args.mode == "install" and read_host_reboot_marker(paths) is None:
-            # Without a pending Rockchip reboot, offer the reboot that host tuning changes recommend.
-            maybe_offer_recommended_reboot(
+            # Without a pending Rockchip reboot, reboot for the host tuning changes.
+            maybe_schedule_recommended_reboot(
                 paths,
                 reporter=reporter,
                 input_stream=input_stream,
                 environ=env,
-                explicit=args.reboot_host,
             )
         reporter.debug(event="cli.complete", mode=args.mode, return_code=0)
         return 0
@@ -548,11 +562,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--backup", help="Backup label or path to restore with restore-backup mode.")
     parser.add_argument("--yes", action="store_true", help="Run non-interactively using default yes-mode choices.")
     parser.add_argument("--flash-thr-fifo", action="store_true", help="Explicitly opt in to the Max 4 01.01.07.01 THR FIFO firmware fix; requires idle/ready state, zero heater targets, and verified readback. Not enabled by --yes or automatic updates.")
-    parser.add_argument("--skip-system-optimizations", action="store_true", help="Skip DNS, APT, qidiclient GIF, Rockchip root-mount, VPN, Bluetooth, and AI service changes.")
     parser.add_argument("--disable-ai-detection", action="store_true", help="Disable the QIDI AI detection backend service when system optimizations run.")
     parser.add_argument("--keep-ai-detection", action="store_true", help="Keep the QIDI AI detection backend service enabled when system optimizations run.")
     parser.add_argument("--keep-system-optimizations", action="store_true", help="During uninstall, keep the DNS, APT, qidiclient GIF, Rockchip root-mount, VPN, Bluetooth, and AI service changes.")
-    parser.add_argument("--reboot-host", action="store_true", help="Authorize a pending managed host OS reboot after successful install or uninstall.")
+    parser.add_argument("--reboot-host", action="store_true", help="Authorize a pending managed host OS reboot after successful uninstall; install reboots without it.")
+    parser.add_argument("--require-klipper-idle", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--uninstall", action="store_true", help="Compatibility alias for the uninstall mode.")
     parser.add_argument("--clear-recovery-sentinel", action="store_true", help="Compatibility alias for the clear-recovery-sentinel mode.")
     auto_update_actions = parser.add_mutually_exclusive_group()
@@ -591,9 +605,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--yes is only supported with install, uninstall, and auto-update-check.")
     if args.disable_ai_detection and args.keep_ai_detection:
         parser.error("--disable-ai-detection and --keep-ai-detection cannot be combined.")
-    if args.skip_system_optimizations and (args.disable_ai_detection or args.keep_ai_detection):
-        parser.error("AI detection flags cannot be combined with --skip-system-optimizations.")
-    if (args.skip_system_optimizations or args.disable_ai_detection or args.keep_ai_detection) and args.mode not in {"install", "uninstall"}:
+    if (args.disable_ai_detection or args.keep_ai_detection) and args.mode not in {"install", "uninstall"}:
         parser.error("system optimization flags are only supported with install and uninstall.")
     if args.keep_system_optimizations and args.mode != "uninstall":
         parser.error("--keep-system-optimizations is only supported with uninstall.")
@@ -605,6 +617,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--box is only supported with box-firmware.")
     if args.reboot_host and args.mode not in {"install", "uninstall"}:
         parser.error("--reboot-host is only supported with install and uninstall.")
+    if args.require_klipper_idle and args.mode != "complete-host-reboot":
+        parser.error("--require-klipper-idle is only supported with complete-host-reboot.")
     return args
 
 def _normalize_command_aliases(argv: list[str] | None) -> list[str] | None:
@@ -624,7 +638,6 @@ def installer_version(bundle_root: Path) -> str:
 
 def _system_options_from_args(args: argparse.Namespace) -> SystemOptimizationCliOptions:
     return SystemOptimizationCliOptions(
-        skip_system_optimizations=args.skip_system_optimizations,
         disable_ai_detection=args.disable_ai_detection,
         keep_ai_detection=args.keep_ai_detection,
         keep_system_optimizations=args.keep_system_optimizations,
