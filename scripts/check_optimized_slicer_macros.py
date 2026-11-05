@@ -8,7 +8,6 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-OPTIMIZED_MACRO_DIR = REPO_ROOT / "installer" / "klipper" / "tltg-optimized-macros"
 
 GCODE_MACRO_RE = re.compile(r"^\[gcode_macro\s+([^\]]+)\]\s*$", re.IGNORECASE)
 COMMAND_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_.]*)(?=$|[\s\[])")
@@ -79,9 +78,9 @@ QIDISTUDIO_BANNED_PATTERNS = (
 )
 
 
-def iter_macro_names(macro_dir: Path = OPTIMIZED_MACRO_DIR) -> set[str]:
+def iter_macro_names(*macro_dirs: Path) -> set[str]:
     macros: set[str] = set()
-    for path in sorted(macro_dir.rglob("*.cfg")):
+    for path in sorted(path for macro_dir in macro_dirs for path in macro_dir.rglob("*.cfg")):
         for line in path.read_text().splitlines():
             match = GCODE_MACRO_RE.match(line.strip())
             if match:
@@ -162,8 +161,11 @@ def validate_qidistudio_compatibility(repo_root: Path, path: Path) -> list[str]:
 def validate_repo(
     repo_root: Path = REPO_ROOT,
 ) -> tuple[list[str], list[Path], set[str]]:
-    macro_dir = repo_root / "installer" / "klipper" / "tltg-optimized-macros"
-    macros = iter_macro_names(macro_dir)
+    # The slicer packs target the Max 4, so they may call its printer-specific macros too.
+    macros = iter_macro_names(
+        repo_root / "installer" / "klipper" / "tltg-optimized-macros",
+        repo_root / "installer" / "klipper" / "printers" / "max4",
+    )
     dynamic_prefixes = build_dynamic_prefixes(macros)
     failures: list[str] = []
     checked_files = iter_slicer_files(repo_root)

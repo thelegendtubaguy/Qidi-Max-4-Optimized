@@ -293,6 +293,7 @@ def _parse_printers(raw: dict[str, Any]) -> tuple[PrinterSpec, ...]:
             stock_snapshots=_validate_relative_path(
                 _require_str(item, "stock_snapshots"), allowed_roots=("stock",)
             ),
+            macros=_validate_relative_path(_require_str(item, "macros"), allowed_roots=("klipper",)),
         )
         if printer.id in ids:
             raise ManifestValidationError(f"Duplicate printer id: {printer.id}")

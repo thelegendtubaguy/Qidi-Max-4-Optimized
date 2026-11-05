@@ -215,7 +215,7 @@ def _restore_stock_files(*, source_root: Path, paths: RuntimePaths, journal: Rol
         )
         if item.is_dir():
             ensure_runtime_tree_has_no_symlinks(target)
-            mirror_tree(source_root=item, destination_root=target, journal=journal)
+            mirror_tree(source_roots=(item,), destination_root=target, journal=journal)
         elif item.is_file():
             journal.track_file(target)
             data = item.read_bytes()

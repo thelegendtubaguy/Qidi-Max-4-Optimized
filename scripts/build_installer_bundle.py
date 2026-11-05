@@ -20,6 +20,7 @@ from installer.runtime import fluidd_build
 from installer.runtime import moonraker_speedups
 from installer.runtime.compatibility import load_supported_upgrade_sources, validate_manifest_compatibility
 from installer.runtime.manifest import load_manifest
+from installer.runtime.mirror import managed_tree_source_files
 from installer.runtime.naming import BUNDLE_NAME_PREFIX, BUNDLE_ROOT_NAME
 ALLOWED_FILES = [
     "LICENSE",
@@ -47,6 +48,7 @@ ALLOWED_DIRECTORIES = [
     "LICENSES",
     "installer/runtime",
     "installer/klipper/tltg-optimized-macros",
+    "installer/klipper/printers",
     "installer/klipper/qidi",
     "installer/klipper/tltg",
     "installer/stock",
@@ -70,6 +72,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     validate_manifest_compatibility(manifest, compatibility)
     validate_source_payloads(manifest)
+    validate_printer_macro_trees(manifest)
     fluidd_archive = fetch_fluidd_build(manifest)
     speedup_wheels = fetch_moonraker_speedups(manifest)
 
@@ -156,6 +159,31 @@ def validate_source_payloads(manifest) -> None:
                     f"{patch.id} for {variant.firmware} stock "
                     f"{variant.expected_sha256}"
                 )
+
+
+def validate_printer_macro_trees(manifest) -> None:
+    """Each printer's macro folder must complete the common macros without replacing any of them, and every
+    printer's folder must define the same config sections so each printer has the same macros."""
+    sections_by_printer: dict[str, set[str]] = {}
+    for printer in manifest.printers:
+        common, printer_source = manifest.managed_tree_sources(printer.firmware[0])
+        managed_tree_source_files(
+            (REPO_ROOT / "installer" / common, REPO_ROOT / "installer" / printer_source),
+            required_files=manifest.managed_tree.required_files,
+        )
+        sections_by_printer[printer.id] = {
+            line.strip().lower()
+            for path in sorted((REPO_ROOT / "installer" / printer_source).rglob("*.cfg"))
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.startswith("[")
+        }
+    expected_id, expected = next(iter(sections_by_printer.items()))
+    for printer_id, sections in sections_by_printer.items():
+        if sections != expected:
+            raise ValueError(
+                f"Printer macros for {printer_id} and {expected_id} differ in sections: "
+                + ", ".join(sorted(sections ^ expected))
+            )
 
 
 def fetch_fluidd_build(manifest) -> Path:

@@ -9,7 +9,7 @@ from . import klipper_cfg, patches, safety
 from .ensure_lines import has_active_line
 from .manifest import active_patch_entries, select_patch_variant
 from .errors import PathSafetyError, PreflightTargetsError
-from .mirror import validate_managed_tree_source
+from .mirror import managed_tree_source_files, managed_tree_source_roots
 from .path_safety import (
     ensure_external_path_has_no_symlink_components,
     ensure_install_paths_safe,
@@ -33,17 +33,20 @@ def run_install_environment_preflight(
     *,
     paths: RuntimePaths,
     manifest: Manifest,
+    detected_firmware: str,
     reporter=None,
     disk_usage: DiskUsageFn = shutil.disk_usage,
     urlopen: UrlOpenFn = urllib.request.urlopen,
 ) -> None:
     ensure_install_paths_safe(paths=paths, manifest=manifest)
     printer_state = safety.ensure_printer_idle(paths.moonraker_url, urlopen=urlopen)
-    validate_managed_tree_source(
-        paths.installer_root / manifest.managed_tree.source,
+    source_files = managed_tree_source_files(
+        managed_tree_source_roots(paths, manifest, detected_firmware),
         required_files=manifest.managed_tree.required_files,
     )
-    required_bytes = estimate_install_free_bytes(paths=paths, manifest=manifest)
+    required_bytes = estimate_install_free_bytes(
+        paths=paths, manifest=manifest, managed_tree_files=tuple(source_files.values())
+    )
     free_bytes = safety.ensure_sufficient_free_space(
         paths.printer_data_root,
         required_bytes,
@@ -221,7 +224,9 @@ def build_uninstall_preflight_report(
 
 
 
-def estimate_install_free_bytes(*, paths: RuntimePaths, manifest: Manifest) -> int:
+def estimate_install_free_bytes(
+    *, paths: RuntimePaths, manifest: Manifest, managed_tree_files: tuple[Path, ...]
+) -> int:
     external_paths = tuple(
         paths.managed_klipper_root / patch.destination
         for patch in manifest.install.source_patches
@@ -231,9 +236,7 @@ def estimate_install_free_bytes(*, paths: RuntimePaths, manifest: Manifest) -> i
     )
     rollback_paths = _install_rollup_paths(paths=paths, manifest=manifest)
     rollback_reserve = sum(safety.file_size(path) for path in rollback_paths)
-    managed_tree_write = safety.total_tree_size(
-        paths.installer_root / manifest.managed_tree.source
-    )
+    managed_tree_write = sum(safety.file_size(path) for path in managed_tree_files)
     config_writes = sum(
         safety.file_size(paths.printer_data_root / spec.file)
         for spec in manifest.install.ensure_lines

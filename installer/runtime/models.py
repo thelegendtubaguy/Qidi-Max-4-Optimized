@@ -132,6 +132,7 @@ class PrinterSpec:
     soc_file_prefix: str
     firmware: tuple[str, ...]
     stock_snapshots: str
+    macros: str
 
 
 @dataclass(frozen=True)
@@ -346,6 +347,13 @@ class Manifest:
             if firmware_version in printer.firmware:
                 return printer
         return None
+
+    # The managed tree installs the common macros plus the printer's own macro folder.
+    def managed_tree_sources(self, firmware_version: str) -> tuple[str, ...]:
+        printer = self.printer_for_firmware(firmware_version)
+        if printer is None:
+            raise ValueError(f"No printer supports firmware {firmware_version}.")
+        return (self.install.managed_tree.source, printer.macros)
 
     @property
     def managed_tree(self) -> ManagedTreeSpec:

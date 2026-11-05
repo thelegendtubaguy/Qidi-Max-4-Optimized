@@ -16,7 +16,7 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 | What | Change |
 |---|---|
 | `printer.cfg` | Adds `[include tltg-optimized-macros/*.cfg]`, and changes recognized QIDI values for homing speed and retraction, Z-tilt and mesh travel speed, closed-loop homing timing, and a few others. |
-| `config/tltg-optimized-macros/` | The optimized macros. QIDI's own macros in `klipper-macros-qd/` stay in place, so files sliced with stock G-code print as before. |
+| `config/tltg-optimized-macros/` | The optimized macros. QIDI's own macros in `klipper-macros-qd/` stay in place, so files sliced with stock G-code print as before. `homing.cfg`, `nozzle_motion.cfg`, and `printer_profile.cfg` hold the printer's own homing, cutter, wiper, and chute moves and positions; the installer picks them for the printer it detects. |
 | QIDI's `RESUME`, `CUT_FILAMENT_1`, `M106`, `M109.0`, `homing_override`, `_km_apply_print_offset`, and external spool sensor sections | Removed from QIDI's files and replaced by optimized versions. |
 | `saved_variables.cfg` | Adds missing defaults for [this project's settings](settings.md) and repairs missing QIDI Box tool mappings. Existing values are kept. |
 | `config/qidi_filament_config` | A link to QIDI's filament files, for [editing them in Fluidd](qidi-box.md#editing-qidis-filament-list). Firmware `01.01.07.01` only. |

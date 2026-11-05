@@ -13,6 +13,7 @@ The installer SHALL identify the printer from its detected supported firmware, s
 - **WHEN** installation starts on firmware declared for a printer in `installer/package.yaml`
 - **THEN** exactly one complete firmware-scoped variant is selected for every required target
 - **AND** configuration, managed-source expectations, and stock snapshots come from that printer's baseline
+- **AND** the managed macro tree is the common optimized macros plus that printer's macro folder, which provides the same macro names on every printer and no file that the common macros also provide
 
 #### Scenario: Firmware naming another printer is refused
 - **WHEN** the firmware manifest's SOC file name does not carry the model prefix of the printer that owns the detected firmware version
