@@ -1,4 +1,4 @@
-# QIDI RS-485 device monitor for QIDI Max 4 Optimized.
+# QIDI RS-485 device monitor for Valve Oil.
 #
 # Firmware 01.01.07.01 loads QIDI's RS-485 stack (`[box485]`, `[box2base]`) for
 # Boxes, buffers, and filament racks that connect through a USB-to-RS-485
@@ -37,7 +37,7 @@ ROTATED_NAME = "tltg_box485.log.1"
 REPORT_NAME = "tltg_box485_report.json"
 SALT_NAME = ".tltg_box485_salt"
 FIRMWARE_MANIFEST = "/home/qidi/update/firmware_manifest.json"
-ISSUES_URL = "https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/issues"
+ISSUES_URL = "https://github.com/thelegendtubaguy/valve-oil/issues"
 
 SPAM_MESSAGE = "Can not find 485 device"
 SPAM_SUMMARY_INTERVAL = 3600.0

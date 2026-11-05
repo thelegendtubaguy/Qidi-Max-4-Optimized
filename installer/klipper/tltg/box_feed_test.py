@@ -1,4 +1,4 @@
-# QIDI Box feeder load/unload test for QIDI Max 4 Optimized.
+# QIDI Box feeder load/unload test for Valve Oil.
 #
 # Development tool, not part of the installed package. The bundle ships this
 # file but no manifest entry installs it. Repeatedly feeds one Box slot from its

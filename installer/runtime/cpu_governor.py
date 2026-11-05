@@ -13,7 +13,7 @@ SERVICE = "cpufrequtils.service"
 # Package-created files start with a marker line so later package versions replace earlier ones.
 MARKER = "# tltg-optimized:cpu-performance\n"
 CONTENT = MARKER + """\
-# Runs the CPU at full speed. Installed by QIDI Max 4 Optimized.
+# Runs the CPU at full speed. Installed by Valve Oil.
 ENABLE="true"
 GOVERNOR="performance"
 MAX_SPEED="0"

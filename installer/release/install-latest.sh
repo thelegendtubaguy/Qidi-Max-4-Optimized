@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-ARCHIVE_URL=${TLTG_INSTALLER_ARCHIVE_URL:-https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/tltg-optimized-macros.tar.gz}
+ARCHIVE_URL=${TLTG_INSTALLER_ARCHIVE_URL:-https://github.com/thelegendtubaguy/valve-oil/releases/latest/download/tltg-optimized-macros.tar.gz}
 CHECKSUM_URL=${TLTG_INSTALLER_CHECKSUM_URL:-${ARCHIVE_URL}.sha256}
 ARCHIVE_NAME=${ARCHIVE_URL##*/}
 ARCHIVE_NAME=${ARCHIVE_NAME%%\?*}

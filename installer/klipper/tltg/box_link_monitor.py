@@ -1,4 +1,4 @@
-# QIDI Box MCU link monitor for QIDI Max 4 Optimized.
+# QIDI Box MCU link monitor for Valve Oil.
 #
 # Records Box MCU link health to a dedicated file so a lost Box MCU can be
 # attributed after the fact. The module is inert until the saved variable

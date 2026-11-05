@@ -27,7 +27,7 @@ MARKER = "# tltg-optimized:priority\n"
 
 def content(operation: str) -> str:
     return MARKER + f"""\
-# Sets this service's CPU priority. Installed by QIDI Max 4 Optimized.
+# Sets this service's CPU priority. Installed by Valve Oil.
 [Service]
 Nice={NICE[operation]}
 """

@@ -1,4 +1,4 @@
-# QIDI Box filament ID guard for QIDI Max 4 Optimized.
+# QIDI Box filament ID guard for Valve Oil.
 #
 # Before a Box load, QIDI's controller compares the nozzle temperatures of the
 # target slot's saved filament ID and the last-loaded slot's. Its material

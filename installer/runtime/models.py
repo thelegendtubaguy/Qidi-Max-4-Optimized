@@ -117,13 +117,21 @@ class SectionPatchSpec:
 class PackageMeta:
     id: str
     display_name: str
-    printer_model: str
     version: str
 
 
 @dataclass(frozen=True)
 class FirmwareSpec:
     supported: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PrinterSpec:
+    id: str
+    display_name: str
+    soc_file_prefix: str
+    firmware: tuple[str, ...]
+    stock_snapshots: str
 
 
 @dataclass(frozen=True)
@@ -319,6 +327,7 @@ class SystemOptimizationsSpec:
 class Manifest:
     schema_version: int
     package: PackageMeta
+    printers: tuple[PrinterSpec, ...]
     firmware: FirmwareSpec
     backup: BackupSpec
     state: StateSpec
@@ -331,6 +340,12 @@ class Manifest:
     @property
     def state_file(self) -> str:
         return self.state.record_file
+
+    def printer_for_firmware(self, firmware_version: str) -> PrinterSpec | None:
+        for printer in self.printers:
+            if firmware_version in printer.firmware:
+                return printer
+        return None
 
     @property
     def managed_tree(self) -> ManagedTreeSpec:

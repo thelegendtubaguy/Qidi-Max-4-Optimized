@@ -16,7 +16,7 @@ FILES = {
 # Package-created files start with a marker line so later package versions replace earlier ones.
 MARKER = "# tltg-optimized:restart-on-exit\n"
 CONTENT = MARKER + """\
-# Restarts the service after any exit outside systemd. Installed by QIDI Max 4 Optimized.
+# Restarts the service after any exit outside systemd. Installed by Valve Oil.
 [Service]
 RemainAfterExit=no
 """

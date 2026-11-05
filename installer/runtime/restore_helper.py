@@ -22,7 +22,7 @@ from .backup import (
     requires_external_backup_manifest,
     UNKNOWN_FIRMWARE_TOKEN,
 )
-from .firmware import detect_firmware_version
+from .firmware import detect_firmware, supported_printer
 from .manifest import source_patch_variants_for_firmware
 from .models import Manifest, RuntimePaths
 from .path_safety import ensure_external_path_has_no_symlink_components
@@ -209,8 +209,9 @@ def _validate_external_restore_firmware(
     state_firmware: str | None,
     manifest_firmware: str | None,
 ) -> str:
-    current_firmware = detect_firmware_version(paths.firmware_manifest_path)
-    if current_firmware not in manifest.firmware.supported:
+    detected = detect_firmware(paths.firmware_manifest_path)
+    current_firmware = detected.version
+    if supported_printer(manifest, detected) is None:
         raise RestoreHelperError(
             f"External source restore does not support firmware {current_firmware}."
         )

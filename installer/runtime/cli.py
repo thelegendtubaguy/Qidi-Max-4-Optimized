@@ -522,7 +522,7 @@ def _host_reboot_operation_current(*, manifest, reporter, environ: dict[str, str
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="QIDI Max 4 Optimized installer runtime")
+    parser = argparse.ArgumentParser(description="Valve Oil installer runtime")
     parser.add_argument(
         "mode",
         choices=[
@@ -619,7 +619,7 @@ def _normalize_command_aliases(argv: list[str] | None) -> list[str] | None:
 
 def installer_version(bundle_root: Path) -> str:
     manifest = load_manifest(bundle_root / "installer/package.yaml")
-    return f"QIDI Max 4 Optimized installer {manifest.package.version}"
+    return f"{manifest.package.display_name} installer {manifest.package.version}"
 
 
 def _system_options_from_args(args: argparse.Namespace) -> SystemOptimizationCliOptions:

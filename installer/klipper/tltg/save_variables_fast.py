@@ -1,4 +1,4 @@
-# Faster SAVE_VARIABLE for QIDI Max 4 Optimized.
+# Faster SAVE_VARIABLE for Valve Oil.
 #
 # QIDI's SAVE_VARIABLE rewrites saved_variables.cfg from the values it holds in
 # memory, then reads and parses the whole file back. That takes about 40 ms on

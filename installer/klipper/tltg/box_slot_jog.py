@@ -1,4 +1,4 @@
-# QIDI Box slot jog for QIDI Max 4 Optimized.
+# QIDI Box slot jog for Valve Oil.
 #
 # TLTG_BOX_SLOT_JOG SLOT=<n> DISTANCE=<mm> [SPEED=<mm/s>] moves one Box
 # slot's filament toward the toolhead (positive DISTANCE) or back toward the

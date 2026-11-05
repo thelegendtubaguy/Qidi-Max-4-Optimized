@@ -1,4 +1,4 @@
-# QIDI Box heater refresh for QIDI Max 4 Optimized.
+# QIDI Box heater refresh for Valve Oil.
 #
 # Klipper resends a heater's unchanged output only every 3.75 s, against the
 # 5 s limit after which the heater's MCU shuts down. A QIDI Box heater reads its

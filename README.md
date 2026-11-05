@@ -1,6 +1,6 @@
 ![Tuba Makes](.github/images/tuba-makes-logo.png)
 
-# Qidi Max 4 Optimized
+# Valve Oil
 
 A faster, fixed, and more capable QIDI Max 4: optimized Klipper macros, slicer start G-code, and a current Fluidd, installed and removed with one command.
 
@@ -15,7 +15,7 @@ A faster, fixed, and more capable QIDI Max 4: optimized Klipper macros, slicer s
 1. SSH into your printer `qidi@<your printer's ip>`.
 2. Run this on your printer:
    ```bash
-   /bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/install-latest.sh)"
+   /bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/valve-oil/releases/latest/download/install-latest.sh)"
    ```
 3. Follow the prompts.
 4. In OrcaSlicer 2.4.0 or later, subscribe to the [OrcaCloud bundle](https://cloud.orcaslicer.com/b/4c4b3b74c745). For QIDI Studio or older Orca, [copy the start G-code by hand](docs/install.md#slicer-start-g-code).

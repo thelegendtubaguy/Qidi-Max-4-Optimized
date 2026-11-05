@@ -1,4 +1,4 @@
-# Spoolman spools for QIDI Box slots for QIDI Max 4 Optimized.
+# Spoolman spools for QIDI Box slots for Valve Oil.
 #
 # Moonraker's Spoolman integration charges extrusion to one active spool.
 # This module keeps a spool for each Box slot, and for the external spool,

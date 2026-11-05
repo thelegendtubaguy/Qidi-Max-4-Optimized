@@ -15,6 +15,7 @@ from .auto_update import LOCK_HELD_ENV
 from .errors import InstallerError
 from .firmware import detect_firmware_version
 from .fs_atomic import atomic_delete, atomic_write_bytes, atomic_write_text, fsync_directory
+from .naming import ISSUES_URL
 from .path_safety import ensure_runtime_path_has_no_symlink_components
 from .safety import THR_RECOVERY_MARKER
 from .sudo import authenticate_sudo, run_sudo
@@ -236,7 +237,7 @@ def flash_thr_firmware(
             except BaseException as exc:
                 raise ThrFirmwareError("THR service restoration/readiness is incomplete; recovery marker retained: " + str(marker)) from exc
             if unsupported_summary is not None:
-                reporter.line("The THR FIFO fix is unavailable for this bootloader. Your THR firmware was not changed. Please attach this shareable summary to a GitHub issue at https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/issues: " + str(unsupported_summary))
+                reporter.line("The THR FIFO fix is unavailable for this bootloader. Your THR firmware was not changed. Please attach this shareable summary to a GitHub issue at " + ISSUES_URL + ": " + str(unsupported_summary))
         else:
             reporter.line("THR firmware is unverified. Serial-owning services remain stopped. Recovery files: " + str(directory))
             reporter.line("Recover and verify THR before removing the firmware blocker: " + str(marker))

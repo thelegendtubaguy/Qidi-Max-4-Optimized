@@ -1,4 +1,4 @@
-# QIDI Box MCU chip temperature sensors for QIDI Max 4 Optimized.
+# QIDI Box MCU chip temperature sensors for Valve Oil.
 #
 # Adds `temperature_sensor BoxN_MCU`, the Box processor's own temperature, for
 # every Box MCU Klipper is configured with, so Fluidd and the Box link monitor
