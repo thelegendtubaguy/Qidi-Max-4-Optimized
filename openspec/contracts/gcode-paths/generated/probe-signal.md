@@ -11,7 +11,7 @@ Contract: `openspec/contracts/gcode-paths/probe-signal.path.json`
 
 Condition: `Python helper owns admission, sampling, console prompts, and response assessment`
 
-Source: `installer/klipper/tltg-optimized-macros/helpers.cfg:21-22`
+Source: `installer/klipper/tltg-optimized-macros/helpers.cfg:8-9`
 
 Direct visible macro calls in branch slice:
 

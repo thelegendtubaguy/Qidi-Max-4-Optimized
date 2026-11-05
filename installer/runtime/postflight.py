@@ -4,7 +4,7 @@ from . import klipper_cfg
 from .ensure_lines import has_active_line
 from .errors import PreflightTargetsError
 from .manifest import source_patch_variants_for_firmware
-from .mirror import collect_source_hashes, sha256_file
+from .mirror import collect_source_hashes, managed_tree_source_roots, sha256_file
 from .models import (
     EnsureLineSpec,
     InstalledState,
@@ -24,10 +24,10 @@ def verify_install_postflight(
     paths: RuntimePaths,
     manifest: Manifest,
     patch_results: tuple[PatchResult, ...] = (),
-    detected_firmware: str | None = None,
+    detected_firmware: str,
 ) -> None:
     expected_files = collect_source_hashes(
-        paths.installer_root / manifest.managed_tree.source,
+        managed_tree_source_roots(paths, manifest, detected_firmware),
         destination_root=paths.printer_data_root / manifest.managed_tree.destination,
         relative_to=paths.printer_data_root,
         required_files=manifest.managed_tree.required_files,

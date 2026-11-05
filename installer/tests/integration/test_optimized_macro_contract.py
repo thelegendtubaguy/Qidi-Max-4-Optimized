@@ -6,15 +6,22 @@ import types
 import unittest
 
 from installer.tests.helpers import REPO_ROOT
-from installer.tests.integration.test_macro_call_graph import extract_gcode_lines, iter_sections, parse_macro_definitions
+from installer.tests.integration.test_macro_call_graph import (
+    PRINTER_MACRO_ROOT,
+    extract_gcode_lines,
+    installed_macro_files,
+    iter_sections,
+    parse_macro_definitions,
+)
 
 
 OPTIMIZED_MACRO_ROOT = REPO_ROOT / "installer" / "klipper" / "tltg-optimized-macros"
+MAX4_MACRO_ROOT = PRINTER_MACRO_ROOT / "max4"
 
 
 class OptimizedMacroContractTests(unittest.TestCase):
     def setUp(self):
-        files = tuple(sorted(OPTIMIZED_MACRO_ROOT.glob("*.cfg")))
+        files = installed_macro_files("max4")
         self.macros, duplicates = parse_macro_definitions(files)
         if duplicates:
             self.fail("Optimized macro duplicate definitions are invalid for this test.")
@@ -43,12 +50,12 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertNotIn("[temperature_sensor Mainboard_MCU_Approx]", temperatures)
 
     def test_user_helper_macros_are_available(self):
-        helpers = (OPTIMIZED_MACRO_ROOT / "helpers.cfg").read_text(encoding="utf-8")
-        self.assertIn("[screws_tilt_adjust]", helpers)
-        self.assertIn("screw_thread: CW-M4", helpers)
+        profile = (MAX4_MACRO_ROOT / "printer_profile.cfg").read_text(encoding="utf-8")
+        self.assertIn("[screws_tilt_adjust]", profile)
+        self.assertIn("screw_thread: CW-M4", profile)
 
         probe_gcode = self._macro_gcode("TLTG_PROBE_ACCURACY_CENTER")
-        self.assertIn("G1 X195 Y195 F24000", probe_gcode)
+        self.assertIn("G1 X{profile.bed_center_x} Y{profile.bed_center_y} F24000", probe_gcode)
         self.assertIn("PROBE_ACCURACY SAMPLES={samples}", probe_gcode)
         self.assertNotIn("params.X", probe_gcode)
         self.assertNotIn("params.Y", probe_gcode)
@@ -83,7 +90,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
     def test_firmware_05_polar_cooler_pause_resume_boundary(self):
         optimized_text = "\n".join(
             path.read_text(encoding="utf-8")
-            for path in sorted(OPTIMIZED_MACRO_ROOT.glob("*.cfg"))
+            for path in installed_macro_files("max4")
         )
         self.assertNotIn("[smart_output_pin polar_cooler]", optimized_text)
         self.assertNotIn("[smart_output_pin beeper]", optimized_text)
@@ -216,7 +223,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
         # Klipper deep-copies an object's whole status on a macro's first read of it, on its main
         # thread; these take 9-50 ms each, against QIDI's 50 ms Box endstop sync window.
         large = re.compile(r'printer(?:\.|\[")(?:configfile|gcode|multi_color_controller|box_extras)\b')
-        for path in sorted(OPTIMIZED_MACRO_ROOT.glob("*.cfg")):
+        for path in installed_macro_files("max4"):
             text = path.read_text(encoding="utf-8")
             with self.subTest(path=path.name):
                 self.assertEqual(large.findall(text), [])
@@ -403,11 +410,11 @@ class OptimizedMacroContractTests(unittest.TestCase):
         raw_gcode = self._macro_gcode("_OPTIMIZED_HOME_Z_FROM_SAFE_POINT_RAW")
         self.assertLess(raw_gcode.index("G28.6245197 Z"), raw_gcode.index("_OPTIMIZED_RESTORE_DEFAULT_ACCEL"))
 
-        optimized_text = "\n".join(path.read_text(encoding="utf-8") for path in sorted(OPTIMIZED_MACRO_ROOT.glob("*.cfg")))
+        optimized_text = "\n".join(path.read_text(encoding="utf-8") for path in installed_macro_files("max4"))
         self.assertEqual(optimized_text.count("G28.6245197 Z"), 1)
 
     def test_homing_holds_unshaped_printers_below_max_accel(self):
-        homing_override = self._section_gcode(OPTIMIZED_MACRO_ROOT / "kinematics.cfg", "homing_override")
+        homing_override = self._section_gcode(MAX4_MACRO_ROOT / "homing.cfg", "homing_override")
         self.assertGreater(homing_override.index("_OPTIMIZED_RESTORE_DEFAULT_ACCEL WARN=1"), homing_override.rindex("action_raise_error"))
         restore_xy = self._macro_gcode("_OPTIMIZED_RESTORE_XY_HOMING_STATE")
         self.assertTrue(restore_xy.rstrip().endswith("_OPTIMIZED_RESTORE_INPUT_SHAPER"))
@@ -417,25 +424,23 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertIn("{% if status.input_shaper.saved and not status.input_shaper.unshaped_axes %}", restore)
         self.assertIn("[status.max_accel|float, opt.unshaped_accel|float]|min", restore)
 
-        homing_override = self._section_gcode(OPTIMIZED_MACRO_ROOT / "kinematics.cfg", "homing_override")
+        homing_override = self._section_gcode(MAX4_MACRO_ROOT / "homing.cfg", "homing_override")
         self.assertEqual(homing_override.count("_OPTIMIZED_HOME_Z_FROM_SAFE_POINT_RAW"), 2)
         self.assertNotIn("\n      _OPTIMIZED_HOME_Z_FROM_SAFE_POINT\n", f"\n{homing_override}\n")
 
     def test_homing_prep_does_not_nudge_xy_before_raw_homing(self):
-        homing_override = self._section_gcode(OPTIMIZED_MACRO_ROOT / "kinematics.cfg", "homing_override")
+        homing_override = self._section_gcode(MAX4_MACRO_ROOT / "homing.cfg", "homing_override")
         self.assertIn("_OPTIMIZED_PREP_XY_HOME SET_Z=1 MOVE_Z=5", homing_override)
         self.assertNotIn("MOVE_X=", homing_override)
         self.assertNotIn("MOVE_Y=", homing_override)
 
     def test_public_motion_helpers_restore_modal_state_and_acceleration(self):
         cut_gcode = self._macro_gcode("OPTIMIZED_CUT_FILAMENT")
-        self.assertIn("saved_accel = printer.toolhead.max_accel|float", cut_gcode)
-        self.assertNotIn("G4 P2000", cut_gcode)
         self.assert_ordered(
             cut_gcode,
             'printer.print_stats.state == "printing" and printer.tltg_macro_status.vendor_flow',
             "{% if not vendor_flow_cuts %}",
-            "SET_STEPPER_ENABLE STEPPER=extruder enable=0",
+            "_OPTIMIZED_CUT_FILAMENT_MOTION",
         )
         self.assert_ordered(
             cut_gcode,
@@ -447,12 +452,14 @@ class OptimizedMacroContractTests(unittest.TestCase):
             "printer.toolhead.estimated_print_time - handoff < 2",
             "SET_GCODE_VARIABLE MACRO=OPTIMIZED_MOVE_TO_TRASH VARIABLE=vendor_cut_handoff_time VALUE=-1.0",
             "{% if not skip_for_vendor_flow %}",
-            "SAVE_GCODE_STATE NAME=optimized_move_to_trash_state",
-            "RESTORE_GCODE_STATE NAME=optimized_move_to_trash_state",
+            "_OPTIMIZED_MOVE_TO_TRASH_MOTION",
             "{% endif %}",
         )
+        cut_motion = self._macro_gcode("_OPTIMIZED_CUT_FILAMENT_MOTION")
+        self.assertIn("saved_accel = printer.toolhead.max_accel|float", cut_motion)
+        self.assertNotIn("G4 P2000", cut_motion)
         self.assert_ordered(
-            cut_gcode,
+            cut_motion,
             "SAVE_GCODE_STATE NAME=optimized_cut_filament_state",
             "G90",
             "M204 S10000",
@@ -467,7 +474,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
             "RESTORE_GCODE_STATE NAME=optimized_cut_filament_state",
         )
 
-        move_gcode = self._macro_gcode("OPTIMIZED_MOVE_TO_TRASH")
+        move_gcode = self._macro_gcode("_OPTIMIZED_MOVE_TO_TRASH_MOTION")
         self.assertIn("saved_accel = printer.toolhead.max_accel|float", move_gcode)
         self.assert_ordered(
             move_gcode,
@@ -663,7 +670,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertIn("variable_trash_final_approach_speed_xy: 3500", globals_text)
         self.assertIn("variable_rear_scrape_orient_speed_xy: 24000", globals_text)
 
-        move_to_trash = self._macro_gcode("OPTIMIZED_MOVE_TO_TRASH")
+        move_to_trash = self._macro_gcode("_OPTIMIZED_MOVE_TO_TRASH_MOTION")
         self.assertEqual(move_to_trash.count("F{opt.trash_final_approach_speed_xy}"), 4)
         self.assertNotIn("F3500", move_to_trash)
 
@@ -706,7 +713,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
         # QIDI 01.01.07.01 flows no longer call the compiled chute cleanup commands, so the
         # optimized package must not depend on them surviving future firmware.
         for path in (
-            *sorted(OPTIMIZED_MACRO_ROOT.glob("*.cfg")),
+            *installed_macro_files("max4"),
             *sorted((REPO_ROOT / "orcaslicer_gcode").glob("*.gcode")),
             *sorted((REPO_ROOT / "qidistudio_gcode").glob("*.gcode")),
         ):

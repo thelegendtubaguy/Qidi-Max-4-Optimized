@@ -1,5 +1,8 @@
 # Changelog
 
+## 26.11.05.1
+- The optimized macros now keep the printer's own homing, filament cutter, wiper, waste chute, and rear-bed scrape moves, bed-screw positions, and default input shaper calibration apart from the rest, in three new files in `config/tltg-optimized-macros/`: `homing.cfg`, `nozzle_motion.cfg`, and `printer_profile.cfg`. The installer picks them for the printer it detects. This prepares for printers other than the Max 4; macro names and what the Max 4 does are unchanged, and updating replaces the old files.
+
 ## 26.11.04.2
 - The project is now called Valve Oil and lives at `https://github.com/thelegendtubaguy/valve-oil`. Links to the old address redirect, and the installer and automatic updates now download from the new one, so there's nothing to do. The installer shows the new name; macro names, files on the printer, and slicer profiles are unchanged.
 - The installer now checks which printer it's on as well as its firmware version. QIDI's firmware manifest names the printer model in its file name, and if that model doesn't match the firmware version, the installer stops with `Your firmware version is not supported.` before changing anything. This prepares for supporting printers other than the Max 4; nothing changes on a Max 4.

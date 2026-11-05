@@ -50,6 +50,7 @@ from .manifest import active_patch_entries
 from .mirror import (
     collect_source_hashes,
     detect_install_managed_tree_drift,
+    managed_tree_source_roots,
     mirror_tree,
 )
 from .models import (
@@ -180,6 +181,7 @@ def run_install(
     run_install_environment_preflight(
         paths=paths,
         manifest=manifest,
+        detected_firmware=detected_firmware,
         reporter=reporter,
         urlopen=urlopen,
         disk_usage=disk_usage,
@@ -338,7 +340,7 @@ def build_install_plan(
     prior_state: InstalledState | None,
     backup_label: str,
 ) -> InstallPlan:
-    source_hashes = _source_hashes(paths=paths, manifest=manifest)
+    source_hashes = _source_hashes(paths=paths, manifest=manifest, detected_firmware=detected_firmware)
     managed_tree_root = paths.printer_data_root / manifest.managed_tree.destination
     managed_tree_drift = detect_install_managed_tree_drift(
         destination_root=managed_tree_root,
@@ -486,7 +488,7 @@ def _execute_install(
             install_counters["extra_modules"][0] += 1
 
         mirror_tree(
-            source_root=paths.installer_root / manifest.managed_tree.source,
+            source_roots=managed_tree_source_roots(paths, manifest, detected_firmware),
             destination_root=paths.printer_data_root / manifest.managed_tree.destination,
             journal=journal,
             required_files=manifest.managed_tree.required_files,
@@ -836,9 +838,9 @@ def _collect_install_include_line_intents(
 
 
 
-def _source_hashes(paths: RuntimePaths, manifest: Manifest) -> dict[str, str]:
+def _source_hashes(paths: RuntimePaths, manifest: Manifest, detected_firmware: str) -> dict[str, str]:
     return collect_source_hashes(
-        paths.installer_root / manifest.managed_tree.source,
+        managed_tree_source_roots(paths, manifest, detected_firmware),
         destination_root=paths.printer_data_root / manifest.managed_tree.destination,
         relative_to=paths.printer_data_root,
         required_files=manifest.managed_tree.required_files,

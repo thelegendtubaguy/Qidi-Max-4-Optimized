@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "path": "start_print",
-  "title": "Start print",
+  "title": "Start print (QIDI Max 4)",
   "entrypoints": [
     {
       "name": "OrcaSlicer start",
@@ -79,7 +79,8 @@
   "macro_files": [
     "config/box.cfg",
     "config/klipper-macros-qd/*.cfg",
-    "installer/klipper/tltg-optimized-macros/*.cfg"
+    "installer/klipper/tltg-optimized-macros/*.cfg",
+    "installer/klipper/printers/max4/*.cfg"
   ],
   "branches": [
     {
@@ -288,7 +289,7 @@
         "_OPTIMIZED_FINISH_START_SCRAPE",
         "OPTIMIZED_WAIT_BED S={bed_target} STATUS=wait_bed_temp",
         "OPTIMIZED_WAIT_CHAMBER S={chamber_target} STATUS=wait_chamber_temp MINIMUM={params.CHAMBER_MIN_TEMP|default(0)|float}",
-        "G1 X15 Y202.5 F36000",
+        "G1 X{profile.z_tilt_staging_x} Y{profile.z_tilt_staging_y} F36000",
         "_OPTIMIZED_REPORT_BED_TEMP",
         "Z_TILT_ADJUST",
         "M400",

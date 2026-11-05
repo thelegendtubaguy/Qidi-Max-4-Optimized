@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .errors import ManagedTreeSourceError, PathSafetyError
 from .fs_atomic import atomic_delete, atomic_write_bytes, fsync_directory
-from .models import DriftRecord, InstalledState
+from .models import DriftRecord, InstalledState, Manifest, RuntimePaths
 from .rollback import RollbackJournal
 
 
@@ -32,21 +32,45 @@ def collect_tree_hashes(root: Path, *, relative_to: Path) -> dict[str, str]:
 
 
 def collect_source_hashes(
-    source_root: Path,
+    source_roots: tuple[Path, ...],
     *,
     destination_root: Path,
     relative_to: Path,
     required_files: tuple[str, ...] = (),
 ) -> dict[str, str]:
-    source_files = validate_managed_tree_source(
-        source_root, required_files=required_files
-    )
     result: dict[str, str] = {}
-    for item in source_files:
-        rel = item.relative_to(source_root)
+    for rel, item in managed_tree_source_files(source_roots, required_files=required_files).items():
         runtime_path = destination_root / rel
         result[runtime_path.relative_to(relative_to).as_posix()] = sha256_file(item)
     return result
+
+
+
+def managed_tree_source_roots(paths: RuntimePaths, manifest: Manifest, firmware_version: str) -> tuple[Path, ...]:
+    return tuple(paths.installer_root / source for source in manifest.managed_tree_sources(firmware_version))
+
+
+
+# The common macros and the printer's own macros install into one tree, so no file may come from both.
+def managed_tree_source_files(
+    source_roots: tuple[Path, ...], *, required_files: tuple[str, ...] = ()
+) -> dict[Path, Path]:
+    files: dict[Path, Path] = {}
+    for source_root in source_roots:
+        for item in validate_managed_tree_source(source_root):
+            rel = item.relative_to(source_root)
+            if rel in files:
+                raise ManagedTreeSourceError(
+                    f"Managed-tree sources both provide {rel.as_posix()}: {files[rel]} and {item}"
+                )
+            files[rel] = item
+    missing_required = sorted(set(required_files) - {rel.as_posix() for rel in files})
+    if missing_required:
+        raise ManagedTreeSourceError(
+            "Managed-tree source is missing required file(s): "
+            + ", ".join(missing_required)
+        )
+    return files
 
 
 
@@ -130,18 +154,13 @@ def detect_uninstall_managed_tree_drift(
 
 def mirror_tree(
     *,
-    source_root: Path,
+    source_roots: tuple[Path, ...],
     destination_root: Path,
     journal: RollbackJournal,
     required_files: tuple[str, ...] = (),
 ) -> None:
     journal.track_tree(destination_root)
-    source_files = {
-        item.relative_to(source_root): item
-        for item in validate_managed_tree_source(
-            source_root, required_files=required_files
-        )
-    }
+    source_files = managed_tree_source_files(source_roots, required_files=required_files)
     destination_files = {
         item.relative_to(destination_root): item
         for item in sorted(destination_root.rglob("*"))
