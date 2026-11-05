@@ -71,4 +71,56 @@ It writes `printer_data/logs/tltg_box_link.log`, separate from `klippy.log` so i
 
 ## Reporting a problem
 
-Open a [GitHub issue](https://github.com/thelegendtubaguy/valve-oil/issues) with the installer output or the end of `klippy.log`, your QIDI firmware version, and which slicer you used.
+Open a [GitHub issue](https://github.com/thelegendtubaguy/valve-oil/issues/new/choose) and pick the form that fits. Each form asks for the printer details below, and for the logs that show what happened.
+
+### Printer details
+
+SSH into the printer, paste this whole block, and copy everything it prints into the issue. It only reads files; it changes nothing and works whether or not Valve Oil is installed.
+
+```bash
+python3 - <<'PY'
+import json, os, re, subprocess
+def run(*cmd):
+    try: return subprocess.run(cmd, capture_output=True, text=True, timeout=10).stdout.strip()
+    except Exception as exc: return f"unavailable ({exc.__class__.__name__})"
+home = os.path.expanduser("~")
+state = os.path.join(home, "printer_data/config/tltg_optimized_state.yaml")
+try:
+    text = open(state).read()
+    print("Valve Oil:", re.search(r"^  version: *'?([0-9.]+)", text, re.M).group(1),
+          "installed", re.search(r"^installed_at: *'?([^'\n]+)", text, re.M).group(1))
+except Exception:
+    print("Valve Oil: not installed")
+try:
+    for name, part in json.load(open("/home/qidi/update/firmware_manifest.json")).items():
+        print(f"{name}: {part.get('version')} ({part.get('file')})")
+except Exception as exc:
+    print("Firmware manifest: unreadable", exc.__class__.__name__)
+try:
+    print("USB Boxes in box.cfg:", len(re.findall(r"^\[mcu mcu_box", open(os.path.join(home, "printer_data/config/box.cfg")).read(), re.M)))
+except OSError:
+    print("USB Boxes in box.cfg: no box.cfg")
+print("Kernel:", run("uname", "-rv"))
+print("Auto-updates:", run("systemctl", "is-enabled", "tltg-optimized-auto-update.timer") or "off")
+print("zram:", "on" if "zram" in open("/proc/swaps").read() else "off")
+print("AI detection:", run("systemctl", "is-active", "algo_app.service") or "unknown")
+print("THR fix backups:", "yes" if os.path.isdir(os.path.join(home, "printer_data/.tltg_thr_firmware_backups")) else "no")
+try:
+    import urllib.request
+    q = "http://127.0.0.1:7125/printer/objects/query?print_stats=state&webhooks=state,state_message"
+    s = json.load(urllib.request.urlopen(q, timeout=5))["result"]["status"]
+    print("Klipper:", s["webhooks"]["state"], "/", s["print_stats"]["state"])
+except Exception as exc:
+    print("Klipper: no answer from Moonraker", exc.__class__.__name__)
+PY
+```
+
+It prints the installed Valve Oil version, QIDI's firmware versions for every board, how many USB Boxes `box.cfg` lists, the kernel, whether automatic updates, zram, QIDI AI detection, and the toolhead firmware fix are on, and Klipper's state.
+
+### Logs
+
+- **`klippy.log`:** in Fluidd, open **Configuration**, switch the file list to **logs**, and download `klippy.log`; or copy `~/printer_data/logs/klippy.log` over SSH. Attach it right after the problem, before restarting Klipper again, since each restart starts a new log. If it's too big to attach, zip it.
+- **Installer output:** copy everything the installer printed, from the command to the end. To get more detail, run it again with `--debug` added, for example `~/tltg-optimized-macros/install.sh --debug`.
+- **Automatic update output:** `journalctl -u tltg-optimized-auto-update.service --since "2 days ago"`.
+- **`moonraker.log`:** `~/printer_data/logs/moonraker.log`, for Fluidd or file upload problems.
+- **The sliced file**, for print problems: attach the `.gcode` or `.gcode.3mf`, zipped.

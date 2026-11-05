@@ -22,7 +22,7 @@ Run both again to pick up newer dev changes.
 
 **Going back to stable:** run the [README](README.md) install command, then turn automatic updates back on if you want them. To remove everything, see [Uninstall](docs/install.md#uninstall). Backups and restore work as on a release; see [If something goes wrong](docs/troubleshooting.md).
 
-**Tell me how it went,** good or bad: see [TESTING.md](TESTING.md), open an issue, or come chat in the [TubaMakes Discord](https://l.tubaguy.com/tmdiscord).
+**Tell me how it went,** good or bad: see [TESTING.md](TESTING.md) or open an issue.
 
 ## Working on the code
 

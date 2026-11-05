@@ -22,6 +22,7 @@ This project owns Fluidd. Make changes in the fork of upstream `fluidd-core/flui
 ## Docs
 
 - `README.md` is a short landing page: install, then one-line feature summaries linking to `docs/`. Keep it operator-focused and don't link `openspec/` unless asked.
+- Keep the README's **Supported printers** table matching `installer/package.yaml` `printers:`. Docs describe behavior for every supported printer; label printer-specific facts (positions, firmware versions, hardware, measurements) with the printer they apply to.
 - Put operator detail in the matching `docs/<topic>.md` (index: `docs/README.md`), new settings and commands in `docs/settings.md`, and new files or services the installer touches in `docs/under-the-hood.md`.
 
 ## Git

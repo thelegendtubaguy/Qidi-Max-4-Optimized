@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and chat
+    url: https://l.tubaguy.com/tmdiscord
+    about: Ask how something works, or chat about your setup, in the Tuba Makes Discord.
+  - name: If something goes wrong
+    url: https://github.com/thelegendtubaguy/valve-oil/blob/main/docs/troubleshooting.md
+    about: Restoring backups, common errors, and what to include in a report.

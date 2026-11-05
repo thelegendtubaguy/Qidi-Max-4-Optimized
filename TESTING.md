@@ -18,4 +18,4 @@ TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/valve-oil/release
 ## Report Back
 I would like to hear from you even if things went perfectly!  This helps me understand if things are going well for people other than just me.
 
-I would prefer feedback to be collected here on GitHub by having you open issues.  You can also chat about this over on the [TubaMakes Discord](https://l.tubaguy.com/tmdiscord)!
+I would prefer feedback to be collected here on GitHub by having you open issues.
