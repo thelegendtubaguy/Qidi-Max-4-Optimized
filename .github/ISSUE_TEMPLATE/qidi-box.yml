@@ -1,7 +1,7 @@
 name: QIDI Box problem
 description: A QIDI Box load, unload, eject, tool change, heater, or connection went wrong.
 title: "[QIDI Box]: "
-labels: ["bug"]
+labels: ["bug", "qidi-box"]
 body:
   - type: markdown
     attributes:
