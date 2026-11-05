@@ -1,4 +1,4 @@
-# QIDI Box flow recovery for QIDI Max 4 Optimized.
+# QIDI Box flow recovery for Valve Oil.
 #
 # Stopping a paused Box flow: QIDI's TaskQueueManager.stop() clears the flow,
 # then sends M104 S0 with gcode.run_script(), which waits for Klipper's G-code

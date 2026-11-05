@@ -2,7 +2,7 @@
 name: qidi-firmware-release-update
 description: Investigate and implement QIDI Max 4 optimized-config updates after QIDI publishes a new firmware/default-config release. Use when a new QIDI Max 4 firmware tag, defaults commit, or Qidi-Max4-Defaults update needs review, OpenSpec planning, installer support, stock snapshot updates, validation, or optional printer install.
 license: MIT
-compatibility: Qidi-Max-4-Optimized repo with sibling Qidi-Max4-Defaults checkout and OpenSpec CLI.
+compatibility: valve-oil repo with sibling Qidi-Max4-Defaults checkout and OpenSpec CLI.
 ---
 
 # QIDI Firmware Release Update

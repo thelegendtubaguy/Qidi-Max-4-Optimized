@@ -1,4 +1,4 @@
-# Upstream Klipper fixes and main-loop savings for QIDI Max 4 Optimized.
+# Upstream Klipper fixes and main-loop savings for Valve Oil.
 #
 # QIDI's Klipper is upstream Klipper from August 2024 with QIDI's changes.
 # Upstream has since fixed bugs in code QIDI left as it was. This module

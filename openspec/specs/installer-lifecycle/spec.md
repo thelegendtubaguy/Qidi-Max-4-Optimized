@@ -2,17 +2,21 @@
 
 ## Purpose
 
-The installer admits supported QIDI firmware, changes only validated installer-owned state, and keeps install, update, restore, and uninstall recoverable.
+The installer admits supported QIDI printers and firmware, changes only validated installer-owned state, and keeps install, update, restore, and uninstall recoverable.
 
 ## Requirements
 
 ### Requirement: Firmware-gated ownership
-The installer SHALL select one complete baseline for the detected supported firmware and change only recognized stock state or state proven to be installer-owned.
+The installer SHALL identify the printer from its detected supported firmware, select one complete baseline for that firmware, and change only recognized stock state or state proven to be installer-owned. Each supported firmware version SHALL belong to exactly one printer in `installer/package.yaml`.
 
 #### Scenario: Supported firmware selects one baseline
-- **WHEN** installation starts on firmware declared in `installer/package.yaml`
+- **WHEN** installation starts on firmware declared for a printer in `installer/package.yaml`
 - **THEN** exactly one complete firmware-scoped variant is selected for every required target
-- **AND** configuration and managed-source expectations come from that baseline
+- **AND** configuration, managed-source expectations, and stock snapshots come from that printer's baseline
+
+#### Scenario: Firmware naming another printer is refused
+- **WHEN** the firmware manifest's SOC file name does not carry the model prefix of the printer that owns the detected firmware version
+- **THEN** the firmware is treated as unsupported
 
 #### Scenario: Invalid admission fails before unsafe work
 - **WHEN** firmware is unreadable or unsupported

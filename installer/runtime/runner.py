@@ -38,8 +38,8 @@ from .compatibility import (
     validate_patch_ledger,
 )
 from .config_transaction import FileChangePlan, apply_file_change_plan
-from .errors import PreviousPackageValidationError, UnsupportedFirmwareError
-from .firmware import detect_firmware_version
+from .errors import PreviousPackageValidationError
+from .firmware import detect_supported_firmware
 from .host_reboot import arm_auto_update_reboot_followup
 from .interaction import (
     maybe_restart_klipper,
@@ -128,14 +128,13 @@ def run_install(
     )
 
     reporter.status(messages.CHECKING_FIRMWARE_VERSION)
-    detected_firmware = detect_firmware_version(paths.firmware_manifest_path)
+    printer, detected_firmware = detect_supported_firmware(paths.firmware_manifest_path, manifest)
     reporter.debug(
         event="install.firmware.detected",
+        printer=printer.id,
         firmware_version=detected_firmware,
         manifest_path=paths.firmware_manifest_path,
     )
-    if detected_firmware not in manifest.firmware.supported:
-        raise UnsupportedFirmwareError()
 
     reporter.status(messages.CHECKING_PACKAGE_VERSION)
     ensure_install_paths_safe(paths=paths, manifest=manifest)

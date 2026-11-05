@@ -1,4 +1,4 @@
-# QIDI Box feed motion for QIDI Max 4 Optimized.
+# QIDI Box feed motion for Valve Oil.
 #
 # Wraps the vendor's three-stage load home and two-stage unload home on each
 # `box_stepper slotN` so operators can set the fast push, approach speed, and

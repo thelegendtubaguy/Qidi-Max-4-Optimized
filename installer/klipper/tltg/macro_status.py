@@ -1,4 +1,4 @@
-# Cheap printer facts for QIDI Max 4 Optimized macros.
+# Cheap printer facts for Valve Oil macros.
 #
 # Klipper deep-copies an object's whole status the first time a macro reads
 # it, on its main thread. The optimized Box macros checked for a Box with

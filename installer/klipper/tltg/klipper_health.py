@@ -1,4 +1,4 @@
-# Klipper main-loop health for QIDI Max 4 Optimized.
+# Klipper main-loop health for Valve Oil.
 #
 # QIDI's box_extras checks each Box load with the toolhead load cell.
 # auto_detect_filament_advance registers _init_probe_data_advance, which

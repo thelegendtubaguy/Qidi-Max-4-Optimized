@@ -71,4 +71,4 @@ It writes `printer_data/logs/tltg_box_link.log`, separate from `klippy.log` so i
 
 ## Reporting a problem
 
-Open a [GitHub issue](https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/issues) with the installer output or the end of `klippy.log`, your QIDI firmware version, and which slicer you used.
+Open a [GitHub issue](https://github.com/thelegendtubaguy/valve-oil/issues) with the installer output or the end of `klippy.log`, your QIDI firmware version, and which slicer you used.

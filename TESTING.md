@@ -8,8 +8,8 @@ I would love your help to make this better and test edge cases!  If you want to 
 1. Make sure you have the latest slicer GCode found in this repo for the slicer you're using (make sure to grab it from the `dev` branch if following the rest of the instructions)
 2. Run this command on your printer to install the latest prerelease (copy and paste it all in one go):
 ```bash
-TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/download/prerelease/tltg-optimized-macros-dev.tar.gz \
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/thelegendtubaguy/Qidi-Max-4-Optimized/dev/installer/release/install-latest.sh)"
+TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/valve-oil/releases/download/prerelease/tltg-optimized-macros-dev.tar.gz \
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/thelegendtubaguy/valve-oil/dev/installer/release/install-latest.sh)"
 ```
 3. Slice your print how you normally would, but keep track of what settings you used on your machine and filament profiles/selection.
 4. Send, print, and watch it go.

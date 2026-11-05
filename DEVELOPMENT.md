@@ -1,6 +1,6 @@
 # Running the dev branch
 
-Every push to `dev` publishes a fresh installer to the [`prerelease`](https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/tag/prerelease) release. It hasn't had a release's testing, so something may be half-finished or broken. If you only want a printer that works, use the [README](README.md) install instead.
+Every push to `dev` publishes a fresh installer to the [`prerelease`](https://github.com/thelegendtubaguy/valve-oil/releases/tag/prerelease) release. It hasn't had a release's testing, so something may be half-finished or broken. If you only want a printer that works, use the [README](README.md) install instead.
 
 > [!CAUTION]
 > I refuse to be responsible for your printer. PLEASE watch prints start ensuring the printer doesn't do something horrible like gouge your bed and be ready to cut power at a moment's notice. That goes double on dev.
@@ -11,12 +11,12 @@ Every push to `dev` publishes a fresh installer to the [`prerelease`](https://gi
 2. Run this. It's one command on two lines, so copy both. Add `-- --dry-run` to the end to preview without changing anything.
 
    ```bash
-   TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/download/prerelease/tltg-optimized-macros-dev.tar.gz \
-   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/thelegendtubaguy/Qidi-Max-4-Optimized/dev/installer/release/install-latest.sh)"
+   TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/valve-oil/releases/download/prerelease/tltg-optimized-macros-dev.tar.gz \
+   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/thelegendtubaguy/valve-oil/dev/installer/release/install-latest.sh)"
    ```
 
 3. **Answer No to automatic updates.** They follow stable releases and would replace your dev install. If they're already on, run `~/tltg-optimized-macros/auto-update.sh --disable-systemd`.
-4. Copy the slicer G-code from the `dev` branch: [`orcaslicer_gcode/`](https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/tree/dev/orcaslicer_gcode) or [`qidistudio_gcode/`](https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/tree/dev/qidistudio_gcode).
+4. Copy the slicer G-code from the `dev` branch: [`orcaslicer_gcode/`](https://github.com/thelegendtubaguy/valve-oil/tree/dev/orcaslicer_gcode) or [`qidistudio_gcode/`](https://github.com/thelegendtubaguy/valve-oil/tree/dev/qidistudio_gcode).
 
 Run both again to pick up newer dev changes.
 

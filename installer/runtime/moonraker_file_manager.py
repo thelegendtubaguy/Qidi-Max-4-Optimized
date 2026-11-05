@@ -90,7 +90,7 @@ def _patch_metadata_storage(text: str) -> str:
     if digest == PATCHED_CLASS_SHA256:
         return text
     if digest != STOCK_CLASS_SHA256:
-        raise MoonrakerFileManagerError("Moonraker MetadataStorage does not match the reviewed Max 4 source; preserving file_manager.py.")
+        raise MoonrakerFileManagerError("Moonraker MetadataStorage does not match the reviewed QIDI source; preserving file_manager.py.")
     replacements = {
         "_has_valid_data": '''\
     def _tltg_3mf_extractor_stamp(self):

@@ -1,4 +1,4 @@
-# Background SAVE_CONFIG_QD for QIDI Max 4 Optimized.
+# Background SAVE_CONFIG_QD for Valve Oil.
 #
 # QIDI's SAVE_CONFIG_QD writes pending SAVE_CONFIG values to printer.cfg without
 # restarting. It re-reads and parses the whole include tree twice and runs
