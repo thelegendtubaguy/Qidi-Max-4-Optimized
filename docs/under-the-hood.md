@@ -15,18 +15,18 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 
 | What | Change |
 |---|---|
-| `printer.cfg` | Adds `[include tltg-optimized-macros/*.cfg]`, and changes recognized QIDI values for homing speed and retraction, Z-tilt and mesh travel speed, closed-loop homing timing, and a few others. |
+| `printer.cfg` | Adds `[include tltg-optimized-macros/*.cfg]`, and changes recognized QIDI values for homing speed and retraction, Z-tilt and mesh travel speed, the Max 4's closed-loop homing timing, and a few others. |
 | `config/tltg-optimized-macros/` | The optimized macros. QIDI's own macros in `klipper-macros-qd/` stay in place, so files sliced with stock G-code print as before. `homing.cfg`, `nozzle_motion.cfg`, and `printer_profile.cfg` hold the printer's own homing, cutter, wiper, and chute moves and positions; the installer picks them for the printer it detects. |
 | QIDI's `RESUME`, `CUT_FILAMENT_1`, `M106`, `M109.0`, `homing_override`, `_km_apply_print_offset`, and external spool sensor sections | Removed from QIDI's files and replaced by optimized versions. |
 | `saved_variables.cfg` | Adds missing defaults for [this project's settings](settings.md) and repairs missing QIDI Box tool mappings. Existing values are kept. |
-| `config/qidi_filament_config` | A link to QIDI's filament files, for [editing them in Fluidd](qidi-box.md#editing-qidis-filament-list). Firmware `01.01.07.01` only. |
+| `config/qidi_filament_config` | A link to QIDI's filament files, for [editing them in Fluidd](qidi-box.md#editing-qidis-filament-list). Max 4 firmware `01.01.07.01` only. |
 
 ## Klipper and Moonraker source and services
 
 | What | Change | Restarts |
 |---|---|---|
 | `klippy/extras/tltg_*.py` | Added modules for the Box link monitor, Box processor temperature, Box heater refresh, background mesh save, faster `SAVE_VARIABLE` and Box variable saves, cheap printer facts for the optimized macros, printer warnings for Fluidd's warning banner and the console, turning the [exhaust fan off](print-start.md#exhaust-fan-while-heating-the-chamber) before the chamber falls far enough behind to stop the print, [fixes from newer Klipper](fixes.md#fixes-from-newer-klipper), cheaper Klipper timer checks and status updates, Box load/unload speed, Box eject, unknown Box filaments, stuck Box loads, Box slot jogs, Box flow stop and stranded-filament recovery, [Spoolman spools for each slot](spoolman.md), the [RS-485 Box monitor](qidi-box.md#rs-485-boxes), the load-cell check, and [Klipper's health check](fixes.md#klipper-slowing-down-during-long-box-prints). | Klipper |
-| `klippy/extras/homing.py` | Replaced with this project's version of QIDI's homing code, for the faster homing. QIDI's closed-loop homing checks stay in place. | Klipper |
+| `klippy/extras/homing.py` | On the Max 4, replaced with this project's version of QIDI's homing code, for the faster homing. QIDI's closed-loop homing checks stay in place. | Klipper |
 | `klippy/extras/print_stats_manager.py` | Keeps the [real shutdown reason](fixes.md#the-real-error-instead-of-mcu-shutdown) on screen. | Klipper, once |
 | `klippy/extras/box_config.py` | Lets Fluidd set Box heater targets, capped at 65 °C. | Klipper, once |
 | Moonraker `file_manager.py` and `metadata.py` | The [3MF metadata cache and plate fix](fixes.md#multi-plate-3mf-files). | Moonraker, when the patch changes |

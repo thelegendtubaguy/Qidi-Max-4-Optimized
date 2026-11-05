@@ -2,7 +2,7 @@
 
 [← Back to the README](../README.md)
 
-QIDI no longer updates the Fluidd that ships with the Max 4, version 1.30.5. The installer serves this project's build of current Fluidd instead, with QIDI's Max 4 additions plus the QIDI Box card, Box heater control, and Printer screen card.
+QIDI no longer updates the Fluidd that ships with its printers, version 1.30.5 on the Max 4. The installer serves this project's build of current Fluidd instead, with QIDI's additions plus the QIDI Box card, Box heater control, and Printer screen card.
 
 **For what's in it and how to use it, see [thelegendtubaguy/fluidd](https://github.com/thelegendtubaguy/fluidd).**
 

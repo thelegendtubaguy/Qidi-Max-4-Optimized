@@ -12,9 +12,9 @@ SSH into your printer as `qidi@<your printer's ip>` and run:
 
 Running it with `sudo` works the same: the installer switches to `qidi` and asks for `sudo` itself when it needs it, so every file it writes belongs to `qidi` either way. The same goes for `restore.sh`, `auto-update.sh`, and `box-firmware.sh`.
 
-The installer checks your firmware, the printer's state, and free space before writing anything, and makes a backup of your configuration first. Along the way it asks about:
+The installer checks which printer it's on and its firmware (see [Supported printers](../README.md#supported-printers)), the printer's state, and free space before writing anything, and makes a backup of your configuration first. Along the way it asks about:
 
-- **Toolhead board firmware fix** (firmware `01.01.07.01` only): asked first, before anything changes. The default is No. See [Firmware fixes](firmware.md).
+- **Toolhead board firmware fix** (Max 4 with firmware `01.01.07.01` only): asked first, before anything changes. The default is No. See [Firmware fixes](firmware.md).
 - **System hardening and OS optimizations**: see [below](#os-optimizations).
 - **Disable QIDI AI detection**: turns off QIDI's `algo_app` service. When the installer has finished its system changes, it reminds you to also turn off Spaghetti Detection and Foreign Object Detection in the touchscreen's Settings -> Printing Options, so the screen matches.
 - **Automatic updates**: see [below](#automatic-updates).
@@ -51,18 +51,18 @@ When an install turns on zram swap, the CPU setting, or the service priorities, 
 
 ### Zram swap
 
-The printer has 486 MB of memory and no swap. QIDI's AI detection alone can hold about 190 MB during a print, and when memory runs out, Linux makes room by dropping program code that has to be read back from storage. Klipper then stalls for seconds at a time, and a stall during a print can end it with `MCU 'mcu' shutdown: Missed scheduling of next digital out event`, often right when a print is cancelled.
+The Max 4 has 486 MB of memory and no swap. QIDI's AI detection alone can hold about 190 MB during a print, and when memory runs out, Linux makes room by dropping program code that has to be read back from storage. Klipper then stalls for seconds at a time, and a stall during a print can end it with `MCU 'mcu' shutdown: Missed scheduling of next digital out event`, often right when a print is cancelled.
 
-Zram gives Linux a compressed swap area in memory instead: 256 MB of swap that holds about 2.3 MB of idle data per MB of memory it uses. On the test printer, with memory filled the way it was on a printer that hit this shutdown, Klipper's longest delay went from 405 ms to 4 ms, and the program that filled memory was no longer killed.
+Zram gives Linux a compressed swap area in memory instead: 256 MB of swap that holds about 2.3 MB of idle data per MB of memory it uses. On a Max 4, with memory filled the way it was on a printer that hit this shutdown, Klipper's longest delay went from 405 ms to 4 ms, and the program that filled memory was no longer killed.
 
-QIDI's kernel has no zram, so the package carries its own modules, built for QIDI's kernel `5.10.160 #4 SMP PREEMPT Wed Sep 3 15:21:57 CST 2025`. They load only on that exact kernel. A QIDI update that changes the kernel turns zram off until a package release supports the new kernel. To check that zram is on, run `cat /proc/swaps` over SSH and look for `/dev/zram0`.
+QIDI's kernel has no zram, so the package carries its own modules, built for the Max 4's kernel `5.10.160 #4 SMP PREEMPT Wed Sep 3 15:21:57 CST 2025`. They load only on that exact kernel; on any other, including after a QIDI update that changes it, the printer runs without zram until a package release supports that kernel. To check that zram is on, run `cat /proc/swaps` over SSH and look for `/dev/zram0`.
 
 ## Slicer start G-code
 
 > [!TIP]
 > In OrcaSlicer 2.4.0 or later, subscribe to the [OrcaCloud bundle](https://cloud.orcaslicer.com/b/4c4b3b74c745). Your slicer then gets updates by itself, with nothing to copy and paste.
 
-Otherwise, copy the machine G-code into your slicer by hand from the folder for your slicer:
+Otherwise, copy the machine G-code into your slicer by hand from the folder for your slicer. These are for the Max 4:
 
 - OrcaSlicer: [`orcaslicer_gcode/`](../orcaslicer_gcode/)
 - QIDI Studio: [`qidistudio_gcode/`](../qidistudio_gcode/)
