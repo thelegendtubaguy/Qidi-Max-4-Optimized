@@ -7,8 +7,12 @@
 
 Faster, fixed, and more capable QIDI printers: optimized Klipper macros, slicer start G-code, and a current Fluidd, installed and removed with one command. The installer detects your printer and installs what fits it.
 
-> [!NOTE]
-> If you want to help support content like this, consider subscribing over on [YouTube](https://youtube.com/@TubaMakes)!
+<p>
+  <a href="https://youtube.com/@TubaMakes"><img alt="Subscribe to Tuba Makes on YouTube" src="https://img.shields.io/badge/YouTube-Tuba%20Makes-FF0000?style=for-the-badge&logo=youtube&logoColor=white"></a>
+  <a href="https://tubag.uy/patreon"><img alt="Support Tuba Makes on Patreon" src="https://img.shields.io/badge/Patreon-Support%20me-F96854?style=for-the-badge&logo=patreon&logoColor=white"></a>
+</p>
+
+If you want to help support content like this, consider subscribing on YouTube or joining on Patreon!
 
 > [!CAUTION]
 > I refuse to be responsible for your printer.  PLEASE watch prints start ensuring the printer doesn't do something horrible like gouge your bed and be ready to cut power at a moment's notice.
