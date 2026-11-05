@@ -5,17 +5,15 @@
   </picture>
 </h1>
 
-Faster, fixed, and more capable QIDI printers: optimized Klipper macros, slicer start G-code, and a current Fluidd, installed and removed with one command. The installer detects your printer and installs what fits it.
+Faster, fixed, and more capable QIDI printers: optimized Klipper macros, slicer start G-code, and a current Fluidd, installed and removed with one command.
 
 <p>
   <a href="https://youtube.com/@TubaMakes"><img alt="Subscribe to Tuba Makes on YouTube" src="https://img.shields.io/badge/YouTube-Tuba%20Makes-FF0000?style=for-the-badge&logo=youtube&logoColor=white"></a>
   <a href="https://tubag.uy/patreon"><img alt="Support Tuba Makes on Patreon" src="https://img.shields.io/badge/Patreon-Support%20me-F96854?style=for-the-badge&logo=patreon&logoColor=white"></a>
+  <a href="https://l.tubaguy.com/tmdiscord"><img alt="Join the Tuba Makes Discord" src="https://img.shields.io/badge/Discord-Tuba%20Makes-5865F2?style=for-the-badge&logo=discord&logoColor=white"></a>
 </p>
 
 If you want to help support content like this, consider subscribing on YouTube or joining on Patreon!
-
-> [!CAUTION]
-> I refuse to be responsible for your printer.  PLEASE watch prints start ensuring the printer doesn't do something horrible like gouge your bed and be ready to cut power at a moment's notice.
 
 ## Supported printers
 
@@ -23,7 +21,6 @@ If you want to help support content like this, consider subscribing on YouTube o
 |---|---|
 | QIDI Max 4 | `01.01.06.03`, `01.01.06.04`, `01.01.06.05`, `01.01.07.01` |
 
-Support for the QIDI Plus 5 is in progress. On any other printer or firmware, the installer stops before changing anything.
 
 ## Install
 
@@ -36,7 +33,7 @@ Support for the QIDI Plus 5 is in progress. On any other printer or firmware, th
 4. In OrcaSlicer 2.4.0 or later, subscribe to the [OrcaCloud bundle](https://cloud.orcaslicer.com/b/4c4b3b74c745). For QIDI Studio or older Orca, [copy the start G-code by hand](docs/install.md#slicer-start-g-code).
 5. Slice using your printer's TLTG Optimized profile, `Qidi X-Max 4 0.4 nozzle - TLTG Optimized GCode` on the Max 4. Optionally, make a copy and customize it.
 
-On a Max 4 with firmware `01.01.07.01`, the installer first asks whether to flash a fix for the toolhead board's accelerometer. **The default is No.** If you say yes, **run input shaper calibration before bed leveling or printing**; see [Firmware fixes](docs/firmware.md).
+The installer first asks whether to flash a fix for the toolhead board's accelerometer. **The default is No.** If you say yes, **run input shaper calibration before bed leveling or printing**; see [Firmware fixes](docs/firmware.md).
 
 [Dry run, automatic updates, updating, and uninstalling →](docs/install.md)
 
@@ -84,7 +81,7 @@ On a Max 4 with firmware `01.01.07.01`, the installer first asks whether to flas
 
 - [Every setting and command in one table](docs/settings.md)
 - [If something goes wrong](docs/troubleshooting.md): restoring backups and reporting problems
-- [Optional firmware fixes](docs/firmware.md) for the Max 4 toolhead board and the QIDI Box
+- [Optional firmware fixes](docs/firmware.md) for the toolhead board and the QIDI Box
 - [What the installer changes on your printer](docs/under-the-hood.md)
 - [Changelog](CHANGELOG.md)
 - [Help test releases](TESTING.md) and [run the dev branch](DEVELOPMENT.md)
