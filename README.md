@@ -1,5 +1,3 @@
-![Tuba Makes](.github/images/tuba-makes-logo.png)
-
 <h1>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/images/valve-oil-logo-dark.png">
