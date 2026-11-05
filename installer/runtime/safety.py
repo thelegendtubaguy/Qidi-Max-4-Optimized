@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import json
+import math
 import shutil
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Callable
 
-from .errors import ActivePrintError, FreeSpaceError, InstallerError, PrinterStateError, RecoveryRequiredError
+from .errors import ActivePrintError, FreeSpaceError, InstallerError, KlipperBusyError, PrinterStateError, RecoveryRequiredError
 
 DiskUsageFn = Callable[[Path], object]
 UrlOpenFn = Callable[..., object]
@@ -76,6 +78,57 @@ def ensure_printer_idle(
     if state in {"printing", "paused"}:
         raise ActivePrintError()
     return state
+
+
+def ensure_klipper_idle(
+    url: str,
+    *,
+    idle_seconds: float,
+    timeout: int = 5,
+    urlopen: UrlOpenFn = urllib.request.urlopen,
+) -> None:
+    """Raise unless Klipper is ready, nothing prints, every heater target is 0, and the toolhead has not moved for idle_seconds."""
+    try:
+        heaters = _query_objects(url, ("heaters",), timeout=timeout, urlopen=urlopen)["heaters"]["available_heaters"]
+        if not isinstance(heaters, list) or not all(isinstance(name, str) and name for name in heaters):
+            raise PrinterStateError()
+        status = _query_objects(
+            url,
+            ("print_stats", "webhooks", "idle_timeout", "toolhead", *heaters),
+            timeout=timeout,
+            urlopen=urlopen,
+        )
+        if status["print_stats"]["state"] in {"printing", "paused"}:
+            raise ActivePrintError()
+        if status["webhooks"]["state"] != "ready":
+            raise PrinterStateError()
+        heating = any(_finite(status[name]["target"]) != 0 for name in heaters)
+        # Klipper advances print_time only for motion and timed commands, so this is how long the toolhead has been still.
+        still_for = _finite(status["toolhead"]["estimated_print_time"]) - _finite(status["toolhead"]["print_time"])
+        running_command = status["idle_timeout"]["state"] == "Printing"
+    except (KeyError, TypeError, ValueError) as exc:
+        raise PrinterStateError() from exc
+    if heating or running_command or still_for < idle_seconds:
+        raise KlipperBusyError()
+
+
+def _query_objects(url: str, names: tuple[str, ...], *, timeout: int, urlopen: UrlOpenFn) -> dict:
+    parts = urllib.parse.urlsplit(url)
+    query = "&".join(urllib.parse.quote(name, safe="") for name in names)
+    try:
+        with urlopen(urllib.parse.urlunsplit(parts._replace(query=query)), timeout=timeout) as response:
+            status = json.load(response)["result"]["status"]
+    except (OSError, urllib.error.URLError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+        raise PrinterStateError() from exc
+    if not isinstance(status, dict):
+        raise PrinterStateError()
+    return status
+
+
+def _finite(value) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ValueError(value)
+    return float(value)
 
 
 def klipper_halted(url: str, *, urlopen: UrlOpenFn = urllib.request.urlopen) -> bool:

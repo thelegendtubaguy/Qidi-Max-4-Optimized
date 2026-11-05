@@ -276,10 +276,10 @@ Only if the user asks to install on the printer:
    ssh qidi@192.168.20.165 '/home/qidi/tltg-optimized-macros/install.sh --dry-run --plain'
    ```
 
-7. For real install, avoid `--yes` if the user specified choices such as no auto-updates. Use explicit stdin responses or interactive input. To skip OS hardening:
+7. For real install, avoid `--yes` if the user specified choices such as no auto-updates. Use explicit stdin responses or interactive input. Every install applies the OS optimizations and reboots the printer when they need it; `--keep-ai-detection` answers the only OS optimization question:
 
    ```bash
-   ssh qidi@192.168.20.165 "cd /home/qidi/tltg-optimized-macros && printf 'yes\nyes\n' | ./install.sh --plain --skip-system-optimizations"
+   ssh qidi@192.168.20.165 "cd /home/qidi/tltg-optimized-macros && printf 'no\nno\n' | ./install.sh --plain --keep-ai-detection"
    ```
 
 8. If auto-update units already exist, the installer may repair them. If the user requested no automatic updates, disable them after install:

@@ -171,8 +171,14 @@ The installer SHALL initialize absent optimized saved-variable preferences to re
 - **THEN** it leaves that value unchanged
 - **AND** uninstall does not remove or reset it
 
-### Requirement: Opt-in recoverable host optimization
-The installer SHALL apply host OS optimizations only under explicit persisted policy, preserve recoverable preimages, and keep host-operation failures separate from a verified printer-configuration result. System optimizations SHALL remain available through the same packaged install, update, and uninstall flow without requiring a separate package or operator command.
+### Requirement: Recoverable host optimization
+Every install and update SHALL apply the host OS optimizations, leaving only whether QIDI AI detection is turned off to the operator, persist that policy, preserve recoverable preimages, and keep host-operation failures separate from a verified printer-configuration result. System optimizations SHALL remain available through the same packaged install, update, and uninstall flow without requiring a separate package or operator command.
+
+#### Scenario: Every install and update applies the OS optimizations
+- **WHEN** an install, `--yes` install, automatic update, or already-current automatic-update check runs while the printer is idle
+- **THEN** it applies the OS optimizations even when an earlier install recorded declining them, and records them as enabled
+- **AND** an interactive install asks only whether to turn off QIDI AI detection, and only while its service is running; otherwise, and in every noninteractive run, the recorded AI detection choice stands, keeping AI detection on when none was recorded
+- **AND** `--disable-ai-detection` or `--keep-ai-detection` replaces the recorded AI detection choice without asking
 
 #### Scenario: Enabled policy reconciles only recognized host state
 - **WHEN** system optimizations are enabled
@@ -220,7 +226,7 @@ The installer SHALL apply host OS optimizations only under explicit persisted po
 #### Scenario: Host reboot is deferred until safe
 - **WHEN** an applied operation requires a host reboot
 - **THEN** the requirement is persisted without embedding executable commands
-- **AND** reboot is scheduled only after successful transaction completion, explicit authorization, and a fresh idle-printer check
+- **AND** reboot is scheduled only after successful transaction completion and a fresh idle-printer check, and for uninstall only with explicit authorization
 - **AND** later execution clears the requirement only after post-boot verification succeeds
 - **AND** dry-run, active, or unknown printer state performs no reboot
 
@@ -422,7 +428,7 @@ Automatic updates SHALL require durable operator enrollment, use the same admiss
 - **THEN** no release is falsely recorded as installed and no reboot is scheduled
 - **AND** absent enrollment records the fetched checksum without installing whether checksum state is missing or changed
 - **AND** a matching enrolled release reports current only after critical optimized installation state passes verification
-- **AND** an already-current release may reconcile enabled installer-owned policy while idle
+- **AND** an already-current release reconciles the OS optimizations while idle
 
 #### Scenario: Update plumbing is ownership-bound
 - **WHEN** automatic updates are enabled, repaired, disabled, or removed during uninstall
@@ -703,21 +709,23 @@ As an optional OS optimization, the installer SHALL have QIDI's CPU frequency se
 - **THEN** it removes the file and restarts the service, which returns the CPU to `ondemand`
 - **AND** declining restoration leaves the CPU at full speed
 
-### Requirement: Reboot offered after host tuning
-After an install that applies zram swap, the CPU governor, or a service priority, the installer SHALL tell the operator to reboot the printer and offer to do it for them, without ever rebooting during a print.
+### Requirement: Reboot after host tuning
+After an install or automatic update that applies zram swap, the CPU governor, a service priority, or the Rockchip repair, the installer SHALL reboot the printer without asking, never during a print, and for automatic updates only once Klipper has been idle for 10 minutes.
 
-#### Scenario: An interactive install offers the reboot
-- **WHEN** an interactive install applied any of those changes in this boot and no Rockchip reboot is pending
-- **THEN** the installer asks whether to reboot the printer now, and otherwise tells the operator to reboot it
-- **AND** an accepted reboot, or `--reboot-host`, schedules a reboot about 10 seconds later that runs only if the printer is still idle
+#### Scenario: An install reboots without asking
+- **WHEN** an install, interactive or `--yes`, applied any of those changes in this boot, or leaves a Rockchip reboot pending
+- **THEN** it schedules a reboot about 10 seconds later, which runs only if no print is running or paused both when it is scheduled and when it runs
+- **AND** an install during a print, or one that cannot read the printer state, reboots nothing and tells the operator to reboot
 
-#### Scenario: Non-interactive runs never reboot unasked
-- **WHEN** an install runs with `--yes` without `--reboot-host`, or as an automatic update
-- **THEN** the installer reboots nothing; a `--yes` install tells the operator to reboot
+#### Scenario: Automatic updates reboot once Klipper is idle
+- **WHEN** an automatic-update check finds such a reboot pending from this boot
+- **THEN** it schedules the reboot only while Klipper is ready, no print is running or paused, Klipper is running no command, every heater target, including the Box heaters, is 0, and the toolhead has not moved for 10 minutes
+- **AND** the scheduled reboot checks all of these again before it runs
+- **AND** otherwise the reboot stays pending for a later hourly check
 
-#### Scenario: The offer lasts until the next boot
+#### Scenario: The reboot lasts until the next boot
 - **WHEN** the printer has rebooted since those changes, or a later install changed none of them
-- **THEN** the installer does not offer the reboot
+- **THEN** the installer does not reboot for them
 
 ### Requirement: Moonraker Spoolman accounting for QIDI Box changes
 Normal install and update SHALL patch QIDI's Moonraker Spoolman component, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches.

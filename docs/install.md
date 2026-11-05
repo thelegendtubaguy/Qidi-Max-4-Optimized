@@ -15,13 +15,12 @@ Running it with `sudo` works the same: the installer switches to `qidi` and asks
 The installer checks which printer it's on and its firmware (see [Supported printers](../README.md#supported-printers)), the printer's state, and free space before writing anything, and makes a backup of your configuration first. Along the way it asks about:
 
 - **Toolhead board firmware fix** (Max 4 with firmware `01.01.07.01` only): asked first, before anything changes. The default is No. See [Firmware fixes](firmware.md).
-- **System hardening and OS optimizations**: see [below](#os-optimizations).
-- **Disable QIDI AI detection**: turns off QIDI's `algo_app` service. When the installer has finished its system changes, it reminds you to also turn off Spaghetti Detection and Foreign Object Detection in the touchscreen's Settings -> Printing Options, so the screen matches.
+- **Disable QIDI AI detection**, only while it's on: turns off QIDI's `algo_app` service. When the installer has finished its system changes, it reminds you to also turn off Spaghetti Detection and Foreign Object Detection in the touchscreen's Settings -> Printing Options, so the screen matches.
 - **Automatic updates**: see [below](#automatic-updates).
 - **QIDI Box setup**, when Box support is off or tool numbers don't match slot numbers.
 - **Restarting Klipper** to apply the changes.
 
-The system changes, including restarting Moonraker and the touchscreen, take a little over a minute on a first install; the installer names each one as it goes.
+It applies the [OS optimizations](#os-optimizations) without asking. The system changes, including restarting Moonraker and the touchscreen, take a little over a minute on a first install; the installer names each one as it goes. When they need a reboot, the installer reboots the printer about 10 seconds after it finishes.
 
 After installing, close every Fluidd tab and open Fluidd again.
 
@@ -35,19 +34,20 @@ To see what the installer would do without changing anything:
 
 ### OS optimizations
 
-These are optional, and uninstall asks whether to undo them:
+Every install and update applies these, including on printers where an earlier install skipped them. The printer has little memory and CPU to spare, and each release is tested with them on. Uninstall asks whether to undo them:
 
 - Adding `1.1.1.1` and `8.8.8.8` as fallback DNS servers.
 - Pointing the printer's package sources at Debian's official servers.
-- Turning off services the printer doesn't use: `xl2tpd`, `bluetooth`, and optionally QIDI AI detection.
-- Stopping a broken QIDI boot service from leaving the printer's storage in slow synchronous mode. The installer may offer a reboot to confirm the repair.
+- Turning off services the printer doesn't use: `xl2tpd`, `bluetooth`, and QIDI AI detection if you choose.
+- Stopping a broken QIDI boot service from leaving the printer's storage in slow synchronous mode.
 - Compressed swap in memory ([zram](#zram-swap)), so the printer doesn't run out of memory.
 - Running the CPU at full speed, so Klipper's short bursts of work don't start at a third of it. With a 65 °C chamber, the processor ran about 1 °C warmer, 11 °C below where it starts slowing itself down.
 - Still images instead of animations on the touchscreen.
 
-Everything else in [What you get](../README.md#what-you-get) is installed whether or not you choose these.
+When an install or update turns on zram swap, the CPU setting, the service priorities, or the storage repair, they take effect straight away, and the printer then reboots by itself, never during a print, to confirm they start at boot:
 
-When an install turns on zram swap, the CPU setting, or the service priorities, they run straight away, and the installer offers to reboot the printer so you can see they start on their own. If you accept while the printer is idle, it reboots about 10 seconds later; it checks again that nothing is printing first. With `--yes`, the installer only says to reboot, unless you also pass `--reboot-host`. Automatic updates never reboot for this.
+- An install reboots the printer about 10 seconds after it finishes, without asking, unless a print is running or paused. It checks again just before rebooting.
+- An automatic update reboots only once Klipper has been idle for 10 minutes: no print running or paused, no command running, the toolhead still, and every heater, including the Box dryers, off. Until then, each hourly check tries again.
 
 ### Zram swap
 
@@ -75,7 +75,7 @@ Run the install command again. Updates keep your settings.
 
 ### Automatic updates
 
-If you turn them on, the printer checks for a new release every hour and installs it, skipping any check while a print is running or paused. Each update runs the same checks as a normal install.
+If you turn them on, the printer checks for a new release every hour and installs it, skipping any check while a print is running or paused. Each update runs the same checks as a normal install, applies the [OS optimizations](#os-optimizations), and reboots the printer when they need it, once Klipper has been idle for 10 minutes.
 
 Turning them on needs `sudo` once. The installer uses QIDI's public default password (`qiditech`), or the `TLTG_OPTIMIZED_SUDO_PASSWORD` environment variable if set, and asks for a password if that doesn't work.
 
