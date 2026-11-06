@@ -1,6 +1,6 @@
 # QIDI Box MCU firmware observations
 
-Evidence qualifiers are defined in `openspec/observations/README.md`. Firmware images examined: `QD_MAX4_BOX_02.03.01.21` (USB Box MCU) and `QD_MAX4_BOX485_02.04.01.01` (RS-485 Box MCU), both shipped in the same update bundle.
+Evidence qualifiers are defined in `openspec/observations/README.md`. Firmware images examined: `QD_MAX4_BOX_02.03.01.21` (USB Box MCU) and `QD_MAX4_BOX485_02.04.01.01` (RS-485 Box MCU), both shipped in the same update bundle. Plus 5 firmware `01.01.02.01` ships byte-identical `QD_PLUS5_BOX_02.03.01.21` and `QD_PLUS5_BOX485_02.04.01.01` images (see `../qidi-platform.md`, QIDI Plus 5), so the static and emulated findings here apply to them; runtime findings come from Max 4 printers.
 
 ## Image identification
 
