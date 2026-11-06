@@ -38,6 +38,7 @@ from . import moonraker_spoolman
 from . import remote_screen
 from . import restart_on_exit
 from . import service_priority
+from . import webcam_id
 from . import zram_swap
 from .auto_update import current_auto_update_checksum
 from .errors import InstallerError
@@ -251,6 +252,17 @@ GUARDED_FILE_PATCHES = {
         label="Klipper restart-on-exit drop-in",
         file=lambda spec: restart_on_exit.FILES[restart_on_exit.KLIPPER_OPERATION],
         patch=restart_on_exit.patch_dropin(restart_on_exit.FILES[restart_on_exit.KLIPPER_OPERATION]),
+        restart_service=None,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+        reloads_units=True,
+    ),
+    # Takes effect at the next boot, when QIDI's script runs.
+    webcam_id.OPERATION: _GuardedFilePatch(
+        label="Camera ID wait drop-in",
+        file=lambda spec: webcam_id.FILE,
+        patch=webcam_id.patch_dropin,
         restart_service=None,
         missing_message=None,
         skip_unrecognized=True,
@@ -3058,6 +3070,7 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         KLIPPER_PRINT_STATS_OPERATION,
         restart_on_exit.MOONRAKER_OPERATION,
         restart_on_exit.KLIPPER_OPERATION,
+        webcam_id.OPERATION,
         *service_priority.SERVICES,
         # The path file goes after the packages it points at, so restoration removes it first.
         MOONRAKER_SPEEDUPS_OPERATION,
@@ -3135,7 +3148,7 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
     if operation_id in (
         moonraker_klippy_apis.OPERATION, moonraker_spoolman.OPERATION, moonraker_allowed_services.OPERATION,
         moonraker_speedups.PATH_OPERATION, restart_on_exit.MOONRAKER_OPERATION, restart_on_exit.KLIPPER_OPERATION,
-        *service_priority.SERVICES, zram_swap.UNIT_OPERATION, cpu_governor.OPERATION,
+        webcam_id.OPERATION, *service_priority.SERVICES, zram_swap.UNIT_OPERATION, cpu_governor.OPERATION,
         remote_screen.UNIT_OPERATION, remote_screen.SERVER_OPERATION, remote_screen.NGINX_OPERATION,
     ):
         guarded = GUARDED_FILE_PATCHES[operation_id]
@@ -3582,6 +3595,7 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             KLIPPER_PRINT_STATS_OPERATION,
             restart_on_exit.MOONRAKER_OPERATION,
             restart_on_exit.KLIPPER_OPERATION,
+            webcam_id.OPERATION,
             MOONRAKER_SPEEDUPS_OPERATION,
             moonraker_speedups.PATH_OPERATION,
             *service_priority.SERVICES,

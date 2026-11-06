@@ -100,6 +100,11 @@
 - **Runtime-confirmed (same printer):** none of `/usr/bin/adbd`, `/usr/bin/usbdevice`, or the unit belonged to a Debian package. `/etc/init.d/rockchip.sh` has `service adbd start` commented out. No file under `/home/qidi/QIDI_Client`, `/usr/local/bin` (including `algo_app`), `/home/qidi/update`, or `/home/qidi/scripts` contained `usbdevice`, `/usr/bin/adbd`, or `usb-ffs`.
 - **Config-confirmed (same printer's `/usr/bin/usbdevice`):** `usbdevice stop` unbinds the gadget from its UDC and stops `adbd`. `/lib/udev/rules.d/61-usbdevice.rules` runs `usbdevice update`, equivalent to `start`, on `android_usb` change events.
 
+## Camera device at boot
+
+- **Config-confirmed (one Max 4, firmware `01.01.07.01`, 2026-11-06):** `makerbase-webcam.service` (`/lib/systemd/system/makerbase-webcam.service`, `Type=oneshot`, `After=crowsnest.service`, `WantedBy=multi-user.target`) runs `/root/auto-webcam-id.sh`. The script waits until `/dev/v4l/by-id/` exists and is non-empty, takes `ls /dev/v4l/by-id/* | grep index0` as the camera path, and writes it over `device:` in `~/printer_data/config/crowsnest.conf` when `device:` is empty or differs from it, including when the path is empty; then it restarts `crowsnest.service`. Its progress goes to `/root/debug_webcam-id.log`. QIDI's stock `crowsnest.conf` sets `device:/dev/v4l/by-id/usb-MGM1_MGM1_1043-video-index0`.
+- **Runtime-confirmed (same printer, same boot):** udev created the camera's `-video-index1` link 260 ms before its `-video-index0` link. The script ran in between, logged an empty path (`get id info :`), and left `device:` empty; crowsnest then exited with `ERROR: Parameter device not found in Section [cam 1].` until systemd stopped restarting it, and `/webcam/` returned 502, so Fluidd showed no camera. The script's log showed `device:` was already empty at the start of that boot; crowsnest last started with the stock device three days earlier. Running the script again after both links existed restored the device and the stream.
+
 ## Rockchip first-boot service and root mount
 
 - `/proc/device-tree/compatible` on the observed Max 4 identifies RK3308, while `/etc/init.d/rockchip.sh` assigns `CHIPNAME="rk3208"` for that hardware.
