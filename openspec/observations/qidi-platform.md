@@ -2,7 +2,7 @@
 
 ## Firmware and service behavior
 
-- Supported QIDI Max 4 stock comparisons use `https://github.com/thelegendtubaguy/Qidi-Max4-Defaults`.
+- Supported QIDI Max 4 stock comparisons use `https://github.com/thelegendtubaguy/Qidi-Max4-Defaults`; QIDI Plus 5 comparisons use `https://github.com/thelegendtubaguy/Qidi-Plus5-Defaults`.
 - Firmware identity is exposed in `/home/qidi/update/firmware_manifest.json` at `SOC.version`.
 - **Runtime-confirmed:** [GitHub issue #71](https://github.com/thelegendtubaguy/valve-oil/issues/71) reported firmware `01.01.06.04` with `/home/qidi/klipper/klippy/extras/homing.py` SHA-256 `0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761`. The attached file differs from the previously captured `01.01.06.04` SHA-256 `ff0439f8b9e702537f66c16508f7b0a137b27cff51eb653aa951172d3e5184a0` only by a conditional `endstop_sync_reset()` block before endstop `home_start()` setup.
 - Unresolved: `Qidi-Max4-Defaults` firmware snapshots currently contain `config/` and do not establish which `01.01.06.04` distribution or update path supplies each `homing.py` variant.
@@ -58,10 +58,72 @@
 - **Unresolved:** whether a firmware update rewrites `/etc/nginx/sites-available/fluidd`, and with what content.
 - **Runtime-confirmed:** QIDI's Moonraker `printer.print.start` takes an optional `plateindex` that defaults to `1` and is passed as `SDCARD_PRINT_FILE ... PLATEINDEX=`; `virtual_sdcard.py` extracts `Metadata/plate_<n>.gcode` from a 3MF and fails with `3MF processing error: [Errno 2] No such file or directory: '.../shadow_native_plate_1.gcode'` when that plate has no G-code. OrcaSlicer's upload-and-print passes the plate; Fluidd, Moonraker's job queue, and history reprints send only the filename. A single-plate OrcaSlicer export of plate 2 contains only `Metadata/plate_2.gcode`, and its `Metadata/slice_info.config` records `<metadata key="index" value="2"/>`.
 
+## QIDI Plus 5
+
+Comparisons in this section are against Max 4 firmware `01.01.07.01`, released the same day. Unless a bullet says otherwise, the observations elsewhere in this file come from Max 4 printers and are not established for the Plus 5.
+
+### Firmware packages
+
+- **Config-confirmed:** `Qidi-Plus5-Defaults` commit `25001402d9025dc9f494e51f2cba907f8e1b45d6` records archive `QD_PLUS5_01.01.02.01_20261016_Release.zip` SHA-256 `534e5ce959b1e387fc6355f8d78736ddb94432eb9c569ff2a135e103dfeb0871`, firmware-manifest SHA-256 `085259c173e9bf13978552f79b3f37db6a5f470f12dd6a2c248f284754efddd6`, and SOC payload SHA-256 `43ea5068c624e2fc0ab41e94c75c6f4a05e0dd0480654f8b52dc8bbabde4cae6`. Earlier releases are `01.01.01.06` (`QD_PLUS5_01.01.01.06_20260804_Release.zip`, SHA-256 `94629da950e1b4ca32964c9de0b3e6e618ccd43aa132db98fcebe22e000a70e3`) and `01.01.01.07` (`QD_PLUS5_01.01.01.07_20260915_Release.zip`, SHA-256 `18c25901dc75d66b76e3dfe54b4a47d4b481e35bbdeebfbda822873a8a8931da`). Both ship MCU, THR, and BOX images with the same names and sizes as `01.01.02.01`, and neither ships BOX485 or BUFFER images.
+- **Static-recovered:** the `01.01.02.01` manifest lists SOC, MCU `02.01.01.12`, THR `02.02.01.08`, BOX `02.03.01.21`, BOX485 `02.04.01.01`, and BUFFER `02.05.01.01`, and has no `CLOSED_LOOP_MOTOR` entry. All five board images are byte-identical to the `QD_MAX4_` images in Max 4 `01.01.07.01`; only the file-name prefix differs:
+
+  | Image | SHA-256 |
+  |---|---|
+  | `QD_PLUS5_MCU_02.01.01.12_20260609.bin` | `65405946b4b0c152d9115e06d082bc3818b13b5a878970c8a18388a641d510fd` |
+  | `QD_PLUS5_THR_02.02.01.08_20260303.bin` | `1d34b4b0142f2a2047f08c2fae59d827bcee0adbd1563b4bd1de311dff8b2d62` |
+  | `QD_PLUS5_BOX_02.03.01.21_20260124.bin` | `dcf6bb191d77fb2d70e2cdabce7b24f277d4eb143ed28fe55c9ce19f1531cd12` |
+  | `QD_PLUS5_BOX485_02.04.01.01_20261010.bin` | `53bf49f5250d95dd9dc0e4039feb43013502e3d3278b82c1c301b5d73e6db7f1` |
+  | `QD_PLUS5_BUFFER_02.05.01.01_20261010.bin` | `ef08f7450a14b91b21283eb8dcbb36aafa5fe94aa2ed4a7fa809dad3298e781f` |
+
+  The static and emulated THR application findings under firmware `01.01.07.01` above, and the Box image findings in `qidi-box/mcu-firmware.md`, therefore describe the Plus 5 images. They do not establish which THR bootloader builds Plus 5 boards carry.
+- **Config-confirmed:** the SOC payload is Debian package `qd-plus5-system` version `01.01.02.01`. Its `preinst`, `prerm`, and `postinst` are identical to Max 4 `01.01.07.01` apart from the package name and the `VERSION` string, so its `preinst` removes `/home/qidi/printer_data/config` files except the same retained basenames.
+- **Config-confirmed:** across the two SOC payloads, `/home/qidi/fluidd` (640 files, including the Fluidd `v1.30.5` bundle), `/home/qidi/klippy-env`, `/home/qidi/moonraker-env`, `/home/qidi/system_stats`, the shipped `/etc` files (`qidi-tuning.service`, the nginx `system_stats.conf`, the D-Bus policy, `fstab`, and `dhcpcd.exit-hook`), and `/root/Frp_bak` are byte-identical. Moonraker differs only in `moonraker/components/mqtt.so`. The Plus 5 payload has no `/usr/local/bin/algo_app` tree and no `/etc/systemd/system/algo_app.service`.
+- **Static-recovered:** the Plus 5 `qidiclient` (SHA-256 `6c09a58a636427d468b77b78149e5305f0b1182e785a0abff67aec53b3aeb855`) is built from the same source tree as the Max 4 binary (`/builds/qidi/3dprinter_m4/qidiclient`). Its 51,694 unique strings differ from the Max 4 binary's only in model identifiers (`QD_PLUS5`, `QD_PLUS5_MCU`/`_THR`/`_BOX`, `QIDI PLUS5`), the offline update prefix `USB/QD_Update/QD_PLUS5_`, the release-history path `/Plus5/firmware-release-history`, UI sources under `draw_ui/QD_PLUS5/3.97_inch` instead of `draw_ui/QD_MAX4/5.0_inch`, startup-removal image paths, and build identifiers. It keeps the `/dev/ttyS4` THR transfer path, the `BOX485` and `BUFFER` component names, and the closed-loop component strings.
+- **Config-confirmed:** `resource/model_config/QD_PLUS5.json` declares `printer_series` `series_m4`, a `0`–`375 °C` nozzle range, a `0`–`125 °C` bed range, a `0`–`65 °C` chamber range, and `support_ai_monitoring: true`. It uses `frp` instead of `p2p` for remote camera file access and live view, and omits `support_no_sse`. The `qidi_client_error` definitions differ only in QR-code path, `/home` instead of the Max 4 paths.
+
+### Klipper and stock configuration
+
+- **Config-confirmed:** the `01.01.02.01` `klippy` tree has the same 234 files as Max 4 `01.01.07.01`, and 228 are byte-identical in the SOC payloads, line endings included. They include `homing.py`, `toolhead.py`, `mcu.py`, `reactor.py`, `gcode.py`, `webhooks.py`, `box_config.py`, the `air` and `cs1237` binaries, and the RS-485 stack modules. The six that differ:
+  - `print_stats_manager.py`: see [Klipper shutdown reporting](#klipper-shutdown-reporting).
+  - `stepper_enable.py`: enables steppers at the move's print time, without Max 4's `ENABLE_DELAY_TIME` of 0.3 s early enable and its `ENABLE delay` log line.
+  - `spi_temperature.py`: `MAX6675_MULT` is `0.25 * 1.03`, commented as reading 3% higher so the actual temperature is lower.
+  - `neopixel.py`: the `FLOW` effect uses green `100` instead of `50`.
+  - `box_stepper.so` (SHA-256 `fc20d82a58b740c0d5e23a4043c23f3d2b9dcb386e72cda4e4619292331f6589`): adds Cython locals `extruder_load_length_2` and `extruder_load_length_3`, each with `_speed` and `_accel` variants. **Unresolved:** the load behavior they implement.
+  - `box_extras.so` (SHA-256 `e668d661600c4bbb737850a28e5c935adb5fe7ffc98eb93a16f5521402ae2871`): same size and readable string set as the Max 4 binary, different code. **Unresolved:** what changed.
+- **Config-confirmed:** `config/printer.cfg` against Max 4 `01.01.07.01`:
+  - X and Y are open loop. There is no `[cl_interface]` or `[closed_loop x|y]`. X and Y use `[tmc2240 stepper_x|y]` over software SPI (`PA5`/`PA6`/`PA7`, chip selects `PD2` and `PC12`) at `run_current: 1.07`, `stealthchop_threshold: 0`, and `driver_SGT: 1`. Endstops are sensorless (`tmc2240_stepper_x:virtual_endstop`, `tmc2240_stepper_y:virtual_endstop`) with `homing_retract_dist: 0`.
+  - Travel: X `-7` to `326` (endstop `325`, positive), Y `-5` to `340` (endstop `-3`), Z max `310` with `position_endstop_reverse: 300`.
+  - Z `rotation_distance` is `4` (Max 4: `2`), with `max_z_velocity: 20`. Limits are `max_velocity: 600` and `max_accel: 20000`.
+  - The extruder direction is inverted, with `rotation_distance: 53.1`, `run_current: 0.857` (Max 4: `0.428`), and PID `36.025`/`6.491`/`49.985`.
+  - THR is on `/dev/ttyS4` at `500000` with the same `lis2dw` and `probe_air` pins as Max 4. Filament switch `THR:PA1`, hotend fan `THR:PA11`, and hotend-fan tachometer `THR:PA12` replace Max 4's `PA0`, `PA15`, and `PB5`.
+  - There is no `[fan_generic auxiliary_cooling_fan2]`. The bed mesh is `15,15`–`305,305` at 7×7. `z_tilt` probes `15,160` and `305,160`, the resonance probe point is `162,162`, the screws are at `32.5`/`287.5`, and `probe_air` `z_offset` is `-0.075`.
+  - `[box485]` and `[box2base]` match Max 4.
+- **Config-confirmed:** the stock `klipper-macros-qd/` differs from Max 4 in `kinematics.cfg`, `filament.cfg`, `qd_macro.cfg`, `pause_resume_cancel.cfg`, `park.cfg`, `globals.cfg`, `fans.cfg`, and `start_end.cfg`; the other macro files match after line-ending normalization.
+  - Homing: `_HOME_X` and `_HOME_Y` set both XY drivers to `0.9 A`, run `G28.6245197` on the axis, restore `run_current`, beep, and back off 10 mm. `_HOME_XY` homes Y, X, then Y again. A full `G28` sets the kinematic position to X/Y `100` and Z to half of `axis_maximum.z`, moves Z+5, X-5, and Y+5, waits 2 s, homes XY, moves to the bed center, homes Z, raises Z 20 mm, and sets `_HOME_STATE` `is_homed=1`. No `EXIT_ENFORCE_MODE`, `SET_HOMING_STATE`, or `SET_HOMING_MODE` command is issued.
+  - `M84` is redefined with `rename_existing: M84.1`; it clears `_HOME_STATE` `is_homed` before calling `M84.1`.
+  - Positions: park `77, 338`; `print_max` `(320,320)`.
+  - Cutter: moves to Y-2, X15, then X-2, with two 1 s dwells around X-1 and X-2. The extruder stepper is not disabled before the cut, and the retract is `E-4` at `F1000`.
+  - Rear wiper: X95–X109 strokes; the silicone wipe is X110–X123 at Y339.
+  - `fans.cfg` drives no second auxiliary fan.
+  - `variable_autotune_shapers` is `maz`, and its `SET_INPUT_SHAPER` lines are commented out.
+  - `M1006 Z` maps to `G92 Z`, as on Max 4.
+- **Config-confirmed:** `crowsnest.conf` sets the camera to `640x480` (Max 4: `1920x1080`). `box.cfg` matches Max 4.
+
+### Slicer profiles
+
+- **Config-confirmed:** QIDI Studio (`21d47457`, 2026-11-05) and OrcaSlicer (`73e64d3bc5`, 2026-11-06) ship `Qidi X-Plus 5` machine profiles with a 320×320 printable area, 300 mm height, 600 mm/s, and 20,000 mm/s². After `M1002 A1`, the start G-code moves to `X160 Y160 Z10` and applies `M1006 Z{10 - ((nozzle_temperature_initial_layer[initial_tool] - 130) / 14 - 5.0) / 100}`, where the Max 4 profile uses `G92_`. The QIDI Studio profile also inlines the Plus 5 wiper and cutter coordinates, a prime line at Y1 from X140 to X180 drawn 0.6 mm above a single `probe samples=1` reading, then a lift to Z1.
+
+### Runtime
+
+- **Runtime-confirmed (operator report, 2026-11-06, one Plus 5 without Valve Oil):** `/home/qidi/update/firmware_manifest.json` named the `01.01.02.01` package files listed above. That file records the last update package applied, not versions read back from the boards. `box.cfg` had no `[mcu mcu_boxN]` sections, `/proc/swaps` had no zram, `systemctl is-active algo_app.service` printed `inactive` (it prints the same for a unit that does not exist), and Klipper was `ready` with print state `standby`.
+- **Runtime-confirmed (same report):** the kernel is `5.10.160 #3 SMP PREEMPT Sat Aug 23 12:12:00 CST 2025`, a different build from the Max 4 test printer's `#4 SMP PREEMPT Wed Sep 3 15:21:57 CST 2025`. The SOC payload ships no kernel, so this string comes only from the running printer.
+- **Unresolved:** for the Plus 5, the THR and Box bootloader builds; the THR, mainboard, and SoC board revisions; host RAM, kernel configuration and module ABI; whether `algo_app` is on the factory image; whether the Max 4 observations about `usbdevice`/`adbd`, `makerbase-webcam.service`, `rockchip.service`, the framebuffer and touchscreen geometry, and the service units hold; and whether Klipper reaches ready with a USB Box or an RS-485 device attached.
+
 ## Klipper shutdown reporting
 
 - **Config-confirmed:** `klipper/klippy/extras/print_stats_manager.py` is byte-identical in the captured `01.01.06.04` and `01.01.07.01` defaults (LF-normalized SHA-256 `8fc2f3150c1b5da407bd3175d5c38e830ec73a349cb419110a32e449f5fc8858`; the live `01.01.07.01` file uses CRLF, SHA-256 `f5d5f58d17dc6dbbae359a955535d4eec0de2085863d25167dbd14c312abef6d`). It handles every `gcode:command_error` by setting main status `ready`. Leaving `printing` runs `SET_TMC_FIELD ... tpwmthrs VELOCITY=9999999999` for `stepper_z` and `stepper_z1` through `run_script_from_command` before the status changes.
 - **Config-confirmed:** after a shutdown, QIDI's `gcode.py` dispatches only commands registered for the not-ready state, so `SET_TMC_FIELD` is refused. Its dispatcher sends `gcode:command_error` for the refusal and re-raises it, so the reset re-enters itself while the status is still `printing`.
+- **Config-confirmed:** Plus 5 `01.01.02.01` `print_stats_manager.py` (CRLF SHA-256 `d59188120df77cd2424c8b4e6139a81822e25ea989f62de47f608c3e127670cb`) comments out both `SET_TMC_FIELD ... tpwmthrs` blocks and otherwise matches the Max 4 file, including the `gcode:command_error` reset handler. Leaving `printing` therefore issues no command there that a shutdown would refuse. Whether anything else re-enters the reset after a shutdown on the Plus 5 is **Unresolved**.
 - **Runtime-confirmed:** on one Max 4 running `01.01.07.01`, `Lost communication with MCU 'mcu_box2'` during a print was followed within two seconds by 136 reset log lines (`检查到！！错误，恢复默认状态！！`, "error detected, restoring default state"), each after a `Printer is shutdown` refusal. A logged traceback shows the refusals nested inside one another in `gcode.py` `_process_commands`, ending in a `BlockingIOError` from the G-code response pipe. Klippy then stopped without a final error and started again 12 seconds later.
 - **Unresolved:** the screen and Moonraker state text after that restart was not captured.
 
@@ -161,7 +223,7 @@ The 4 KiB batch increased from `1.324 MiB/s` to `35.617 MiB/s`; the 256 KiB batc
 
 ## Host memory and kernel
 
-- **Runtime-confirmed (test printer, `01.01.07.01`):** the host is an RK3308 (four Cortex-A35 cores, 486 MB RAM) running kernel `5.10.160 #4 SMP PREEMPT Wed Sep 3 15:21:57 CST 2025`, built with Arm GNU Toolchain 10.3-2021.07 `aarch64-none-linux-gnu`. It has swap support but no swap, no zram, zsmalloc, lz4, or lzo, no memory cgroup controller, no compaction, no PSI, no `MODVERSIONS`, no `/proc/config.gz`, and no `/proc/kcore`. `/lib/modules` holds only Wi-Fi and Bluetooth drivers. The boot partition is an Android boot image holding an LZ4-compressed `Image`.
+- **Runtime-confirmed (Max 4 test printer, `01.01.07.01`):** the host is an RK3308 (four Cortex-A35 cores, 486 MB RAM) running kernel `5.10.160 #4 SMP PREEMPT Wed Sep 3 15:21:57 CST 2025`, built with Arm GNU Toolchain 10.3-2021.07 `aarch64-none-linux-gnu`. It has swap support but no swap, no zram, zsmalloc, lz4, or lzo, no memory cgroup controller, no compaction, no PSI, no `MODVERSIONS`, no `/proc/config.gz`, and no `/proc/kcore`. `/lib/modules` holds only Wi-Fi and Bluetooth drivers. The boot partition is an Android boot image holding an LZ4-compressed `Image`.
 - **Static-recovered:** `algo_app.service` sets `MemoryHigh=200M` and `MemoryMax=250M`; without the memory controller the kernel does not enforce them.
 - **Runtime-confirmed (one user's printer, 2026-11-03, `ps` while printing with AI detection and timelapse on):** `algo_app` held 189 MB resident and 78% of a core, `qidiclient` 72 MB, Klipper 52 MB, and Moonraker 48 MB, leaving 24–35 MB available with `kswapd0` at 18% of a core. That printer's `klippy.log` showed available memory falling by about 90 MB about 4.6 minutes into every print, and two prints cancelled while printing ended in `Missed scheduling of next digital out event` shutdowns after Klipper's process stopped for 11 s and about 2 min 46 s.
 - **Runtime-confirmed (test printer, idle Klipper, a test process holding 215 MB of 2:1-compressible memory then 60 MB more):** without swap the test process was OOM-killed, Klipper's longest timer delay was 405 ms, and Klipper took 2,707 major page faults. With 256 MB of lz4 zram swap, nothing was killed, the longest delay was 4 ms, and Klipper took 36 major page faults. With zram, swappiness 60 against 80 against 100 gave longest delays of 4, 4, and 2–145 ms at the 60 MB spike, and 189, 3, and 16 ms with a 120 MB spike; at 60 with the larger spike the system took 37,808 major page faults.
