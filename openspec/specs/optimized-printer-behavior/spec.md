@@ -748,7 +748,9 @@ Optimized configuration SHALL unregister the vendor Box load-cell timers (`_read
 
 #### Scenario: Endstop sync timeout
 - **WHEN** a homing move fails with `Communication timeout during homing`, or a load-cell probe move fails with `WEIGHT sensor error`, QIDI's report of a failed endstop sync
-- **THEN** the console and `klippy.log` name the MCUs involved, Klipper's main-thread load and largest timer delay over the previous 10 seconds, and the timer count, and the error is otherwise unchanged
+- **THEN** the console and `klippy.log` name the MCUs involved, the MCUs whose sync timed out, and for each MCU the largest gap between its status reports by its own clock and by Klipper's receive time, along with Klipper's main-thread load and largest timer delay over the previous 10 seconds and the timer count
+- **AND** `klippy.log` lists each MCU's last status reports with their receive and send spacing
+- **AND** the error is otherwise unchanged
 
 ### Requirement: Macros read cheap printer facts
 Optimized macros SHALL NOT read `printer.configfile`, `printer.gcode`, `printer.multi_color_controller`, or `printer.box_extras`, whose whole status Klipper copies on its main loop. They SHALL read Box availability, whether `T_MANAGER` is registered, the loaded slot, and the configured `max_accel` from `tltg_macro_status`, which SHALL report the values those objects gave.
