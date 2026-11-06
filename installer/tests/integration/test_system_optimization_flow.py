@@ -18,6 +18,7 @@ from installer.runtime import moonraker_speedups
 from installer.runtime import remote_screen
 from installer.runtime import cpu_governor
 from installer.runtime import restart_on_exit
+from installer.runtime import webcam_id
 from installer.runtime import service_priority
 from installer.runtime import zram_swap
 from installer.runtime.fluidd_box_filaments import OPERATION as FLUIDD_BOX_OPERATION, PATCH_MARKER
@@ -175,6 +176,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         # Klipper and Moonraker restart after any exit outside systemd, without restarting them to apply it.
         for dropin in restart_on_exit.FILES.values():
             self.assertEqual((system_root / dropin.lstrip("/")).read_text(encoding="utf-8"), restart_on_exit.CONTENT)
+        # QIDI's camera ID script waits for the camera's index0 link from the next boot, without running it now.
+        self.assertEqual((system_root / webcam_id.FILE.lstrip("/")).read_text(encoding="utf-8"), webcam_id.CONTENT)
+        self.assertNotIn(webcam_id.UNIT, service_events)
         # Klipper gets the CPU before Moonraker, and both before the touchscreen app.
         for operation, dropin in service_priority.FILES.items():
             self.assertIn(f"Nice={service_priority.NICE[operation]}\n", (system_root / dropin.lstrip("/")).read_text(encoding="utf-8"))
@@ -431,6 +435,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "disabled")
         for dropin in restart_on_exit.FILES.values():
             self.assertFalse((system_root / dropin.lstrip("/")).exists())
+        self.assertFalse((system_root / webcam_id.FILE.lstrip("/")).exists())
         for dropin in service_priority.FILES.values():
             self.assertFalse((system_root / dropin.lstrip("/")).exists())
         # Zram swap and the CPU governor are optional OS optimizations, so declining restoration keeps them.

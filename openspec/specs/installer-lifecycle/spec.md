@@ -668,6 +668,26 @@ Normal install and update SHALL make systemd start Klipper and Moonraker again w
 - **THEN** install and update leave it unchanged and report it
 - **AND** uninstall removes only an unchanged package drop-in
 
+### Requirement: QIDI's camera setup waits for the camera
+Normal install and update SHALL make QIDI's boot-time camera setup for crowsnest (`makerbase-webcam.service`) run only once the camera's `-video-index0` device link exists, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches.
+
+#### Scenario: Camera link appears after the by-id directory
+- **WHEN** at boot `/dev/v4l/by-id/` gains another link of the camera before its `-video-index0` link
+- **THEN** QIDI's script runs after the `-video-index0` link exists, so it writes that link, not an empty path, into the crowsnest `device:` setting
+
+#### Scenario: No camera link appears
+- **WHEN** no `-video-index0` link exists within 30 seconds of the unit starting
+- **THEN** QIDI's script does not run and `crowsnest.conf` is unchanged
+
+#### Scenario: Applying the change
+- **WHEN** install or update adds or changes the drop-in
+- **THEN** it takes effect at the next boot without running QIDI's script or restarting crowsnest
+
+#### Scenario: Operator unit changes are preserved
+- **WHEN** a file already exists at the package's drop-in path without the package marker
+- **THEN** install and update leave it unchanged and report it
+- **AND** uninstall removes only an unchanged package drop-in
+
 ### Requirement: Print-critical services get the CPU first
 Normal install and update SHALL run Klipper at a higher CPU priority than Moonraker, and Moonraker at a higher CPU priority than QIDI's touchscreen app, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches.
 

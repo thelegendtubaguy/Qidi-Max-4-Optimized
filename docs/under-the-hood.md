@@ -34,6 +34,7 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 | `~/tltg-moonraker-speedups` and `tltg-moonraker-speedups.pth` in `~/moonraker-env` | Adds `msgspec` and `uvloop`, which Moonraker uses when it can import them, to QIDI's Moonraker. Moonraker builds the JSON it sends to Fluidd and the touchscreen with `msgspec` and runs its event loop on `uvloop`, using less CPU. Nothing in QIDI's `~/moonraker-env` is replaced. | Moonraker, when the packages change |
 | `/etc/systemd/system/{klipper,moonraker,qidi-client}.service.d/tltg-priority.conf` | Gives Klipper the CPU before Moonraker, and both before the touchscreen app (nice -10, -5, and 5). | Each service, once |
 | `/etc/systemd/system/{moonraker,klipper}.service.d/tltg-restart-on-exit.conf` | Turns off `RemainAfterExit` in QIDI's Moonraker and Klipper services, so systemd starts them again 10 seconds after they stop without systemd stopping them. Before, they stayed down until a restart or reboot while still reported as running. | None |
+| `/etc/systemd/system/makerbase-webcam.service.d/tltg-wait-for-camera.conf` | Makes QIDI's boot script that sets the camera for crowsnest wait up to 30 seconds for the camera's `index0` device link, and skips the script if none appears. Before, the script could run before the link existed and clear the camera from `crowsnest.conf`, leaving Fluidd without a camera. See [The camera doesn't show in Fluidd](troubleshooting.md#the-camera-doesnt-show-in-fluidd). | None; takes effect at the next boot |
 
 ## Fluidd and the web server
 

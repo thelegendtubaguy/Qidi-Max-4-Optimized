@@ -16,6 +16,12 @@ QIDI's touchscreen shows `Printer service failed to start` (`QDC_400_005_015_001
 
 If Fluidd can't connect either, Moonraker isn't running. Over SSH, `systemctl status moonraker` shows why, and the end of `~/printer_data/logs/moonraker.log` usually names the error.
 
+## The camera doesn't show in Fluidd
+
+At boot, QIDI's `makerbase-webcam.service` writes the camera into `~/printer_data/config/crowsnest.conf`. It could run before the camera's device link existed and write an empty `device:` line instead, and then crowsnest, which streams the camera, doesn't start and Fluidd shows no camera. The package makes it wait for the camera, so the next reboot fills the line in again.
+
+To fix it without rebooting, run `sudo systemctl restart makerbase-webcam` over SSH. The camera comes back about 30 seconds later. If it still doesn't, `systemctl status crowsnest` and the end of `~/printer_data/logs/crowsnest.log` show why.
+
 ## Restore a backup
 
 Every install and uninstall saves a backup `.zip` of your configuration under `/home/qidi/printer_data/`, named `tltg-optimized-macros-before-optimize-...zip` or `tltg-optimized-macros-before-uninstall-...zip`.
