@@ -1,4 +1,4 @@
-# QIDI Box eject without a toolhead park for QIDI Max 4 Optimized.
+# QIDI Box eject without a toolhead park for Valve Oil.
 #
 # QIDI's eject step parks the toolhead over the waste chute before the slot
 # pulls its filament back, and the flow's completion script parks it again

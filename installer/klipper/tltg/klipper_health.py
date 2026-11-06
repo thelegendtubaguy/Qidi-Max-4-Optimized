@@ -1,4 +1,4 @@
-# Klipper main-loop health for QIDI Max 4 Optimized.
+# Klipper main-loop health for Valve Oil.
 #
 # QIDI's box_extras checks each Box load with the toolhead load cell.
 # auto_detect_filament_advance registers _init_probe_data_advance, which
@@ -24,6 +24,15 @@
 # the probe's own sensor-error reason, so that error gets the context too. Its
 # status feeds the timer count and main-thread load to Fluidd's System
 # Utilization charts.
+#
+# Endstop syncs: a homing move across boards stays armed only while each
+# board's status reports, sent every 30% of the sync timeout (15 ms for
+# QIDI's 50 ms), keep reaching Klipper, whose serial thread, not its main
+# thread, renews the timeout on the other boards. Each sync here keeps its
+# last reports, with the board's clock when it sent each one and Klipper's
+# time when its serial thread read it, and its final result. A failed sync
+# then says which board timed out, and whether a board sent its reports late
+# or they reached Klipper late.
 #
 # Status copies: QIDI's multi_color_controller status, which Moonraker reads
 # every second, deep-copies its flattened Box status, a dict of about 440
@@ -63,6 +72,10 @@ HOMING_TIMEOUT = "Communication timeout during homing"
 PROBE_SYNC_ERROR = "WEIGHT sensor error"
 PROBE_SYNC_FAILURE = ("Load-cell probe endstop sync failure (QIDI reports it "
                       "as \"%s\")" % (PROBE_SYNC_ERROR,))
+# Status reports kept per endstop sync, about a second of QIDI's, and how
+# many of them klippy.log gets after a failure.
+SYNC_REPORTS = 64
+SYNC_REPORTS_LOGGED = 12
 # Objects whose modules deep-copy whole statuses: QIDI's Box status, and
 # Klipper's macro access to every object's status.
 STATUS_COPIERS = ("multi_color_controller", "gcode_macro")
@@ -111,20 +124,136 @@ def finished_timers(reactor):
     return found
 
 
-def _endstop_mcus(endstop):
-    names = []
+def _wrap_trsync(cls):
+    """Make cls, Klipper's MCU_trsync, keep its recent status reports and
+    final result for each sync. Returns True when it does."""
+    start = getattr(cls, "start", None)
+    handle = getattr(cls, "_handle_trsync_state", None)
+    stop = getattr(cls, "stop", None)
+    if start is None or handle is None or stop is None:
+        return False
+    if getattr(handle, "_tltg_klipper_health", False):
+        return True
+
+    def start_sync(trsync, *args, **kwargs):
+        timeout = args[3] if len(args) > 3 else kwargs.get("expire_timeout")
+        trsync._tltg_sync = {"timeout": timeout, "result": None,
+                             "reports": collections.deque(maxlen=SYNC_REPORTS)}
+        return start(trsync, *args, **kwargs)
+
+    # Runs on the board's serial thread.
+    def handle_report(trsync, params):
+        sync = getattr(trsync, "_tltg_sync", None)
+        if sync is not None:
+            sync["reports"].append((
+                params.get("#receive_time"), params.get("clock"),
+                params.get("can_trigger"), params.get("trigger_reason")))
+        return handle(trsync, params)
+
+    def stop_sync(trsync, *args, **kwargs):
+        result = stop(trsync, *args, **kwargs)
+        sync = getattr(trsync, "_tltg_sync", None)
+        if sync is not None:
+            sync["result"] = result
+        return result
+
+    handle_report._tltg_klipper_health = True
+    cls.start = start_sync
+    cls._handle_trsync_state = handle_report
+    cls.stop = stop_sync
+    return True
+
+
+def _endstop_trsyncs(endstop):
+    """(MCU name, trsync or None) for each board in an endstop's sync."""
+    found = []
     dispatch = getattr(endstop, "_dispatch", None)
     for trsync in getattr(dispatch, "_trsyncs", None) or ():
         try:
-            names.append(trsync.get_mcu().get_name())
+            found.append((trsync.get_mcu().get_name(), trsync))
         except Exception:
             pass
-    if not names:
+    if not found:
         try:
-            names.append(endstop.get_mcu().get_name())
+            found.append((endstop.get_mcu().get_name(), None))
         except Exception:
             pass
-    return names
+    return found
+
+
+def send_gaps(reports, freq):
+    """Seconds since the board sent its previous status report, for each
+    report, or None where either has no send time: the report answering
+    Klipper's own trigger request carries clock 0."""
+    gaps, previous = [], None
+    for _receive_time, clock, can_trigger, _reason in reports:
+        if clock is None or not (can_trigger or clock):
+            clock = None
+        gaps.append(None if clock is None or previous is None
+                    else ((clock - previous) & 0xffffffff) / freq)
+        previous = clock
+    return gaps
+
+
+def _sync_detail(trsyncs):
+    """The console summary of a failed sync's status reports, and the
+    klippy.log list of each board's last reports."""
+    timed_out, gaps, logged = [], [], []
+    syncs = [(name, trsync, getattr(trsync, "_tltg_sync", None))
+             for name, trsync in trsyncs]
+    syncs = [(name, trsync, sync) for name, trsync, sync in syncs if sync]
+    if not syncs:
+        return "", ""
+    times = [r[0] for _, _, sync in syncs for r in sync["reports"]
+             if r[0] is not None]
+    last = max(times) if times else None
+    timeout = None
+    for name, trsync, sync in syncs:
+        timeout = timeout or sync["timeout"]
+        limit = getattr(trsync, "REASON_COMMS_TIMEOUT", None)
+        if limit is not None and sync["result"] is not None \
+                and sync["result"] >= limit:
+            timed_out.append(name)
+        reports = list(sync["reports"])
+        try:
+            freq = float(trsync.get_mcu().seconds_to_clock(1.))
+        except Exception:
+            continue
+        sent = send_gaps(reports, freq)
+        if len(reports) >= 2:
+            received = [b[0] - a[0] for a, b in zip(reports, reports[1:])
+                        if a[0] is not None and b[0] is not None]
+            gaps.append("%s sent them up to %d ms apart and Klipper read them "
+                        "up to %d ms apart"
+                        % (name, round(max([g for g in sent if g] or [0.])
+                                       * 1000),
+                           round(max(received or [0.]) * 1000)))
+        entries = []
+        for (receive_time, _clock, can_trigger, reason), gap in zip(
+                reports[-SYNC_REPORTS_LOGGED:], sent[-SYNC_REPORTS_LOGGED:]):
+            entry = ("%.1f" % ((receive_time - last) * 1000.)
+                     if receive_time is not None and last is not None
+                     else "?")
+            if gap is not None:
+                entry += "/%.1f" % (gap * 1000.,)
+            if not can_trigger:
+                entry += " reason=%s" % (reason,)
+            entries.append(entry)
+        logged.append("%s (%d reports, result %s): %s"
+                      % (name, len(sync["reports"]), sync["result"],
+                         " ".join(entries) or "none"))
+    summary = ""
+    if timed_out:
+        summary += " The sync timed out on %s" % (" and ".join(timed_out),)
+        if timeout:
+            summary += " (%d ms limit)" % (round(timeout * 1000),)
+        summary += "."
+    if gaps:
+        summary += " Of its status reports, %s." % ("; ".join(gaps),)
+    detail = ("endstop sync status reports, as ms read before the last one "
+              "/ ms since the board sent its previous one: %s"
+              % ("; ".join(logged),))
+    return summary, detail
 
 
 def _wrap_home_wait(cls, error, failure):
@@ -143,7 +272,8 @@ def _wrap_home_wait(cls, error, failure):
             health = _current[0]
             if health is not None and error in str(e):
                 try:
-                    health.note_homing_timeout(failure, _endstop_mcus(endstop))
+                    health.note_homing_timeout(failure,
+                                               _endstop_trsyncs(endstop))
                 except Exception:
                     logging.exception("tltg_klipper_health: homing timeout "
                                       "report failed")
@@ -226,6 +356,10 @@ class KlipperHealth:
                                HOMING_TIMEOUT, HOMING_TIMEOUT):
             logging.info("tltg_klipper_health: Klipper's endstop layout is "
                          "not as expected; homing timeouts are not reported")
+        if not _wrap_trsync(getattr(mcu, "MCU_trsync", None)):
+            logging.info("tltg_klipper_health: Klipper's endstop sync is not "
+                         "as expected; failed syncs do not report their "
+                         "status reports")
         self.printer.register_event_handler("klippy:connect", self._connect)
         self.printer.register_event_handler("klippy:ready", self._ready)
 
@@ -338,8 +472,10 @@ class KlipperHealth:
         self.gcode.respond_info(message)
 
     # ------------------------------------------------------- homing timeouts
-    def note_homing_timeout(self, failure, mcus):
+    def note_homing_timeout(self, failure, trsyncs):
         eventtime = self.reactor.monotonic()
+        mcus = [name for name, _trsync in trsyncs]
+        summary, detail = _sync_detail(trsyncs)
         load, peak, delay = self._window(eventtime, TIMEOUT_CONTEXT)
         if load is None:
             context = "no load figures yet"
@@ -348,10 +484,12 @@ class KlipperHealth:
                        "its timers ran up to %d ms late"
                        % (round(load * 100), round(peak * 100),
                           round(delay * 1000)))
-        message = ("%s on %s. In the %d s before it, %s, with %d timers."
-                   % (failure, " and ".join(mcus) or "an endstop",
+        message = ("%s on %s.%s In the %d s before it, %s, with %d timers."
+                   % (failure, " and ".join(mcus) or "an endstop", summary,
                       TIMEOUT_CONTEXT, context, self.timer_count()))
         logging.warning("tltg_klipper_health: %s", message)
+        if detail:
+            logging.info("tltg_klipper_health: %s", detail)
         self.gcode.respond_info(message)
 
     def get_status(self, eventtime=None):

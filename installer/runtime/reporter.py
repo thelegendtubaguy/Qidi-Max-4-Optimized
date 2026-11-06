@@ -35,7 +35,7 @@ STATUS_STAGE_INDEX = {
     messages.UNINSTALLING: 5,
 }
 STAGE_COUNT = 5
-PANEL_TITLE = "QIDI Max 4 Optimized installer"
+PANEL_TITLE = "Valve Oil installer"
 COUNTER_LABELS = {
     "files": "files",
     "sections": "sections",

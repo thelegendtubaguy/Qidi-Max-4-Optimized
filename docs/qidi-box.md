@@ -64,8 +64,8 @@ Slots are numbered from 0, the same as `LOAD_FILAMENT_CONTROL SLOT=`, so the car
 
 ### Choosing values
 
-- **`FAST_LENGTH`** is used exactly as set. On the test printer, filament reached the toolhead sensor 1001–1016 mm into the push, so QIDI's 930 mm leaves about 70–85 mm for the slow approach. Set it past the sensor and filament reaches the toolhead at full speed.
-- **`UNLOAD_EXTRUDER_LENGTH`:** an unload starts with the extruder pulling the cut filament back 30 mm, then this much more at 10 mm/s, before the Box takes over. On the test printer the filament left the toolhead sensor 34 mm into the unload, about 4 mm into this second pull, so most of QIDI's 120 mm is slow pulling of free filament. The sensor sits above the extruder gears, so once it clears, the filament is out of the gears. A value of 20–30 mm keeps a margin and saves about 9 seconds per unload.
+- **`FAST_LENGTH`** is used exactly as set. On a Max 4, filament reached the toolhead sensor 1001–1016 mm into the push, so QIDI's 930 mm leaves about 70–85 mm for the slow approach. Set it past the sensor and filament reaches the toolhead at full speed.
+- **`UNLOAD_EXTRUDER_LENGTH`:** an unload starts with the extruder pulling the cut filament back 30 mm, then this much more at 10 mm/s, before the Box takes over. On a Max 4 the filament left the toolhead sensor 34 mm into the unload, about 4 mm into this second pull, so most of QIDI's 120 mm is slow pulling of free filament. The sensor sits above the extruder gears, so once it clears, the filament is out of the gears. A value of 20–30 mm keeps a margin and saves about 9 seconds per unload.
 
 If a setting saved with `SAVE_VARIABLE` is invalid, the affected load or unload uses QIDI's motion and the console says why. If a QIDI firmware update changes how the Box moves filament in a way these settings don't recognize, the Box keeps QIDI's motion and the console says so.
 
@@ -93,7 +93,7 @@ The QIDI Box card in Fluidd has **In** and **Out** buttons that jog the selected
 
 ## Editing QIDI's filament list
 
-On firmware `01.01.07.01`, the Vendor and Filament lists on the touchscreen and in Fluidd come from QIDI's filament files. Fluidd's **Filaments** page in the sidebar edits the list for the 0.4 mm nozzle, `filament-0.4.json`, the one Klipper and the touchscreen read:
+On Max 4 firmware `01.01.07.01`, the Vendor and Filament lists on the touchscreen and in Fluidd come from QIDI's filament files. Fluidd's **Filaments** page in the sidebar edits the list for the 0.4 mm nozzle, `filament-0.4.json`, the one Klipper and the touchscreen read:
 
 - **Add** or **Duplicate** a filament, then set its vendor, name, type, nozzle temperatures, Box heating limit, chamber temperature, and whether it's a support material. A new vendor name adds that vendor to the pickers. The new filament gets the next free ID and takes its drying and other settings from the filament you duplicated, or else from Generic's filament of the same type.
 - **Edit** changes the same fields of any filament. Its ID stays as it is, because Box slots refer to filaments by ID. **Remove** names any Box slot set to the filament before deleting it.
@@ -166,9 +166,9 @@ See [Fixes](fixes.md#qidi-box-disconnects) for what this project changes, and [T
 
 ## RS-485 Boxes
 
-QIDI's firmware `01.01.07.01` includes support for Boxes, buffers, and filament racks that connect over RS-485 through a USB adapter, alongside the USB Boxes that run Klipper. This project hasn't been tested with RS-485 hardware yet, so it watches for it:
+QIDI's Max 4 firmware `01.01.07.01` includes support for Boxes, buffers, and filament racks that connect over RS-485 through a USB adapter, alongside the USB Boxes that run Klipper. This project hasn't been tested with RS-485 hardware yet, so it watches for it:
 
-- **If you have RS-485 hardware,** the console asks you to open a [GitHub issue](https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/issues) once per Klipper start. Attach `tltg_box485_report.json` and `tltg_box485.log` from the `logs` folder in Fluidd. The log records what QIDI's code sends to and receives from each device, and the report summarizes the setup. Chip ids and USB serial numbers are replaced with codes that can't be traced back to your hardware. Nothing about how the hardware works is changed.
+- **If you have RS-485 hardware,** the console asks you to open a [GitHub issue](https://github.com/thelegendtubaguy/valve-oil/issues) once per Klipper start. Attach `tltg_box485_report.json` and `tltg_box485.log` from the `logs` folder in Fluidd. The log records what QIDI's code sends to and receives from each device, and the report summarizes the setup. Chip ids and USB serial numbers are replaced with codes that can't be traced back to your hardware. Nothing about how the hardware works is changed.
 - **To write the report yourself,** run `TLTG_RS_BOX_REPORT`. It says whether RS-485 hardware was found.
 - **Without RS-485 hardware,** nothing is written. QIDI's software looks for an RS-485 adapter and logs `Can not find 485 device` each time it's missing. That's normal for USB Boxes. Until RS-485 hardware has been seen, it now looks every 30 seconds instead of every 2, so a newly connected adapter can take up to 30 seconds to be found, and `klippy.log` gets that line once an hour, with a count.
 

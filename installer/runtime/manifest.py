@@ -25,6 +25,7 @@ from .models import (
     SectionPatchVariantSpec,
     PostflightSpec,
     PreflightSpec,
+    PrinterSpec,
     SectionSpec,
     SourcePatchSpec,
     SourcePatchVariantSpec,
@@ -79,13 +80,12 @@ def parse_manifest(raw: Any) -> Manifest:
     package = PackageMeta(
         id=_require_str(package_raw, "id"),
         display_name=_require_str(package_raw, "display_name"),
-        printer_model=_require_str(package_raw, "printer_model"),
         version=_require_str(package_raw, "version"),
     )
 
-    firmware_raw = _require_mapping(raw, "firmware")
+    printers = _parse_printers(raw)
     firmware = FirmwareSpec(
-        supported=_require_unique_str_list(firmware_raw, "supported", non_empty=True)
+        supported=tuple(version for printer in printers for version in printer.firmware)
     )
 
     backup_raw = _require_mapping(raw, "backup")
@@ -265,6 +265,7 @@ def parse_manifest(raw: Any) -> Manifest:
     return Manifest(
         schema_version=schema_version,
         package=package,
+        printers=printers,
         firmware=firmware,
         backup=backup,
         state=state,
@@ -274,6 +275,47 @@ def parse_manifest(raw: Any) -> Manifest:
         postflight=postflight,
         system_optimizations=_parse_system_optimizations(raw),
     )
+
+
+# Firmware versions identify the printer, so no version may belong to two printers. The firmware manifest's
+# SOC file name (QD_MAX4_SOC_..., QD_PLUS5_SOC_...) cross-checks that identity at runtime.
+def _parse_printers(raw: dict[str, Any]) -> tuple[PrinterSpec, ...]:
+    printers: list[PrinterSpec] = []
+    ids: set[str] = set()
+    prefixes: set[str] = set()
+    firmwares: set[str] = set()
+    for item in _require_list_of_mapping(raw, "printers"):
+        printer = PrinterSpec(
+            id=_require_str(item, "id"),
+            display_name=_require_str(item, "display_name"),
+            soc_file_prefix=_require_str(item, "soc_file_prefix"),
+            firmware=_require_unique_str_list(item, "firmware", non_empty=True),
+            stock_snapshots=_validate_relative_path(
+                _require_str(item, "stock_snapshots"), allowed_roots=("stock",)
+            ),
+            macros=_validate_relative_path(_require_str(item, "macros"), allowed_roots=("klipper",)),
+        )
+        if printer.id in ids:
+            raise ManifestValidationError(f"Duplicate printer id: {printer.id}")
+        if any(
+            printer.soc_file_prefix.startswith(prefix) or prefix.startswith(printer.soc_file_prefix)
+            for prefix in prefixes
+        ):
+            raise ManifestValidationError(
+                f"Printer {printer.id} SOC file prefix overlaps another printer."
+            )
+        shared = firmwares.intersection(printer.firmware)
+        if shared:
+            raise ManifestValidationError(
+                f"Firmware {sorted(shared)[0]} is listed for more than one printer."
+            )
+        ids.add(printer.id)
+        prefixes.add(printer.soc_file_prefix)
+        firmwares.update(printer.firmware)
+        printers.append(printer)
+    if not printers:
+        raise ManifestValidationError("Manifest must define at least one printer.")
+    return tuple(printers)
 
 
 def _parse_extra_modules(install_raw: dict[str, Any]) -> tuple[ExtraModuleSpec, ...]:

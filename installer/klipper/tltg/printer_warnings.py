@@ -1,4 +1,4 @@
-# Printer warnings for QIDI Max 4 Optimized.
+# Printer warnings for Valve Oil.
 #
 # Publishes the problems an operator should fix before printing as Klipper
 # status, so Fluidd shows them on every page until they are gone, and the

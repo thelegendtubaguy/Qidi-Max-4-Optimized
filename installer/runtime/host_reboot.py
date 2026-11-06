@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Callable
 
 from . import messages, safety
-from .errors import ActivePrintError, InstallerError, PrinterStateError
+from .errors import ActivePrintError, InstallerError, KlipperBusyError, PrinterStateError
 from .fs_atomic import atomic_delete, atomic_write_text
 from .interaction import prompt_yes
 from .models import RuntimePaths
@@ -21,6 +21,8 @@ HOST_REBOOT_REASON = "rockchip_root_sync"
 HOST_REBOOT_OPERATION = "rockchip_root_sync"
 HOST_REBOOT_UNIT = "tltg-optimized-host-reboot"
 HOST_REBOOT_FOLLOWUP_UNIT = "tltg-optimized-host-reboot-followup"
+# Automatic updates reboot only after Klipper has been this long without motion, heat, or a running command.
+KLIPPER_IDLE_SECONDS = 600
 
 
 class HostRebootError(InstallerError):
@@ -237,45 +239,64 @@ def reboot_recommended(paths: RuntimePaths) -> bool:
     return current
 
 
-def maybe_offer_recommended_reboot(
+def maybe_schedule_recommended_reboot(
     paths: RuntimePaths,
     *,
     reporter,
     input_stream,
     environ: dict[str, str],
-    explicit: bool = False,
+    require_klipper_idle: bool = False,
     urlopen=urllib.request.urlopen,
     run=subprocess.run,
 ) -> bool:
+    """Reboot for the host tuning changes without asking, once the printer allows it."""
     if not reboot_recommended(paths):
         return False
-    if not explicit and (
-        input_stream is None
-        or not prompt_yes(
-            reporter=reporter,
-            input_stream=input_stream,
-            question=messages.REBOOT_RECOMMENDED_PROMPT,
-            instruction=messages.REBOOT_RECOMMENDED_PROMPT_INSTRUCTION,
-        )
+    if not _schedule_reboot(
+        paths,
+        reporter=reporter,
+        input_stream=input_stream,
+        environ=environ,
+        require_klipper_idle=require_klipper_idle,
+        urlopen=urlopen,
+        run=run,
     ):
-        reporter.line(messages.REBOOT_RECOMMENDED)
-        return False
-    if not _schedule_reboot(paths, reporter=reporter, input_stream=input_stream, environ=environ, urlopen=urlopen, run=run):
         reporter.line(messages.REBOOT_RECOMMENDED)
         return False
     reporter.line(messages.REBOOT_SCHEDULED)
     return True
 
 
-def _schedule_reboot(paths: RuntimePaths, *, reporter, input_stream, environ: dict[str, str], urlopen, run) -> bool:
-    """Schedule complete-host-reboot, which checks the printer is still idle before rebooting."""
+def _printer_allows_reboot(paths: RuntimePaths, *, reporter, require_klipper_idle: bool, urlopen) -> bool:
     try:
-        safety.ensure_printer_idle(paths.moonraker_url, urlopen=urlopen)
+        if require_klipper_idle:
+            safety.ensure_klipper_idle(paths.moonraker_url, idle_seconds=KLIPPER_IDLE_SECONDS, urlopen=urlopen)
+        else:
+            safety.ensure_printer_idle(paths.moonraker_url, urlopen=urlopen)
     except ActivePrintError:
         reporter.line(messages.HOST_REBOOT_DEFERRED_ACTIVE_PRINT)
         return False
+    except KlipperBusyError:
+        reporter.line(messages.HOST_REBOOT_DEFERRED_KLIPPER_BUSY)
+        return False
     except PrinterStateError:
         reporter.line(messages.HOST_REBOOT_DEFERRED_UNKNOWN_STATE)
+        return False
+    return True
+
+
+def _schedule_reboot(
+    paths: RuntimePaths,
+    *,
+    reporter,
+    input_stream,
+    environ: dict[str, str],
+    require_klipper_idle: bool,
+    urlopen,
+    run,
+) -> bool:
+    """Schedule complete-host-reboot, which checks the printer again before rebooting."""
+    if not _printer_allows_reboot(paths, reporter=reporter, require_klipper_idle=require_klipper_idle, urlopen=urlopen):
         return False
     try:
         password = authenticate_sudo(
@@ -297,6 +318,7 @@ def _schedule_reboot(paths: RuntimePaths, *, reporter, input_stream, environ: di
                 str(paths.bundle_root / "installer/runtime/bootstrap.py"),
                 "complete-host-reboot",
                 "--plain",
+                *(["--require-klipper-idle"] if require_klipper_idle else []),
             ],
             messages.HOST_REBOOT_SCHEDULE_FAILED,
             run=run,
@@ -316,6 +338,7 @@ def maybe_schedule_host_reboot(
     environ: dict[str, str],
     explicit: bool = False,
     automatic: bool = False,
+    require_klipper_idle: bool = False,
     urlopen=urllib.request.urlopen,
     run=subprocess.run,
 ) -> bool:
@@ -334,7 +357,15 @@ def maybe_schedule_host_reboot(
         ):
             reporter.line(messages.HOST_REBOOT_PENDING)
             return False
-    if not _schedule_reboot(paths, reporter=reporter, input_stream=input_stream, environ=environ, urlopen=urlopen, run=run):
+    if not _schedule_reboot(
+        paths,
+        reporter=reporter,
+        input_stream=input_stream,
+        environ=environ,
+        require_klipper_idle=require_klipper_idle,
+        urlopen=urlopen,
+        run=run,
+    ):
         return False
     reporter.line(messages.HOST_REBOOT_SCHEDULED)
     return True
@@ -346,6 +377,7 @@ def perform_scheduled_host_reboot(
     reporter,
     environ: dict[str, str],
     recommended: bool = False,
+    require_klipper_idle: bool = False,
     urlopen=urllib.request.urlopen,
     run=subprocess.run,
 ) -> bool:
@@ -357,13 +389,7 @@ def perform_scheduled_host_reboot(
         marker = read_host_reboot_marker(paths)
         if marker is None or marker.boot_id != current_boot_id(paths):
             return False
-    try:
-        safety.ensure_printer_idle(paths.moonraker_url, urlopen=urlopen)
-    except ActivePrintError:
-        reporter.line(messages.HOST_REBOOT_DEFERRED_ACTIVE_PRINT)
-        return False
-    except PrinterStateError:
-        reporter.line(messages.HOST_REBOOT_DEFERRED_UNKNOWN_STATE)
+    if not _printer_allows_reboot(paths, reporter=reporter, require_klipper_idle=require_klipper_idle, urlopen=urlopen):
         return False
     try:
         password = authenticate_sudo(

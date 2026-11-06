@@ -1,0 +1,64 @@
+name: Printer or firmware support
+description: Valve Oil doesn't support your printer or QIDI firmware yet.
+title: "[Support]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The installer stops before changing anything on a printer or firmware it doesn't know. Adding one means comparing QIDI's files for it against the supported ones, so the details below matter most.
+        Supported printers and firmware are listed in the [README](https://github.com/thelegendtubaguy/valve-oil#supported-printers).
+
+  - type: input
+    id: printer
+    attributes:
+      label: Printer
+      placeholder: "QIDI Plus 5"
+    validations:
+      required: true
+
+  - type: textarea
+    id: printer_details
+    attributes:
+      label: Printer details
+      description: Run the block in [Printer details](https://github.com/thelegendtubaguy/valve-oil/blob/main/docs/troubleshooting.md#printer-details) over SSH and paste everything it prints. It only reads files.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: installer_output
+    attributes:
+      label: Installer output
+      description: What the installer printed when it stopped, if you ran it. A dry run is enough; add `-- --dry-run` to the install command.
+      render: text
+    validations:
+      required: false
+
+  - type: input
+    id: firmware_source
+    attributes:
+      label: How the firmware got there
+      description: Updated from the touchscreen, from a USB drive, shipped with the printer, or a beta from QIDI support.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: box
+    attributes:
+      label: QIDI Box setup
+      options:
+        - No QIDI Box
+        - One USB Box
+        - More than one USB Box
+        - RS-485 Box, buffer, or filament rack
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Helping out
+      options:
+        - label: I can test dev builds on this printer and report back.
+        - label: I can run read-only commands over SSH to collect QIDI's files.

@@ -38,7 +38,7 @@ FOREIGN = "foreign"
 # Package-created units start with a marker line so later package versions replace earlier ones.
 UNIT_MARKER = "# tltg-optimized:zram-swap\n"
 UNIT_CONTENT = UNIT_MARKER + f"""\
-# Compressed swap in RAM (zram). Installed by QIDI Max 4 Optimized.
+# Compressed swap in RAM (zram). Installed by Valve Oil.
 [Unit]
 Description=Compressed swap in RAM (zram)
 Before=klipper.service moonraker.service qidi-client.service
@@ -78,7 +78,7 @@ def kernel_supported(spec: SystemZramSwapSpec, *, osrelease: Path, version: Path
 def render_script(spec: SystemZramSwapSpec) -> str:
     names = [module.name for module in spec.modules]
     return f"""#!/bin/sh
-# Compressed swap in RAM (zram). Installed by QIDI Max 4 Optimized.
+# Compressed swap in RAM (zram). Installed by Valve Oil.
 set -u
 DIR={DESTINATION}
 RELEASE='{spec.kernel_release}'

@@ -7,7 +7,7 @@ Run these from Fluidd's console or macro controls after installing and restartin
 | Command | What it does |
 |---|---|
 | [`TLTG_TEST_PROBE CONFIRM=1`](#nozzle-load-cell-check) | Checks that the nozzle load cell responds to light pressure. No motion. |
-| `TLTG_PROBE_ACCURACY_CENTER [SAMPLES=20]` | Homes, moves to `X195 Y195 Z10`, and runs Klipper's `PROBE_ACCURACY`. |
+| `TLTG_PROBE_ACCURACY_CENTER [SAMPLES=20]` | Homes, moves to the bed center (`X195 Y195` on the Max 4) at `Z10`, and runs Klipper's `PROBE_ACCURACY`. |
 | `TLTG_CORNER_BED_SCREW_CHECK` | Homes, runs `Z_TILT_ADJUST`, then `SCREWS_TILT_CALCULATE`. |
 | `SCREWS_TILT_CALCULATE` | Klipper's bed screw adjustment helper. |
 | `TLTG_RESET_TOOL_MAPPINGS` | Restores QIDI Box tool-to-slot mappings to T0 → 1A, T1 → 1B, and so on. Idle only. |

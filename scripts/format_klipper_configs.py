@@ -13,7 +13,10 @@ SECTION_RE = re.compile(r"^\[[^\]]+\]\s*(?:#.*)?$")
 ASSIGN_RE = re.compile(r"^([A-Za-z0-9_][A-Za-z0-9_\-. ]*?)\s*([:=])\s*(.*?)\s*$")
 SAVE_CONFIG_MARKER = "#*# <---------------------- SAVE_CONFIG ---------------------->"
 DEFAULT_EXCLUDES = {"fluidd.cfg", "saved_variables.cfg"}
-FORMAT_DIR = Path("installer") / "klipper" / "tltg-optimized-macros"
+FORMAT_DIRS = (
+    Path("installer") / "klipper" / "tltg-optimized-macros",
+    Path("installer") / "klipper" / "printers",
+)
 
 
 def normalize_lines(lines: list[str]) -> list[str]:
@@ -78,9 +81,11 @@ def format_text(text: str) -> str:
 
 
 def iter_cfg_files(root: Path) -> list[Path]:
-    config_dir = root / FORMAT_DIR
     return sorted(
-        path for path in config_dir.rglob("*.cfg") if path.name not in DEFAULT_EXCLUDES
+        path
+        for config_dir in FORMAT_DIRS
+        for path in (root / config_dir).rglob("*.cfg")
+        if path.name not in DEFAULT_EXCLUDES
     )
 
 
@@ -103,7 +108,7 @@ def main() -> int:
         "paths",
         nargs="*",
         type=Path,
-        help="Optional config files or directories to format. Defaults to installer/klipper/tltg-optimized-macros/**/*.cfg.",
+        help="Optional config files or directories to format. Defaults to installer/klipper/tltg-optimized-macros/**/*.cfg and installer/klipper/printers/**/*.cfg.",
     )
     parser.add_argument(
         "--check",
@@ -118,7 +123,7 @@ def main() -> int:
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[1]
-    format_root = (repo_root / FORMAT_DIR).resolve()
+    format_roots = tuple((repo_root / config_dir).resolve() for config_dir in FORMAT_DIRS)
 
     if args.paths:
         candidates: list[Path] = []
@@ -137,7 +142,7 @@ def main() -> int:
                 path
                 for path in candidates
                 if path.name not in DEFAULT_EXCLUDES
-                and (path == format_root or format_root in path.parents)
+                and any(path == root or root in path.parents for root in format_roots)
             }
         )
     else:

@@ -18,6 +18,7 @@ from installer.runtime import moonraker_speedups
 from installer.runtime import remote_screen
 from installer.runtime import cpu_governor
 from installer.runtime import restart_on_exit
+from installer.runtime import webcam_id
 from installer.runtime import service_priority
 from installer.runtime import zram_swap
 from installer.runtime.fluidd_box_filaments import OPERATION as FLUIDD_BOX_OPERATION, PATCH_MARKER
@@ -123,7 +124,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertFalse((printer_root / manifest.state_file).exists())
         self.assertIn("System optimizations dry-run:", stream.getvalue())
 
-        install_responses = io.StringIO("yes\nyes\nno\nunused\n")
+        install_responses = io.StringIO("yes\nno\nunused\n")
         base_urlopen = moonraker_urlopen(
             saved_variables_path=paths.config_root / "saved_variables.cfg"
         )
@@ -175,6 +176,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         # Klipper and Moonraker restart after any exit outside systemd, without restarting them to apply it.
         for dropin in restart_on_exit.FILES.values():
             self.assertEqual((system_root / dropin.lstrip("/")).read_text(encoding="utf-8"), restart_on_exit.CONTENT)
+        # QIDI's camera ID script waits for the camera's index0 link from the next boot, without running it now.
+        self.assertEqual((system_root / webcam_id.FILE.lstrip("/")).read_text(encoding="utf-8"), webcam_id.CONTENT)
+        self.assertNotIn(webcam_id.UNIT, service_events)
         # Klipper gets the CPU before Moonraker, and both before the touchscreen app.
         for operation, dropin in service_priority.FILES.items():
             self.assertIn(f"Nice={service_priority.NICE[operation]}\n", (system_root / dropin.lstrip("/")).read_text(encoding="utf-8"))
@@ -431,12 +435,52 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "disabled")
         for dropin in restart_on_exit.FILES.values():
             self.assertFalse((system_root / dropin.lstrip("/")).exists())
+        self.assertFalse((system_root / webcam_id.FILE.lstrip("/")).exists())
         for dropin in service_priority.FILES.values():
             self.assertFalse((system_root / dropin.lstrip("/")).exists())
         # Zram swap and the CPU governor are optional OS optimizations, so declining restoration keeps them.
         self.assertTrue((zram / zram_swap.MARKER).is_file())
         self.assertEqual((system_root / cpu_governor.FILE.lstrip("/")).read_text(encoding="utf-8"), cpu_governor.CONTENT)
         self.assertEqual(zram_unit.read_text(encoding="utf-8"), zram_swap.UNIT_CONTENT)
+
+    def test_os_optimizations_apply_whatever_an_earlier_install_chose(self):
+        printer_root = copy_base_runtime()
+        root = fake_system_root()
+        env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
+        boot_id = printer_root / "boot-id"
+        boot_id.write_text("boot-one\n", encoding="utf-8")
+        env["TLTG_OPTIMIZED_BOOT_ID_PATH"] = str(boot_id)
+        paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
+        manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
+        state_path = printer_root / manifest.state_file
+        urlopen = moonraker_urlopen(saved_variables_path=paths.config_root / "saved_variables.cfg")
+        # An earlier install that declined the OS optimizations recorded that choice and changed nothing on the host.
+        run_install(paths, manifest, PlainReporter(io.StringIO()), input_stream=None, urlopen=urlopen, environ=env)
+        state = load_installed_state(state_path)
+        declined = {**(state.system_ledger or {}), "policy": {"system_optimizations": "disabled", "ai_detection": "unset"}}
+        write_installed_state(state_path, _replace_system_ledger(state, declined))
+
+        env[SYSTEM_ROOT_ENV] = str(root)
+        host_run = fake_host_run(root)
+        system_optimizations.maybe_reconcile_system_optimizations(
+            paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()), environ=env, run=host_run, urlopen=urlopen,
+        )
+
+        # An automatic update applies them anyway, leaving AI detection on.
+        state = load_installed_state(state_path)
+        self.assertEqual(state.system_ledger["policy"], {"system_optimizations": "enabled", "ai_detection": "keep_enabled"})
+        self.assertEqual((root / zram_swap.UNIT_FILE.lstrip("/")).read_text(encoding="utf-8"), zram_swap.UNIT_CONTENT)
+        self.assertTrue(paths.host_reboot_marker_path.exists())
+        self.assertTrue(paths.reboot_recommended_path.exists())
+        self.assertEqual(json.loads((root / "systemd/algo_app.service.json").read_text(encoding="utf-8"))["enabled"], "enabled")
+
+        # With AI detection already off, an install asks nothing about the OS optimizations.
+        algo_app = root / "systemd/algo_app.service.json"
+        algo_app.write_text(json.dumps({"exists": True, "service": "algo_app.service", "enabled": "disabled", "active": "inactive"}), encoding="utf-8")
+        report = io.StringIO()
+        run_install(paths, manifest, PlainReporter(report), input_stream=io.StringIO("no\nno\nno\n"), urlopen=urlopen, environ=env, run=host_run)
+        self.assertNotIn(messages.AI_DETECTION_PROMPT, report.getvalue())
+        self.assertEqual(load_installed_state(state_path).system_ledger["policy"]["system_optimizations"], "enabled")
 
     def test_unreviewed_host_files_are_preserved_without_blocking_other_patches(self):
         printer_root = copy_base_runtime()
@@ -688,7 +732,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
         compatibility = load_supported_upgrade_sources(REPO_ROOT / "installer/supported_upgrade_sources.yaml")
         run_install(
-            paths, manifest, PlainReporter(io.StringIO()), input_stream=io.StringIO("yes\nyes\nno\n"),
+            paths, manifest, PlainReporter(io.StringIO()), input_stream=io.StringIO("yes\nno\n"),
             urlopen=moonraker_urlopen(saved_variables_path=paths.config_root / "saved_variables.cfg"), environ=env,
             run=host_run,
         )
@@ -741,7 +785,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
         manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
         compatibility = load_supported_upgrade_sources(REPO_ROOT / "installer/supported_upgrade_sources.yaml")
-        run_install(paths, manifest, PlainReporter(io.StringIO()), input_stream=io.StringIO("yes\nyes\nno\nno\n"), urlopen=moonraker_urlopen(saved_variables_path=paths.config_root / "saved_variables.cfg"), environ=env, run=host_run)
+        run_install(paths, manifest, PlainReporter(io.StringIO()), input_stream=io.StringIO("yes\nno\nno\n"), urlopen=moonraker_urlopen(saved_variables_path=paths.config_root / "saved_variables.cfg"), environ=env, run=host_run)
         state_path = printer_root / manifest.state_file
         state = load_installed_state(state_path)
         legacy = copy.deepcopy(state.system_ledger)
@@ -754,7 +798,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         ]
         legacy.pop("committed_transactions")
         write_installed_state(state_path, _replace_system_ledger(state, legacy))
-        run_install(paths, manifest, PlainReporter(io.StringIO()), input_stream=io.StringIO("yes\nyes\nno\nno\n"), urlopen=moonraker_urlopen(saved_variables_path=paths.config_root / "saved_variables.cfg"), environ=env, run=host_run)
+        run_install(paths, manifest, PlainReporter(io.StringIO()), input_stream=io.StringIO("yes\nno\nno\n"), urlopen=moonraker_urlopen(saved_variables_path=paths.config_root / "saved_variables.cfg"), environ=env, run=host_run)
         migrated = load_installed_state(state_path).system_ledger
         self.assertEqual(migrated["restore_preimages"]["apt_sources"]["file"]["sha256"], __import__("hashlib").sha256(b"old apt\n").hexdigest())
         migrated_gifs = Path(migrated["restore_preimages"]["qidiclient_static_gifs"]["backup_dir"])
@@ -908,7 +952,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         (root / "mounts/root.options").write_text("ro,noatime,sync\n", encoding="utf-8")
         # A kernel other than the build the zram modules were made for, such as one from a QIDI update, runs without them.
         (root / "proc/sys/kernel/version").write_text("#5 SMP PREEMPT Mon Jan 5 10:00:00 CST 2026\n", encoding="utf-8")
-        run_install(paths, manifest, PlainReporter(io.StringIO()), input_stream=io.StringIO("yes\nyes\nno\nno\n"), urlopen=moonraker_urlopen(saved_variables_path=paths.config_root / "saved_variables.cfg"), environ=env, run=fake_host_run(root))
+        run_install(paths, manifest, PlainReporter(io.StringIO()), input_stream=io.StringIO("yes\nno\nno\n"), urlopen=moonraker_urlopen(saved_variables_path=paths.config_root / "saved_variables.cfg"), environ=env, run=fake_host_run(root))
         outcomes = load_installed_state(paths.printer_data_root / manifest.state_file).system_ledger["outcomes"]
         self.assertEqual(outcomes[zram_swap.OPERATION]["status"], "unsupported")
         self.assertEqual(outcomes[zram_swap.UNIT_OPERATION]["status"], "skipped")
@@ -921,7 +965,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         state = load_installed_state(state_path)
         state.system_ledger["outcomes"]["rockchip_root_sync"] = {"status": "already_current_owned", "source": "yes_install", "postflight": {"classification": "already_current_owned"}}
         write_installed_state(state_path, state)
-        run_install(paths, manifest, PlainReporter(io.StringIO()), input_stream=io.StringIO("yes\nyes\nno\nno\n"), urlopen=moonraker_urlopen(saved_variables_path=paths.config_root / "saved_variables.cfg"), environ=env, run=fake_host_run(root))
+        run_install(paths, manifest, PlainReporter(io.StringIO()), input_stream=io.StringIO("yes\nno\nno\n"), urlopen=moonraker_urlopen(saved_variables_path=paths.config_root / "saved_variables.cfg"), environ=env, run=fake_host_run(root))
         compatibility = load_supported_upgrade_sources(REPO_ROOT / "installer/supported_upgrade_sources.yaml")
         report = io.StringIO()
         run_uninstall(paths, manifest, compatibility, PlainReporter(report), input_stream=io.StringIO("yes\nyes\n"), urlopen=moonraker_urlopen(), environ=env, run=fake_host_run(root))
@@ -1034,7 +1078,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
 
     def _installed_host_context(self):
         paths, manifest, env, root = self._host_context()
-        run_install(paths, manifest, PlainReporter(io.StringIO()), input_stream=io.StringIO("yes\nyes\nno\nno\n"), urlopen=moonraker_urlopen(saved_variables_path=paths.config_root / "saved_variables.cfg"), environ=env, run=fake_host_run(root))
+        run_install(paths, manifest, PlainReporter(io.StringIO()), input_stream=io.StringIO("yes\nno\nno\n"), urlopen=moonraker_urlopen(saved_variables_path=paths.config_root / "saved_variables.cfg"), environ=env, run=fake_host_run(root))
         return paths, manifest, env, root
 
     def _make_legacy_preimage(self, preimage, root):

@@ -31,7 +31,7 @@ from installer.runtime.auto_update import (
 from installer.runtime.backup import load_backup_snapshot, snapshot_runtime_tree
 from installer.runtime.cli import resolve_runtime_paths
 from installer.runtime.compatibility import load_supported_upgrade_sources
-from installer.runtime.errors import ActivePrintError, PrinterStateError
+from installer.runtime.errors import ActivePrintError, PrinterStateError, UnsupportedFirmwareError
 from installer.runtime.manifest import load_manifest
 from installer.runtime.models import (
     InstalledState,
@@ -87,7 +87,8 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 dirs_exist_ok=True,
             )
         (printer_root / "firmware_manifest.json").write_text(
-            json.dumps({"SOC": {"version": firmware}}), encoding="utf-8"
+            json.dumps({"SOC": {"file": f"QD_MAX4_SOC_{firmware}_Release_NA", "version": firmware}}),
+            encoding="utf-8",
         )
         paths = resolve_runtime_paths(
             bundle_root=REPO_ROOT,
@@ -163,6 +164,20 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 self.assertEqual(entry.firmware, firmware)
                 self.assertEqual(entry.original_bytes, stock_source)
                 self.assertEqual(entry.original_sha256, hashlib.sha256(stock_source).hexdigest())
+
+    def test_install_refuses_firmware_whose_soc_file_names_another_printer(self):
+        printer_root, paths, _ = self._fixture("01.01.07.01", source_variant="sync-reset")
+        (printer_root / "firmware_manifest.json").write_text(
+            json.dumps({"SOC": {"file": "QD_PLUS5_SOC_01.01.07.01_Release_NA", "version": "01.01.07.01"}}),
+            encoding="utf-8",
+        )
+        before = (printer_root / "config/printer.cfg").read_bytes()
+
+        with self.assertRaises(UnsupportedFirmwareError):
+            self._run_install(paths)
+
+        self.assertEqual((printer_root / "config/printer.cfg").read_bytes(), before)
+        self.assertFalse((printer_root / "config/tltg_optimized_state.yaml").exists())
 
     def test_install_leaves_extra_modules_readable_by_klipper(self):
         # Klipper may run as another user than the installer.

@@ -186,26 +186,57 @@ class LoadCellProbeSyncFailureTest(unittest.TestCase):
     any failed endstop sync, the timeout included."""
 
     def setUp(self) -> None:
-        class Named:
-            def __init__(self, name):
+        class MCU:
+            def __init__(self, name, freq):
                 self.name = name
+                self.freq = freq
 
             def get_name(self):
                 return self.name
 
-        class Trsync:
-            def __init__(self, name):
-                self.mcu = Named(name)
+            def seconds_to_clock(self, time):
+                return int(time * self.freq)
+
+        class MCU_trsync:
+            """The shape of Klipper's MCU_trsync."""
+
+            REASON_ENDSTOP_HIT = 1
+            REASON_HOST_REQUEST = 2
+            REASON_PAST_END_TIME = 3
+            REASON_COMMS_TIMEOUT = 4
+
+            def __init__(self, mcu):
+                self.mcu = mcu
+                self.reason = None
 
             def get_mcu(self):
                 return self.mcu
 
+            def start(self, print_time, report_offset, trigger_completion, expire_timeout):
+                pass
+
+            def _handle_trsync_state(self, params):
+                pass
+
+            def stop(self):
+                return self.reason
+
+        saved = (MCU_trsync.start, MCU_trsync._handle_trsync_state, MCU_trsync.stop)
+        self.assertTrue(klipper_health._wrap_trsync(MCU_trsync))
+        self.assertTrue(klipper_health._wrap_trsync(MCU_trsync))
+        self.assertIsNot(MCU_trsync.stop, saved[2])
+        self.thr = MCU_trsync(MCU("THR", 72000000))
+        self.mcu = MCU_trsync(MCU("mcu", 168000000))
+        trsyncs = [self.thr, self.mcu]
+
         class WeighEndstopWrapper:
             def __init__(self):
-                self._dispatch = types.SimpleNamespace(_trsyncs=[Trsync("THR"), Trsync("mcu")])
+                self._dispatch = types.SimpleNamespace(_trsyncs=trsyncs)
                 self.error = None
 
             def home_wait(self, home_end_time):
+                for trsync in self._dispatch._trsyncs:
+                    trsync.stop()
                 if self.error:
                     raise RuntimeError(self.error)
                 return home_end_time
@@ -227,6 +258,12 @@ class LoadCellProbeSyncFailureTest(unittest.TestCase):
         health._connect()
         self.endstop = WeighEndstopWrapper()
 
+    @staticmethod
+    def report(trsync, receive_time, clock, can_trigger=1, reason=0):
+        trsync._handle_trsync_state({
+            "#receive_time": receive_time, "clock": clock & 0xffffffff,
+            "can_trigger": can_trigger, "trigger_reason": reason})
+
     def test_sync_failure_reports_context_and_keeps_the_error(self) -> None:
         self.assertEqual(self.endstop.home_wait(3.), 3.)
         self.endstop.error = "WEIGHT sensor error"
@@ -239,6 +276,35 @@ class LoadCellProbeSyncFailureTest(unittest.TestCase):
         self.assertIn("on THR and mcu", self.messages[0])
         self.assertIn("30% busy", self.messages[0])
         self.assertIn("40 ms late", self.messages[0])
+
+    def test_sync_failure_names_the_board_that_timed_out_and_report_gaps(self) -> None:
+        # THR sends one report 20 ms after the last, across its 32-bit clock
+        # wrap, and its next reaches Klipper 52 ms after that one; the
+        # mainboard's sync times out meanwhile.
+        for trsync in (self.thr, self.mcu):
+            trsync.start(100., 0., None, 0.050)
+        thr_clock = 2**32 - 2 * 1080000
+        for sent_ms, receive_time in ((0, 5.000), (15, 5.015), (35, 5.035), (50, 5.087)):
+            self.report(self.thr, receive_time, thr_clock + sent_ms * 72000)
+        for i in range(5):
+            self.report(self.mcu, 5.005 + i * 0.015, 900000000 + i * 2520000)
+        self.report(self.mcu, 5.076, 900000000 + 5 * 2520000 - 1680000,
+                    can_trigger=0, reason=4)
+        self.report(self.thr, 5.088, 0, can_trigger=0, reason=2)
+        self.mcu.reason, self.thr.reason = 4, 2
+        self.endstop.error = "WEIGHT sensor error"
+
+        with self.assertLogs(level="INFO") as logs, \
+                self.assertRaisesRegex(RuntimeError, "^WEIGHT sensor error$"):
+            self.endstop.home_wait(3.)
+
+        message = self.messages[0]
+        self.assertIn("The sync timed out on mcu (50 ms limit).", message)
+        self.assertIn("THR sent them up to 20 ms apart and Klipper read them up to 52 ms apart", message)
+        self.assertIn("mcu sent them up to 15 ms apart and Klipper read them up to 15 ms apart", message)
+        detail = "\n".join(logs.output)
+        self.assertIn("THR (5 reports, result 2)", detail)
+        self.assertIn("reason=4", detail)
 
     def test_other_probe_errors_are_not_reported(self) -> None:
         self.endstop.error = "Probe triggered prior to movement"

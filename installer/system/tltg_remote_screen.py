@@ -1,7 +1,7 @@
 # tltg-optimized:remote-screen-server
 """Serve the QIDI touchscreen to Fluidd's Printer screen card.
 
-Installed by QIDI Max 4 Optimized as /usr/local/lib/tltg_remote_screen.py and run by
+Installed by Valve Oil as /usr/local/lib/tltg_remote_screen.py and run by
 tltg-remote-screen.service. nginx routes Fluidd's /tltg-screen/ here only after Moonraker
 authorizes the client. The framebuffer is read only while a viewer is connected, and a
 JPEG is sent only when the screen changes. Touches are written to the touchscreen's

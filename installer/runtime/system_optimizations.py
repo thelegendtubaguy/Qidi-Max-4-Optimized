@@ -38,6 +38,7 @@ from . import moonraker_spoolman
 from . import remote_screen
 from . import restart_on_exit
 from . import service_priority
+from . import webcam_id
 from . import zram_swap
 from .auto_update import current_auto_update_checksum
 from .errors import InstallerError
@@ -257,6 +258,17 @@ GUARDED_FILE_PATCHES = {
         create_if_missing=True,
         reloads_units=True,
     ),
+    # Takes effect at the next boot, when QIDI's script runs.
+    webcam_id.OPERATION: _GuardedFilePatch(
+        label="Camera ID wait drop-in",
+        file=lambda spec: webcam_id.FILE,
+        patch=webcam_id.patch_dropin,
+        restart_service=None,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+        reloads_units=True,
+    ),
     **{
         operation: _GuardedFilePatch(
             label=f"{service_priority.SERVICES[operation]} priority drop-in",
@@ -359,10 +371,8 @@ def maybe_apply_system_optimizations(
         reporter=reporter,
         input_stream=input_stream,
         cli_options=cli_options,
-        auto_update_child=auto_update_child,
+        ai_detection_running=lambda: _ai_detection_running(spec, paths=paths, environ=environ, run=run),
     )
-    if policy is None:
-        return state
     ledger = _ledger_with_policy(state.system_ledger, policy)
     if not _system_root_allowed(paths=paths, environ=environ):
         reporter.debug(event="system_optimizations.skipped", reason="non-default-system-root")
@@ -471,13 +481,10 @@ def maybe_reconcile_system_optimizations(
         state = load_installed_state(state_path)
     except StateValidationError:
         return
-    policy = state.system_ledger.get("policy") if isinstance(state.system_ledger, dict) else None
-    if not isinstance(policy, dict):
-        return
-    ledger = _ledger_with_policy(state.system_ledger, {
-        "system_optimizations": str(policy.get("system_optimizations", "disabled")),
-        "ai_detection": str(policy.get("ai_detection", "unset")),
-    })
+    ledger = _ledger_with_policy(
+        state.system_ledger,
+        _noninteractive_policy(state.system_ledger, SystemOptimizationCliOptions()),
+    )
     if not _system_root_allowed(paths=paths, environ=environ):
         return
     try:
@@ -519,12 +526,8 @@ def maybe_emit_system_dry_run(
     if manifest.system_optimizations is None:
         return
     prior_ledger = prior_state.system_ledger if prior_state is not None else None
-    policy = _noninteractive_policy(prior_ledger, cli_options, auto_update_child=False)
-    if policy is None:
-        policy = {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}
+    policy = _noninteractive_policy(prior_ledger, cli_options)
     reporter.line("System optimizations dry-run:")
-    if policy.get("system_optimizations") != "enabled":
-        reporter.line("  - optional OS optimizations skipped by policy")
     for operation_id in _selected_operation_ids(manifest.system_optimizations, policy):
         if operation_id in FLUIDD_BUNDLE_OPERATIONS and _system_root_allowed(paths=paths, environ=environ):
             if _fluidd_build_served(manifest.system_optimizations, _system_root(environ)):
@@ -1095,28 +1098,15 @@ def resolve_policy(
     reporter,
     input_stream,
     cli_options: SystemOptimizationCliOptions,
-    auto_update_child: bool,
-) -> dict[str, str] | None:
-    explicit = _noninteractive_policy(
-        prior_ledger,
-        cli_options,
-        auto_update_child=auto_update_child,
-        interactive=input_stream is not None,
-    )
-    if explicit is not None:
-        return explicit
-    if auto_update_child:
-        return None
-    if input_stream is None:
-        return {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}
-    if not confirm_yes(
-        reporter=reporter,
-        input_stream=input_stream,
-        question=messages.SYSTEM_OPTIMIZATIONS_PROMPT,
-        instruction=messages.SYSTEM_OPTIMIZATIONS_PROMPT_INSTRUCTION,
-        cancel_message=messages.SYSTEM_OPTIMIZATIONS_SKIPPED,
-    ):
-        return {"system_optimizations": "disabled", "ai_detection": "unset"}
+    ai_detection_running: Callable[[], bool],
+) -> dict[str, str]:
+    """Every install and update applies the OS optimizations; only whether AI detection stays on is the operator's."""
+    policy = _noninteractive_policy(prior_ledger, cli_options)
+    if cli_options.disable_ai_detection or cli_options.keep_ai_detection or input_stream is None:
+        return policy
+    # The operator is asked only while AI detection is on; otherwise their earlier choice stands.
+    if not ai_detection_running():
+        return policy
     if prompt_yes(
         reporter=reporter,
         input_stream=input_stream,
@@ -1125,6 +1115,17 @@ def resolve_policy(
     ):
         return {"system_optimizations": "enabled", "ai_detection": "disable"}
     return {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}
+
+
+def _ai_detection_running(spec: SystemOptimizationsSpec, *, paths: RuntimePaths, environ: dict[str, str], run) -> bool:
+    if not _system_root_allowed(paths=paths, environ=environ):
+        return True
+    root = _system_root(environ)
+    for item in spec.services.optional_disable:
+        state = _service_state(item.service, root=root, run=run)
+        if state["exists"] and not _service_state_is_disabled(state):
+            return True
+    return False
 
 
 def apply_system_optimizations(
@@ -3069,6 +3070,7 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         KLIPPER_PRINT_STATS_OPERATION,
         restart_on_exit.MOONRAKER_OPERATION,
         restart_on_exit.KLIPPER_OPERATION,
+        webcam_id.OPERATION,
         *service_priority.SERVICES,
         # The path file goes after the packages it points at, so restoration removes it first.
         MOONRAKER_SPEEDUPS_OPERATION,
@@ -3146,7 +3148,7 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
     if operation_id in (
         moonraker_klippy_apis.OPERATION, moonraker_spoolman.OPERATION, moonraker_allowed_services.OPERATION,
         moonraker_speedups.PATH_OPERATION, restart_on_exit.MOONRAKER_OPERATION, restart_on_exit.KLIPPER_OPERATION,
-        *service_priority.SERVICES, zram_swap.UNIT_OPERATION, cpu_governor.OPERATION,
+        webcam_id.OPERATION, *service_priority.SERVICES, zram_swap.UNIT_OPERATION, cpu_governor.OPERATION,
         remote_screen.UNIT_OPERATION, remote_screen.SERVER_OPERATION, remote_screen.NGINX_OPERATION,
     ):
         guarded = GUARDED_FILE_PATCHES[operation_id]
@@ -3240,30 +3242,15 @@ def _validate_archive_members(members: list[tarfile.TarInfo]) -> None:
 def _noninteractive_policy(
     prior_ledger: dict[str, Any] | None,
     cli_options: SystemOptimizationCliOptions,
-    *,
-    auto_update_child: bool,
-    interactive: bool = False,
-) -> dict[str, str] | None:
-    if cli_options.skip_system_optimizations:
-        return {"system_optimizations": "disabled", "ai_detection": "unset"}
-    prior_policy = prior_ledger.get("policy") if isinstance(prior_ledger, dict) else None
-    use_prior_policy = (
-        isinstance(prior_policy, dict)
-        and (auto_update_child or not interactive)
-        and not (cli_options.disable_ai_detection or cli_options.keep_ai_detection)
-    )
-    if use_prior_policy:
-        return {
-            "system_optimizations": str(prior_policy.get("system_optimizations", "disabled")),
-            "ai_detection": str(prior_policy.get("ai_detection", "unset")),
-        }
-    if auto_update_child:
-        return None
+) -> dict[str, str]:
+    """Enable the OS optimizations whatever an earlier install chose, keeping its AI detection choice unless a flag overrides it."""
     if cli_options.disable_ai_detection:
         return {"system_optimizations": "enabled", "ai_detection": "disable"}
     if cli_options.keep_ai_detection:
         return {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}
-    return None
+    prior_policy = prior_ledger.get("policy") if isinstance(prior_ledger, dict) else None
+    disable = isinstance(prior_policy, dict) and prior_policy.get("ai_detection") == "disable"
+    return {"system_optimizations": "enabled", "ai_detection": "disable" if disable else "keep_enabled"}
 
 
 def system_ledger_needs_migration(ledger: dict[str, Any] | None) -> bool:
@@ -3608,6 +3595,7 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             KLIPPER_PRINT_STATS_OPERATION,
             restart_on_exit.MOONRAKER_OPERATION,
             restart_on_exit.KLIPPER_OPERATION,
+            webcam_id.OPERATION,
             MOONRAKER_SPEEDUPS_OPERATION,
             moonraker_speedups.PATH_OPERATION,
             *service_priority.SERVICES,

@@ -11,6 +11,14 @@ from installer.tests.helpers import REPO_ROOT
 
 CONFIG_ROOT = REPO_ROOT / "config"
 OPTIMIZED_MACRO_ROOT = REPO_ROOT / "installer" / "klipper" / "tltg-optimized-macros"
+PRINTER_MACRO_ROOT = REPO_ROOT / "installer" / "klipper" / "printers"
+
+
+def installed_macro_files(printer: str) -> tuple[Path, ...]:
+    """The optimized macro files a printer receives: the common macros and the printer's own folder."""
+    return tuple(
+        sorted((*OPTIMIZED_MACRO_ROOT.glob("*.cfg"), *(PRINTER_MACRO_ROOT / printer).glob("*.cfg")))
+    )
 
 SECTION_RE = re.compile(r"^\s*\[(?P<name>[^\]]+)\]\s*(?:[#;].*)?$")
 GCODE_MACRO_RE = re.compile(r"^gcode_macro\s+(?P<name>.+)$", re.IGNORECASE)
@@ -60,7 +68,7 @@ class MacroCallGraphTests(unittest.TestCase):
         files = unique_paths(
             (
                 *collect_config_tree_files(CONFIG_ROOT),
-                *sorted(OPTIMIZED_MACRO_ROOT.glob("*.cfg")),
+                *installed_macro_files("max4"),
             )
         )
         self.assert_macro_graph_is_acyclic(files)

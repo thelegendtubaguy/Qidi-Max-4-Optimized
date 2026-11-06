@@ -28,9 +28,9 @@ UNIT_MARKER = "# tltg-optimized:remote-screen-unit\n"
 
 # Restarting the unit without the server, before install or after restore, is a clean no-op.
 UNIT_CONTENT = UNIT_MARKER + f"""\
-# Serves the touchscreen to the Fluidd Printer screen card. Installed by QIDI Max 4 Optimized.
+# Serves the touchscreen to the Fluidd Printer screen card. Installed by Valve Oil.
 [Unit]
-Description=QIDI Max 4 Optimized printer screen for Fluidd
+Description=Valve Oil printer screen for Fluidd
 After=network.target
 ConditionPathExists={SERVER_FILE}
 

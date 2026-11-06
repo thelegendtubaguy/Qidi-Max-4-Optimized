@@ -15,18 +15,18 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 
 | What | Change |
 |---|---|
-| `printer.cfg` | Adds `[include tltg-optimized-macros/*.cfg]`, and changes recognized QIDI values for homing speed and retraction, Z-tilt and mesh travel speed, closed-loop homing timing, and a few others. |
-| `config/tltg-optimized-macros/` | The optimized macros. QIDI's own macros in `klipper-macros-qd/` stay in place, so files sliced with stock G-code print as before. |
+| `printer.cfg` | Adds `[include tltg-optimized-macros/*.cfg]`, and changes recognized QIDI values for homing speed and retraction, Z-tilt and mesh travel speed, the Max 4's closed-loop homing timing, and a few others. |
+| `config/tltg-optimized-macros/` | The optimized macros. QIDI's own macros in `klipper-macros-qd/` stay in place, so files sliced with stock G-code print as before. `homing.cfg`, `nozzle_motion.cfg`, and `printer_profile.cfg` hold the printer's own homing, cutter, wiper, and chute moves and positions; the installer picks them for the printer it detects. |
 | QIDI's `RESUME`, `CUT_FILAMENT_1`, `M106`, `M109.0`, `homing_override`, `_km_apply_print_offset`, and external spool sensor sections | Removed from QIDI's files and replaced by optimized versions. |
 | `saved_variables.cfg` | Adds missing defaults for [this project's settings](settings.md) and repairs missing QIDI Box tool mappings. Existing values are kept. |
-| `config/qidi_filament_config` | A link to QIDI's filament files, for [editing them in Fluidd](qidi-box.md#editing-qidis-filament-list). Firmware `01.01.07.01` only. |
+| `config/qidi_filament_config` | A link to QIDI's filament files, for [editing them in Fluidd](qidi-box.md#editing-qidis-filament-list). Max 4 firmware `01.01.07.01` only. |
 
 ## Klipper and Moonraker source and services
 
 | What | Change | Restarts |
 |---|---|---|
 | `klippy/extras/tltg_*.py` | Added modules for the Box link monitor, Box processor temperature, Box heater refresh, background mesh save, faster `SAVE_VARIABLE` and Box variable saves, cheap printer facts for the optimized macros, printer warnings for Fluidd's warning banner and the console, turning the [exhaust fan off](print-start.md#exhaust-fan-while-heating-the-chamber) before the chamber falls far enough behind to stop the print, [fixes from newer Klipper](fixes.md#fixes-from-newer-klipper), cheaper Klipper timer checks and status updates, Box load/unload speed, Box eject, unknown Box filaments, stuck Box loads, Box slot jogs, Box flow stop and stranded-filament recovery, [Spoolman spools for each slot](spoolman.md), the [RS-485 Box monitor](qidi-box.md#rs-485-boxes), the load-cell check, and [Klipper's health check](fixes.md#klipper-slowing-down-during-long-box-prints). | Klipper |
-| `klippy/extras/homing.py` | Replaced with this project's version of QIDI's homing code, for the faster homing. QIDI's closed-loop homing checks stay in place. | Klipper |
+| `klippy/extras/homing.py` | On the Max 4, replaced with this project's version of QIDI's homing code, for the faster homing. QIDI's closed-loop homing checks stay in place. | Klipper |
 | `klippy/extras/print_stats_manager.py` | Keeps the [real shutdown reason](fixes.md#the-real-error-instead-of-mcu-shutdown) on screen. | Klipper, once |
 | `klippy/extras/box_config.py` | Lets Fluidd set Box heater targets, capped at 65 °C. | Klipper, once |
 | Moonraker `file_manager.py` and `metadata.py` | The [3MF metadata cache and plate fix](fixes.md#multi-plate-3mf-files). | Moonraker, when the patch changes |
@@ -34,6 +34,7 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 | `~/tltg-moonraker-speedups` and `tltg-moonraker-speedups.pth` in `~/moonraker-env` | Adds `msgspec` and `uvloop`, which Moonraker uses when it can import them, to QIDI's Moonraker. Moonraker builds the JSON it sends to Fluidd and the touchscreen with `msgspec` and runs its event loop on `uvloop`, using less CPU. Nothing in QIDI's `~/moonraker-env` is replaced. | Moonraker, when the packages change |
 | `/etc/systemd/system/{klipper,moonraker,qidi-client}.service.d/tltg-priority.conf` | Gives Klipper the CPU before Moonraker, and both before the touchscreen app (nice -10, -5, and 5). | Each service, once |
 | `/etc/systemd/system/{moonraker,klipper}.service.d/tltg-restart-on-exit.conf` | Turns off `RemainAfterExit` in QIDI's Moonraker and Klipper services, so systemd starts them again 10 seconds after they stop without systemd stopping them. Before, they stayed down until a restart or reboot while still reported as running. | None |
+| `/etc/systemd/system/makerbase-webcam.service.d/tltg-wait-for-camera.conf` | Makes QIDI's boot script that sets the camera for crowsnest wait up to 30 seconds for the camera's `index0` device link, and skips the script if none appears. Before, the script could run before the link existed and clear the camera from `crowsnest.conf`, leaving Fluidd without a camera. See [The camera doesn't show in Fluidd](troubleshooting.md#the-camera-doesnt-show-in-fluidd). | None; takes effect at the next boot |
 
 ## Fluidd and the web server
 
@@ -52,7 +53,7 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 | `~/tltg-optimized-macros/` | The installer, `restore.sh`, `auto-update.sh`, and `box-firmware.sh`. |
 | `/etc/systemd/system/tltg-optimized-auto-update.{service,timer}` | Only if you turn on [automatic updates](install.md#automatic-updates). |
 | `~/printer_data/logs/tltg_box485.log`, `tltg_box485_report.json`, and `~/printer_data/.tltg_box485_salt` | Written only when [RS-485 Box hardware](qidi-box.md#rs-485-boxes) is detected or `TLTG_RS_BOX_REPORT` runs. The salt keeps the codes that replace hardware ids the same on this printer. |
-| DNS, package sources, `xl2tpd`, `bluetooth`, `algo_app`, `rockchip.service`, touchscreen images | Only if you choose the [OS optimizations](install.md#os-optimizations). |
+| DNS, package sources, `xl2tpd`, `bluetooth`, `usbdevice.service` ([ADB](install.md#adb)), `algo_app`, `rockchip.service`, touchscreen images | The [OS optimizations](install.md#os-optimizations), which every install and update applies; `algo_app` only if you turn off AI detection. |
 | `/etc/default/cpufrequtils` | Sets QIDI's CPU frequency service to the `performance` governor instead of `ondemand`. Only with the OS optimizations. Uninstall removes the file, which puts `ondemand` back. |
 | `/usr/local/lib/tltg-zram-swap/` and `/etc/systemd/system/tltg-zram-swap.service` | The [zram swap](install.md#zram-swap) kernel modules and the boot service that loads them and turns on swap, setting `vm.swappiness` to 80 and `vm.page-cluster` to 0. Only with the OS optimizations, and only on QIDI's kernel build. Stopping the service turns swap off and puts the kernel's defaults back. |
 

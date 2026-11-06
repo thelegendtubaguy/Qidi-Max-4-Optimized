@@ -1,0 +1,194 @@
+name: Bug report
+description: Something went wrong installing, updating, printing, or in Fluidd.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this. The more of this form you fill in, the faster it can be fixed.
+        For QIDI Box loads, unloads, and ejects, use the **QIDI Box problem** form instead.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you start
+      options:
+        - label: I searched the [existing issues](https://github.com/thelegendtubaguy/valve-oil/issues?q=is%3Aissue) for this problem.
+          required: true
+        - label: I'm on the latest release, or I've said below which version I'm on and why.
+          required: false
+
+  - type: dropdown
+    id: printer
+    attributes:
+      label: Printer
+      options:
+        - QIDI Max 4
+        - QIDI Plus 5
+        - Other (say which below)
+    validations:
+      required: true
+
+  - type: textarea
+    id: printer_details
+    attributes:
+      label: Printer details
+      description: Run the block in [Printer details](https://github.com/thelegendtubaguy/valve-oil/blob/main/docs/troubleshooting.md#printer-details) over SSH and paste everything it prints. It only reads files.
+      render: text
+      placeholder: |
+        Valve Oil: 26.11.05.1 installed 2026-11-05T07:21:35Z
+        SOC: 01.01.07.01 (QD_MAX4_SOC_01.01.07.01_20261016_Release_NA)
+        ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where did it go wrong?
+      multiple: true
+      options:
+        - Installing
+        - Updating by running the install command again
+        - Automatic update
+        - Uninstalling or restoring a backup
+        - Toolhead or QIDI Box firmware fix
+        - Homing, leveling, or bed mesh
+        - Print start (cleaning, scrape, prime line)
+        - During a print
+        - Filament change during a print
+        - Pause, resume, or cancel
+        - End of print
+        - Fluidd
+        - Touchscreen
+        - Klipper won't start or shuts down
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_source
+    attributes:
+      label: How did you install Valve Oil?
+      options:
+        - Release install command from the README
+        - Dev prerelease
+        - Not installed yet
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened?
+      description: Describe what the printer, installer, or Fluidd did, step by step, and where it stopped. Include anything that moved, made noise, or looked wrong.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can it be made to happen again?
+      description: The steps from a known state, such as an idle printer after a restart.
+      placeholder: |
+        1. Home all axes from Fluidd
+        2. Start a print sliced with ...
+        3. ...
+    validations:
+      required: false
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: How often does it happen?
+      options:
+        - Every time
+        - Sometimes
+        - Once so far
+    validations:
+      required: true
+
+  - type: textarea
+    id: messages
+    attributes:
+      label: Error messages
+      description: The exact text from the installer, Fluidd's console, or the touchscreen, including any error codes such as QDC_... Copy it rather than retyping it.
+      render: text
+    validations:
+      required: false
+
+  - type: dropdown
+    id: slicer
+    attributes:
+      label: Slicer and start G-code
+      description: For print problems, how the file was sliced.
+      options:
+        - Not a print problem
+        - OrcaSlicer with the OrcaCloud bundle
+        - OrcaSlicer with G-code copied from this repo
+        - QIDI Studio with G-code copied from this repo
+        - QIDI's stock G-code
+        - Other (say which below)
+    validations:
+      required: true
+
+  - type: input
+    id: slicer_version
+    attributes:
+      label: Slicer version and printer profile
+      placeholder: "OrcaSlicer 2.4.0, Qidi X-Max 4 0.4 nozzle - TLTG Optimized GCode"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: box
+    attributes:
+      label: QIDI Box setup
+      options:
+        - No QIDI Box
+        - One USB Box
+        - More than one USB Box
+        - RS-485 Box, buffer, or filament rack
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: hardware
+    attributes:
+      label: Other hardware and changes
+      options:
+        - label: Polar cooler installed
+        - label: Spoolman set up
+        - label: I changed printer.cfg or QIDI's macros myself
+        - label: I changed files in config/tltg-optimized-macros myself
+        - label: Other mods (say which below)
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and files
+      description: |
+        Drag files in here. See [Logs](https://github.com/thelegendtubaguy/valve-oil/blob/main/docs/troubleshooting.md#logs) for where to find them.
+        - **Printing or Klipper problems:** `klippy.log`, taken right after the problem, before restarting Klipper.
+        - **Install, update, or uninstall problems:** the full installer output, or `journalctl -u tltg-optimized-auto-update.service` for automatic updates.
+        - **Print problems:** the sliced `.gcode` or `.gcode.3mf`, zipped.
+        - **Fluidd problems:** a screenshot and `moonraker.log`.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+      description: Photos or video of the printer, what you've already tried, or anything that changed recently, such as a QIDI firmware update.
+    validations:
+      required: false

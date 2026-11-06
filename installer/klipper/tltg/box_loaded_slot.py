@@ -1,4 +1,4 @@
-# QIDI Box loaded-slot recovery for QIDI Max 4 Optimized.
+# QIDI Box loaded-slot recovery for Valve Oil.
 #
 # QIDI saves a slot as last_load_slot as soon as a Box load brings its
 # filament to the Box hub sensor, before the filament reaches the toolhead,

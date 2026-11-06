@@ -22,7 +22,9 @@ from installer.runtime.compatibility import (
     validate_manifest_compatibility,
     validate_patch_ledger,
 )
-from installer.runtime.manifest import load_manifest
+import yaml
+
+from installer.runtime.manifest import ManifestValidationError, load_manifest, parse_manifest
 from installer.runtime.models import (
     InstalledState,
     ManagedTreeState,
@@ -59,6 +61,18 @@ class InstallerCompatibilityTests(unittest.TestCase):
             digest,
             "6f58a7f777704551e2ecf2b2bd92bd04d7aa27dd1a8b986338b174475d833146",
         )
+
+    def test_manifest_rejects_printers_that_share_an_identity(self) -> None:
+        # Patch variants are keyed by firmware version, so a version or SOC file prefix
+        # claimed by two printers would let one printer's patches apply to the other.
+        raw = yaml.safe_load((REPO_ROOT / "installer/package.yaml").read_text(encoding="utf-8"))
+        max4 = raw["printers"][0]
+        shared_firmware = {**max4, "id": "other", "soc_file_prefix": "QD_OTHER_SOC_", "firmware": [max4["firmware"][-1]]}
+        shared_prefix = {**max4, "id": "other", "soc_file_prefix": "QD_MAX4_", "firmware": ["09.09.09.09"]}
+        for other in (shared_firmware, shared_prefix):
+            with self.subTest(other=other["soc_file_prefix"]):
+                with self.assertRaises(ManifestValidationError):
+                    parse_manifest({**raw, "printers": [max4, other]})
 
     def test_parser_rejects_malformed_duplicate_and_unsafe_envelope_entries(self) -> None:
         raw = {

@@ -27,14 +27,14 @@ from .errors import (
     PreflightTargetsError,
     PrinterStateError,
 )
-from .firmware import detect_firmware_version
+from .firmware import detect_firmware, supported_printer
 from .fs_atomic import atomic_write_text
 from .models import RuntimePaths
 from .postflight import verify_install_postflight
 from .process_restart import ProcessRestartError, restart_pending
 from .manifest import ManifestValidationError, load_manifest
 from .state_file import StateValidationError, load_installed_state
-from .naming import BUNDLE_ROOT_NAME
+from .naming import BUNDLE_ROOT_NAME, REPOSITORY_URL
 from .sudo import (
     SudoError,
     authenticate_sudo as _authenticate_sudo,
@@ -42,7 +42,7 @@ from .sudo import (
     run_sudo_or_raise as _run_sudo_or_raise,
 )
 
-DEFAULT_ARCHIVE_URL = "https://github.com/thelegendtubaguy/Qidi-Max-4-Optimized/releases/latest/download/tltg-optimized-macros.tar.gz"
+DEFAULT_ARCHIVE_URL = f"{REPOSITORY_URL}/releases/latest/download/tltg-optimized-macros.tar.gz"
 DEFAULT_CHECKSUM_URL = f"{DEFAULT_ARCHIVE_URL}.sha256"
 LOCK_HELD_ENV = "TLTG_OPTIMIZED_INSTALLER_LOCK_HELD"
 STATE_FILE = "config/tltg_optimized_auto_update_state.json"
@@ -356,7 +356,7 @@ def service_text(paths: RuntimePaths) -> str:
     user = _current_user()
     return (
         "[Unit]\n"
-        "Description=TLTG QIDI Max 4 optimized config auto-update\n"
+        "Description=Valve Oil auto-update\n"
         "Wants=network-online.target\n"
         "After=network-online.target\n\n"
         "[Service]\n"
@@ -371,7 +371,7 @@ def service_text(paths: RuntimePaths) -> str:
 def timer_text() -> str:
     return (
         "[Unit]\n"
-        "Description=Run TLTG optimized config auto-update hourly\n\n"
+        "Description=Run Valve Oil auto-update hourly\n\n"
         "[Timer]\n"
         "OnBootSec=5min\n"
         "OnUnitActiveSec=1h\n"
@@ -562,10 +562,11 @@ def auto_update_enrolled(paths: RuntimePaths) -> bool:
 def _installation_requires_reconciliation(paths: RuntimePaths) -> bool:
     try:
         manifest = load_manifest(paths.installer_root / "package.yaml")
-        detected_firmware = detect_firmware_version(paths.firmware_manifest_path)
+        detected = detect_firmware(paths.firmware_manifest_path)
     except (ManifestValidationError, FirmwareDetectionError) as exc:
         raise AutoUpdateError(messages.AUTO_UPDATE_INSTALLER_FAILED) from exc
 
+    detected_firmware = detected.version
     installed_state_path = paths.printer_data_root / manifest.state_file
     if not installed_state_path.is_file() or installed_state_path.is_symlink():
         return True
@@ -577,7 +578,7 @@ def _installation_requires_reconciliation(paths: RuntimePaths) -> bool:
         installed_state.package_id != manifest.package.id
         or installed_state.package_version != manifest.package.version
         or installed_state.runtime_firmware != detected_firmware
-        or detected_firmware not in manifest.firmware.supported
+        or supported_printer(manifest, detected) is None
     ):
         return True
     try:

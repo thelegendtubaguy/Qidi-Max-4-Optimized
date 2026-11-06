@@ -1,4 +1,4 @@
-# Chamber exhaust guard for QIDI Max 4 Optimized.
+# Chamber exhaust guard for Valve Oil.
 #
 # The optimized M106 leaves the chamber heater on when the exhaust fan (P3)
 # turns on. The exhaust can then pull the chamber far enough below its target

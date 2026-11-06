@@ -9,7 +9,7 @@
 - Translate comments only unless told otherwise. Leave runtime/status/warning strings unchanged unless the affected string set is approved.
 - Keep `config/` stock-mapped except redactions, approved comment translation, generated state blocks, and minimal include wiring. Never tune `config/printer.cfg` or `config/klipper-macros-qd/*.cfg`. Put changes where they belong:
   - stock values: guarded `installer/package.yaml patches.*`, or a guarded host-file patch under `installer/runtime/` when the file is QIDI-generated with varying sections (e.g. `config/box.cfg`);
-  - Klipper behavior: `installer/klipper/tltg-optimized-macros/`;
+  - Klipper behavior: `installer/klipper/tltg-optimized-macros/`, with printer-specific homing, cutter/wiper/chute moves, and positions in `installer/klipper/printers/<printer>/` (same macro names on every printer; the installer layers the detected printer's folder onto the common macros);
   - slicer behavior: `orcaslicer_gcode/` and `qidistudio_gcode/`;
   - installer/runtime metadata: `installer/`.
 
@@ -22,6 +22,7 @@ This project owns Fluidd. Make changes in the fork of upstream `fluidd-core/flui
 ## Docs
 
 - `README.md` is a short landing page: install, then one-line feature summaries linking to `docs/`. Keep it operator-focused and don't link `openspec/` unless asked.
+- Keep the README's **Supported printers** table matching `installer/package.yaml` `printers:`. Docs describe behavior for every supported printer; label printer-specific facts (positions, firmware versions, hardware, measurements) with the printer they apply to.
 - Put operator detail in the matching `docs/<topic>.md` (index: `docs/README.md`), new settings and commands in `docs/settings.md`, and new files or services the installer touches in `docs/under-the-hood.md`.
 
 ## Git
@@ -50,7 +51,7 @@ Read the printer spec, contract, and generated view first. Update `start-print.p
 ## Runtime paths
 
 - Include graph: `config/printer.cfg` → `MCU_ID.cfg`, `timelapse.cfg`, `klipper-macros-qd/*.cfg`, `tltg-optimized-macros/*.cfg`, `box.cfg` (active).
-- Stock/optimized pairs: `start_end.cfg`, `kinematics.cfg` (homing), `filament.cfg`, `bed_mesh.cfg` plus optimized wrappers (adaptive mesh). `config/KAMP/*.cfg` is not the active mesh path.
+- Stock/optimized pairs: `start_end.cfg`, `kinematics.cfg` (homing; optimized homing sequence in `printers/<printer>/homing.cfg`), `filament.cfg`, `bed_mesh.cfg` plus optimized wrappers (adaptive mesh). `config/KAMP/*.cfg` is not the active mesh path.
 - Cooling: `installer/klipper/tltg-optimized-macros/cooling.cfg`; pause/resume/cancel: `config/klipper-macros-qd/pause_resume_cancel.cfg`.
 
 ## Versions and changelog
@@ -81,5 +82,5 @@ Read the printer spec, contract, and generated view first. Update `start-print.p
 ## Timing and terminology
 
 - `G4 P...` is fixed dead time; `M400` waits only for queued motion. For conservative speedups, trim `G4` before changing speeds or acceleration.
-- Stock timing/behavior globals stay in `config/klipper-macros-qd/globals.cfg`; optimized-only globals go in `installer/klipper/tltg-optimized-macros/globals.cfg`. Treat seemingly unused stock globals as externally consumed unless proven otherwise.
+- Stock timing/behavior globals stay in `config/klipper-macros-qd/globals.cfg`; optimized-only globals go in `installer/klipper/tltg-optimized-macros/globals.cfg`, and printer-specific positions and calibration defaults in `installer/klipper/printers/<printer>/printer_profile.cfg` (`_tltg_printer`). Treat seemingly unused stock globals as externally consumed unless proven otherwise.
 - "Purge" means rear waste-chute/wiper extrusion only; "prime line" means front-of-bed slicer-start extrusion.

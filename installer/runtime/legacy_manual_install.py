@@ -18,7 +18,6 @@ from .sudo import SudoError, authenticate_sudo, run_sudo_or_raise
 
 LEGACY_RESET_FIRMWARE_TOKEN = "legacy-manual-reset"
 QIDICLIENT_SERVICE = "qidi-client.service"
-STOCK_CONFIG_ROOT = Path("stock/qidi-max4-defaults/firmwares")
 LEGACY_MARKERS = (
     ("config/printer.cfg", "[include tltg-optimized-macros/*.cfg]"),
     ("config/klipper-macros-qd/filament.cfg", "[gcode_macro OPTIMIZED_CUT_FILAMENT]"),
@@ -164,7 +163,7 @@ def _restore_stock_config(
     backup_path: Path,
     detected_firmware: str,
 ) -> None:
-    source_root = _stock_config_source(paths=paths, detected_firmware=detected_firmware)
+    source_root = _stock_config_source(paths=paths, manifest=manifest, detected_firmware=detected_firmware)
     if not source_root.exists():
         raise LegacyManualInstallError(f"Bundled stock config snapshot is missing: {source_root}")
     validate_managed_tree_source(source_root)
@@ -185,8 +184,11 @@ def _restore_stock_config(
         raise
 
 
-def _stock_config_source(*, paths: RuntimePaths, detected_firmware: str) -> Path:
-    return paths.installer_root / STOCK_CONFIG_ROOT / detected_firmware / "config"
+def _stock_config_source(*, paths: RuntimePaths, manifest: Manifest, detected_firmware: str) -> Path:
+    printer = manifest.printer_for_firmware(detected_firmware)
+    if printer is None:
+        raise LegacyManualInstallError(f"No bundled stock config snapshot for firmware {detected_firmware}.")
+    return paths.installer_root / printer.stock_snapshots / detected_firmware / "config"
 
 
 def _restore_stock_files(*, source_root: Path, paths: RuntimePaths, journal: RollbackJournal) -> None:
@@ -213,7 +215,7 @@ def _restore_stock_files(*, source_root: Path, paths: RuntimePaths, journal: Rol
         )
         if item.is_dir():
             ensure_runtime_tree_has_no_symlinks(target)
-            mirror_tree(source_root=item, destination_root=target, journal=journal)
+            mirror_tree(source_roots=(item,), destination_root=target, journal=journal)
         elif item.is_file():
             journal.track_file(target)
             data = item.read_bytes()

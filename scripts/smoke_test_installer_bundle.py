@@ -113,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     if help_output.returncode != 0:
         raise SystemExit(help_output.stdout + help_output.stderr)
     for expected in (
-        "QIDI Max 4 Optimized installer runtime",
+        "Valve Oil installer runtime",
         "{install,uninstall,clear-recovery-sentinel,restore-backup",
         "-v, --version",
         "--plain",
@@ -122,7 +122,6 @@ def main(argv: list[str] | None = None) -> int:
         "--demo-tui",
         "--yes",
         "--flash-thr-fifo",
-        "--skip-system-optimizations",
         "--disable-ai-detection",
         "--keep-ai-detection",
         "--keep-system-optimizations",
@@ -146,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
     version_output = run_command([str(bundle_root / "install.sh"), "-v"], cwd=bundle_root, env=os.environ.copy())
     if version_output.returncode != 0:
         raise SystemExit(version_output.stdout + version_output.stderr)
-    if version_output.stdout.strip() != f"QIDI Max 4 Optimized installer {package_version}":
+    if version_output.stdout.strip() != f"Valve Oil installer {package_version}":
         raise SystemExit("install.sh -v output did not match package.version")
 
     alias_dry_run = run_command(
@@ -160,7 +159,7 @@ def main(argv: list[str] | None = None) -> int:
         dry_run_install_printer_root = prepare_printer_root(workspace / "dry-run-install-printer")
         dry_run_install_env = build_env(dry_run_install_printer_root, moonraker_url=url)
         dry_run_install = run_command(
-            [str(bundle_root / "install.sh"), "--dry-run", "--plain", "--reboot-host"],
+            [str(bundle_root / "install.sh"), "--dry-run", "--plain"],
             cwd=bundle_root,
             env=dry_run_install_env,
         )
@@ -173,7 +172,7 @@ def main(argv: list[str] | None = None) -> int:
         if "Dry-run summary:" not in dry_run_install.stdout:
             raise SystemExit("install dry-run smoke test did not emit the dry-run summary")
         if "Host reboot dry-run: would schedule a delayed reboot" not in dry_run_install.stdout:
-            raise SystemExit("install dry-run smoke test did not forward --reboot-host")
+            raise SystemExit("install dry-run smoke test did not report the host reboot")
 
         plain_printer_root = prepare_printer_root(workspace / "plain-printer")
         plain_env = build_env(plain_printer_root, moonraker_url=url)
@@ -241,7 +240,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         if rich_install.returncode != 0:
             raise SystemExit(rich_install.stdout)
-        if "QIDI Max 4 Optimized installer" not in rich_install.stdout:
+        if "Valve Oil installer" not in rich_install.stdout:
             raise SystemExit("rich launcher smoke test did not render the live TUI")
         if not (rich_printer_root / "config/tltg_optimized_state.yaml").exists():
             raise SystemExit("rich install smoke test did not create state file")
@@ -257,7 +256,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         if rich_demo.returncode != 0:
             raise SystemExit(rich_demo.stdout)
-        if "QIDI Max 4 Optimized installer" not in rich_demo.stdout:
+        if "Valve Oil installer" not in rich_demo.stdout:
             raise SystemExit("demo TUI smoke test did not render the live TUI")
         if "Installed." not in rich_demo.stdout:
             raise SystemExit("demo TUI smoke test did not emit the install success line")
@@ -335,7 +334,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise SystemExit(fallback_install.stdout)
             if "stage 1/5" not in fallback_install.stdout:
                 raise SystemExit("plain fallback smoke test did not emit contract stage output")
-            if "QIDI Max 4 Optimized installer" in fallback_install.stdout:
+            if "Valve Oil installer" in fallback_install.stdout:
                 raise SystemExit("plain fallback smoke test unexpectedly rendered the rich TUI")
         finally:
             disabled_rich_vendor.rename(rich_vendor)

@@ -1,0 +1,147 @@
+name: QIDI Box problem
+description: A QIDI Box load, unload, eject, tool change, heater, or connection went wrong.
+title: "[QIDI Box]: "
+labels: ["bug", "qidi-box"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this. Box problems depend a lot on timing, so `klippy.log` from right after the problem is the most useful thing you can attach.
+        [QIDI Box docs](https://github.com/thelegendtubaguy/valve-oil/blob/main/docs/qidi-box.md) cover stuck and failed loads, filament stopped between the hub and the toolhead, and resuming after a failure.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you start
+      options:
+        - label: I searched the [existing issues](https://github.com/thelegendtubaguy/valve-oil/issues?q=is%3Aissue) for this problem.
+          required: true
+
+  - type: dropdown
+    id: printer
+    attributes:
+      label: Printer
+      options:
+        - QIDI Max 4
+        - QIDI Plus 5
+        - Other (say which below)
+    validations:
+      required: true
+
+  - type: textarea
+    id: printer_details
+    attributes:
+      label: Printer details
+      description: Run the block in [Printer details](https://github.com/thelegendtubaguy/valve-oil/blob/main/docs/troubleshooting.md#printer-details) over SSH and paste everything it prints. It only reads files.
+      render: text
+    validations:
+      required: true
+
+  - type: dropdown
+    id: box
+    attributes:
+      label: Box setup
+      options:
+        - One USB Box
+        - Two USB Boxes
+        - Three or four USB Boxes
+        - RS-485 Box, buffer, or filament rack
+    validations:
+      required: true
+
+  - type: dropdown
+    id: operation
+    attributes:
+      label: What was the Box doing?
+      multiple: true
+      options:
+        - Loading from the QIDI Box card or touchscreen
+        - Unloading
+        - Ejecting
+        - Jogging a slot
+        - Print start load
+        - Filament change during a print
+        - Resuming after a pause or failed step
+        - Auto-reload after runout
+        - Box heater or drying
+        - Lost connection (Lost communication with MCU 'mcu_boxN')
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: slots
+    attributes:
+      label: Slots involved
+      description: Which Box and slot, as shown on the QIDI Box card, and which tool it was mapped to.
+      placeholder: "Box 1 slot B (1B), T1"
+    validations:
+      required: true
+
+  - type: input
+    id: filament
+    attributes:
+      label: Filament
+      description: Brand, type, and spool, for the slots involved. Cardboard spools, refills, and damp or brittle filament all matter.
+      placeholder: "Bambu PLA Basic, plastic spool"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened?
+      description: Where the filament ended up (still in the Box, between the Box and the hub, between the hub and the toolhead, in the extruder), what the QIDI Box card showed, and whether the print paused, stopped, or carried on.
+    validations:
+      required: true
+
+  - type: textarea
+    id: messages
+    attributes:
+      label: Error messages
+      description: The exact text from Fluidd's console, the QIDI Box card, or the touchscreen, including QDC_... codes. Copy it rather than retyping it.
+      render: text
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: How often does it happen?
+      options:
+        - Every time
+        - Sometimes
+        - Once so far
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: changes
+    attributes:
+      label: Changes from QIDI's setup
+      options:
+        - label: Box firmware shutdown fix installed
+        - label: Changed Box load or unload speeds or lengths (FAST_LENGTH, UNLOAD_EXTRUDER_LENGTH, ...)
+        - label: Longer or shorter PTFE tube than QIDI's, or a different tube route
+        - label: Box connected through a USB hub or extension
+        - label: Spoolman set up for Box slots
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and files
+      description: |
+        Drag files in here. See [Logs](https://github.com/thelegendtubaguy/valve-oil/blob/main/docs/troubleshooting.md#logs) for where to find them.
+        - `klippy.log`, taken right after the problem, before restarting Klipper. For a lost Box connection, it includes the `serial-history mcu_boxN:` lines and each Box's reset reason.
+        - With RS-485 hardware: `~/printer_data/logs/tltg_box485_report.json`, written by `TLTG_RS_BOX_REPORT`.
+        - Photos of where the filament stopped, and a screenshot of the QIDI Box card.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+      description: What you've tried, and whether the Box worked before a recent update.
+    validations:
+      required: false

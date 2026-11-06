@@ -8,7 +8,7 @@ Both need an idle, ready printer with every heater target at zero. **Keep the pr
 
 ## Toolhead accelerometer fix
 
-On QIDI firmware the toolhead board (THR) reads its accelerometer incorrectly, which affects input shaper calibration. This fixes the LIS2DW FIFO bug.
+On the Max 4 with QIDI firmware `01.01.07.01`, the toolhead board (THR) reads its accelerometer incorrectly, which affects input shaper calibration. This fixes the LIS2DW FIFO bug. It isn't offered on other printers or firmware.
 
 **How to install:** the installer asks about it first, before changing anything. **The default is No**; press Enter to skip it. If you say yes, it flashes after the rest of the install finishes. To opt in from the command line instead:
 
