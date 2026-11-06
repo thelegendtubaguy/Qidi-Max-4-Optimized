@@ -542,6 +542,8 @@ system_optimizations:
     disable:
       - xl2tpd
       - bluetooth
+      # Rockchip USB gadget service; its only function is ADB, a root shell on TCP 5555 with no authentication.
+      - usbdevice.service
     optional_disable:
       - id: algo_app
         service: algo_app.service

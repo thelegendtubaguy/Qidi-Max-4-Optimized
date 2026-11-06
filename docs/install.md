@@ -39,6 +39,7 @@ Every install and update applies these, including on printers where an earlier i
 - Adding `1.1.1.1` and `8.8.8.8` as fallback DNS servers.
 - Pointing the printer's package sources at Debian's official servers.
 - Turning off services the printer doesn't use: `xl2tpd`, `bluetooth`, and QIDI AI detection if you choose.
+- Turning off [ADB](#adb), which gives anyone on your network a root shell on the printer without a password.
 - Stopping a broken QIDI boot service from leaving the printer's storage in slow synchronous mode.
 - Compressed swap in memory ([zram](#zram-swap)), so the printer doesn't run out of memory.
 - Running the CPU at full speed, so Klipper's short bursts of work don't start at a third of it. With a 65 °C chamber, the processor ran about 1 °C warmer, 11 °C below where it starts slowing itself down.
@@ -56,6 +57,12 @@ The Max 4 has 486 MB of memory and no swap. QIDI's AI detection alone can hold a
 Zram gives Linux a compressed swap area in memory instead: 256 MB of swap that holds about 2.3 MB of idle data per MB of memory it uses. On a Max 4, with memory filled the way it was on a printer that hit this shutdown, Klipper's longest delay went from 405 ms to 4 ms, and the program that filled memory was no longer killed.
 
 QIDI's kernel has no zram, so the package carries its own modules, built for the Max 4's kernel `5.10.160 #4 SMP PREEMPT Wed Sep 3 15:21:57 CST 2025`. They load only on that exact kernel; on any other, including after a QIDI update that changes it, the printer runs without zram until a package release supports that kernel. To check that zram is on, run `cat /proc/swaps` over SSH and look for `/dev/zram0`.
+
+### ADB
+
+QIDI's system image runs ADB (Android Debug Bridge) as `root` on TCP port 5555, on every network the printer joins, with no authentication. Anyone who can reach the printer can run commands on it as root, and changing the `qidi` password doesn't stop them, since ADB doesn't use it. It comes from `usbdevice.service`, a leftover from Rockchip's board image whose only function is ADB. Nothing QIDI ships uses it, and the USB port for flash drives is separate and keeps working.
+
+The installer stops and disables `usbdevice.service`. To check that ADB is off, run `sudo ss -tlnp | grep 5555` over SSH; it should print nothing. If QIDI support asks for ADB, `sudo systemctl start usbdevice` turns it back on until the printer reboots or the next install or automatic update check turns it off again.
 
 ## Slicer start G-code
 

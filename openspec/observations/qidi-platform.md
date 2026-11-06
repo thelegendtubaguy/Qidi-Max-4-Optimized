@@ -94,6 +94,12 @@
 - **Static-recovered:** the functions `tltg_klipper_fixes` replaces are identical in `01.01.06.04`, `01.01.06.05`, and `01.01.07.01`, and lack upstream's later fixes, including `MCU._handle_starting` calling `invoke_async_shutdown` without its required `details` argument.
 - **Harness-recovered (QIDI's `reactor.py`, greenlet 2.0.2 as on the printer):** a timer whose callback pauses, rescheduled with `update_timer` by another task, ran twice at once.
 
+## Rockchip USB gadget and ADB
+
+- **Runtime-confirmed (one Max 4, firmware `01.01.07.01`, 2026-11-05):** `usbdevice.service` (`/lib/systemd/system/usbdevice.service`, `WantedBy=sysinit.target`) was enabled and active and runs `/usr/bin/usbdevice start`. `/etc/profile.d/usbdevice.sh` sets `USB_FUNCS="adb"`, and `/etc/profile.d/adbd.sh` sets `ADB_TCP_PORT=5555` and `ADBD_SHELL=/bin/bash`. `/usr/bin/adbd` ran as root and listened on `0.0.0.0:5555`. An ADB `CNXN` to the printer's LAN address was answered with `CNXN` and no `AUTH` challenge, and `shell:id` returned `uid=0(root) gid=0(root)`.
+- **Runtime-confirmed (same printer):** none of `/usr/bin/adbd`, `/usr/bin/usbdevice`, or the unit belonged to a Debian package. `/etc/init.d/rockchip.sh` has `service adbd start` commented out. No file under `/home/qidi/QIDI_Client`, `/usr/local/bin` (including `algo_app`), `/home/qidi/update`, or `/home/qidi/scripts` contained `usbdevice`, `/usr/bin/adbd`, or `usb-ffs`.
+- **Config-confirmed (same printer's `/usr/bin/usbdevice`):** `usbdevice stop` unbinds the gadget from its UDC and stops `adbd`. `/lib/udev/rules.d/61-usbdevice.rules` runs `usbdevice update`, equivalent to `start`, on `android_usb` change events.
+
 ## Rockchip first-boot service and root mount
 
 - `/proc/device-tree/compatible` on the observed Max 4 identifies RK3308, while `/etc/init.d/rockchip.sh` assigns `CHIPNAME="rk3208"` for that hardware.

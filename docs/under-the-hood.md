@@ -52,7 +52,7 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 | `~/tltg-optimized-macros/` | The installer, `restore.sh`, `auto-update.sh`, and `box-firmware.sh`. |
 | `/etc/systemd/system/tltg-optimized-auto-update.{service,timer}` | Only if you turn on [automatic updates](install.md#automatic-updates). |
 | `~/printer_data/logs/tltg_box485.log`, `tltg_box485_report.json`, and `~/printer_data/.tltg_box485_salt` | Written only when [RS-485 Box hardware](qidi-box.md#rs-485-boxes) is detected or `TLTG_RS_BOX_REPORT` runs. The salt keeps the codes that replace hardware ids the same on this printer. |
-| DNS, package sources, `xl2tpd`, `bluetooth`, `algo_app`, `rockchip.service`, touchscreen images | The [OS optimizations](install.md#os-optimizations), which every install and update applies; `algo_app` only if you turn off AI detection. |
+| DNS, package sources, `xl2tpd`, `bluetooth`, `usbdevice.service` ([ADB](install.md#adb)), `algo_app`, `rockchip.service`, touchscreen images | The [OS optimizations](install.md#os-optimizations), which every install and update applies; `algo_app` only if you turn off AI detection. |
 | `/etc/default/cpufrequtils` | Sets QIDI's CPU frequency service to the `performance` governor instead of `ondemand`. Only with the OS optimizations. Uninstall removes the file, which puts `ondemand` back. |
 | `/usr/local/lib/tltg-zram-swap/` and `/etc/systemd/system/tltg-zram-swap.service` | The [zram swap](install.md#zram-swap) kernel modules and the boot service that loads them and turns on swap, setting `vm.swappiness` to 80 and `vm.page-cluster` to 0. Only with the OS optimizations, and only on QIDI's kernel build. Stopping the service turns swap off and puts the kernel's defaults back. |
 
