@@ -180,6 +180,11 @@ Every install and update SHALL apply the host OS optimizations, leaving only whe
 - **AND** an interactive install asks only whether to turn off QIDI AI detection, and only while its service is running; otherwise, and in every noninteractive run, the recorded AI detection choice stands, keeping AI detection on when none was recorded
 - **AND** `--disable-ai-detection` or `--keep-ai-detection` replaces the recorded AI detection choice without asking
 
+#### Scenario: The unauthenticated ADB root shell is closed
+- **WHEN** install, update, or automatic-update reconciliation applies the OS optimizations and QIDI's `usbdevice.service` is enabled or running
+- **THEN** the service is stopped and disabled, so no ADB daemon listens on the network after the operation or after reboot
+- **AND** uninstall restores the service's recorded state only when the operator accepts restoring the OS optimizations
+
 #### Scenario: Enabled policy reconciles only recognized host state
 - **WHEN** system optimizations are enabled
 - **THEN** each declared operation validates its live preconditions before mutation
