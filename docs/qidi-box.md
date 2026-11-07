@@ -73,6 +73,30 @@ If a setting saved with `SAVE_VARIABLE` is invalid, the affected load or unload 
 
 QIDI's eject parks the toolhead over the waste chute before and after the Box pulls the filament back, so it homes X and Y on a printer that isn't homed. When the eject only needs the Box to pull filament back, because nothing is fed past the Box hub or another slot's filament is loaded, the toolhead now stays where it is. An eject that first has to heat and unload filament from the toolhead still parks the way QIDI does. Either way the eject turns the hotend off and disables the extruder motor afterward.
 
+## Cutting the filament
+
+`TLTG_CUT_FILAMENT`, and **Cut** on the QIDI Box card, cuts the filament at the toolhead without heating the nozzle, for example to free Box filament caught in the hub from Fluidd. It homes X and Y first if either isn't homed, then runs the same cutter moves as a filament change. On the Max 4, the cutter cuts cold filament and the extruder sits above the cutter, so the extruder's 4 mm pull-back after the cut moves only filament that never enters the hotend. The piece below the cut stays in the hotend until the next load pushes it out, as after any cut.
+
+- The nozzle heater isn't changed. Klipper normally refuses every extruder move, pull-backs included, with the nozzle below `min_extrude_temp` (135 °C on the Max 4). During the cut it allows pull-backs and still refuses pushing filament forward.
+- The acceleration and positioning mode are put back afterwards, even if the cut stops with an error.
+- It's refused while a print is running or paused, or while the Box is busy, including while a failed Box step waits for `FLOW_RETRY` or `FLOW_STOP`.
+
+### Unloading and ejecting cold
+
+QIDI's Box unload and eject first heat the nozzle to the top of the filament's printing range, 280 °C for some ASA, then cut and pull the filament back. With `COLD=1` they run the same steps without heating:
+
+```gcode
+UNLOAD_FILAMENT_CONTROL SLOT=1 COLD=1
+EJECT_FILAMENT_CONTROL SLOT=1 COLD=1
+```
+
+**Unload** and **Eject** on the QIDI Box card send `COLD=1` unless a print is paused. The toolhead parks over the waste chute, homing X and Y first if needed, then the filament is cut and pulled back as usual. The nozzle heater stays off, and with no heat there's no ooze, so QIDI's 5 second wait and nozzle wipe at the end are skipped. Only pull-backs are allowed with the nozzle cold, as for the cut.
+
+- `COLD=1` is refused while a print is running or paused.
+- If a step fails, **Retry** (`FLOW_RETRY`) runs it cold again.
+- An unload that would also unload the external spool still heats, and the console says so.
+- If a cold unload keeps failing, for example because the cut didn't go all the way through, **Stop** it, then unload from the console without `COLD=1` to heat the nozzle as QIDI does.
+
 ## Moving a slot by hand
 
 `TLTG_BOX_SLOT_JOG` moves a slot's filament toward the toolhead or back toward the spool, for example to back filament off the Box hub or work a tangle loose:

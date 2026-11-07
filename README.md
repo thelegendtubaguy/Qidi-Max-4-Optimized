@@ -48,6 +48,7 @@ The installer first asks whether to flash a fix for the toolhead board's acceler
 
 ### QIDI Box
 - Faster, tunable loading and unloading.
+- Cut, unload, and eject filament without heating the nozzle.
 - Box heater control from Fluidd, and Box processor temperatures.
 - Edit QIDI's filament list from Fluidd, including brands such as Bambu, Overture, and Polymaker.
 

@@ -539,6 +539,43 @@ Optimized configuration SHALL provide a console command that moves one USB QIDI 
 - **THEN** the motor is left with the vendor code
 - **AND** the console reports an error that says to run `FIRMWARE_RESTART` before using the Box
 
+### Requirement: Filament cut with the nozzle cold
+Optimized configuration SHALL provide a console command that cuts the filament at the toolhead with the optimized cutter sequence at any nozzle temperature, without changing the heater, and SHALL refuse it while a print is running or paused or a vendor Box task is running or paused. While the cut runs, Klipper's cold-extrusion check SHALL let extruder retracts through and SHALL still refuse extrusion below `min_extrude_temp`; outside the cut the check SHALL be unchanged.
+
+#### Scenario: A cut with the nozzle cold
+- **WHEN** the printer is idle and the nozzle is below `min_extrude_temp`
+- **THEN** X and Y are homed first if either is not, then the cutter sequence runs, including its 4 mm extruder retract
+- **AND** the acceleration and G-code state are restored afterwards, also when the cut ends with an error
+- **AND** after the cut, extruder moves below `min_extrude_temp` are refused again
+
+#### Scenario: Extrusion during a cold cut
+- **WHEN** an extruder move that extrudes is queued during the cut with the nozzle below `min_extrude_temp`
+- **THEN** it is refused as Klipper refuses cold extrusion
+
+#### Scenario: A cut while the printer or Box is busy
+- **WHEN** a print is running or paused, or a vendor Box task is running or paused at a failed step
+- **THEN** the command refuses without moving, and the console says why
+
+### Requirement: QIDI Box unload and eject with the nozzle cold
+Optimized configuration SHALL let `UNLOAD_FILAMENT_CONTROL` and `EJECT_FILAMENT_CONTROL` with `COLD=1`, while no print is running or paused, run the vendor Box flow without heating the hotend, when that flow consists only of Box heat, cut, unload, and eject steps. Its extruder retracts SHALL pass the cold-extrusion check as during a cold cut, extrusion below `min_extrude_temp` SHALL still be refused, and without `COLD=1` the commands SHALL be unchanged.
+
+#### Scenario: A cold unload or eject
+- **WHEN** a Box unload or eject runs with `COLD=1` and the nozzle below `min_extrude_temp`
+- **THEN** the vendor flow parks, cuts, retracts, and unloads or ejects without any `M109`, and finishes with the hotend off and without the vendor's post-heat dwell and wipe
+- **AND** afterwards extruder moves below `min_extrude_temp` are refused again
+
+#### Scenario: Retrying a cold flow
+- **WHEN** a cold flow pauses at a failed step and `FLOW_RETRY` runs
+- **THEN** the step reruns cold, without heating
+
+#### Scenario: A flow with other steps
+- **WHEN** the vendor chooses a flow with steps other than Box heat, cut, unload, and eject, such as an external-spool unload
+- **THEN** the flow runs and heats as the vendor's does, and the console says why it heats
+
+#### Scenario: Cold during a print
+- **WHEN** `COLD=1` is given while a print is running or paused
+- **THEN** the command refuses without moving, and the console says why
+
 ### Requirement: QIDI Box flow stop
 Optimized configuration SHALL let a vendor Box flow stop, from `FLOW_STOP` or the vendor's flow-stop endpoint, end the flow and return without blocking later G-code, SHALL turn the hotend off after stopping a flow only when no print is running or paused, and SHALL leave `FLOW_RETRY` unchanged. A vendor Box flow step that raises an error instead of failing SHALL leave the flow paused on that step, as a failed step does, so `FLOW_RETRY` and `FLOW_STOP` apply.
 

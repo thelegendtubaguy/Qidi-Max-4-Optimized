@@ -23,6 +23,8 @@ Set with `SAVE_VARIABLE VARIABLE=<name> VALUE=<value>`. They survive restarts an
 |---|---|
 | [`TLTG_BOX_MOTION`](qidi-box.md#load-and-unload-speed) | Shows or sets QIDI Box load and unload speeds, for all slots or one. |
 | [`TLTG_BOX_SLOT_JOG SLOT= DISTANCE=`](qidi-box.md#moving-a-slot-by-hand) | Moves a QIDI Box slot's filament in or out by a set distance. |
+| [`TLTG_CUT_FILAMENT`](qidi-box.md#cutting-the-filament) | Cuts the filament at the toolhead, at any nozzle temperature, homing X and Y first if needed. Not during a print. |
+| [`UNLOAD_FILAMENT_CONTROL SLOT= COLD=1`, `EJECT_FILAMENT_CONTROL SLOT= COLD=1`](qidi-box.md#unloading-and-ejecting-cold) | QIDI's Box unload and eject without heating the nozzle. Not during a print. |
 | [`TLTG_FILAMENT_SENSOR ENABLE=0\|1`](tools.md#external-spool-runout-sensor) | Stops or restores external spool runout pauses until Klipper restarts. |
 | [`TLTG_SPOOLMAN_SLOT SLOT= SPOOL=`](spoolman.md#giving-each-slot-its-spool) | Sets the Spoolman spool for a QIDI Box slot or the external spool, which becomes the active spool whenever that slot is loaded. No parameters lists them. |
 | [`TLTG_RS_BOX_REPORT`](qidi-box.md#rs-485-boxes) | Writes the QIDI RS-485 Box report to `logs/tltg_box485_report.json` and says whether RS-485 hardware was found. |
