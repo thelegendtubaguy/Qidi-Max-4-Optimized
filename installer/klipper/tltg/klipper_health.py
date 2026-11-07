@@ -342,14 +342,13 @@ def watch_command(mcu, command, msgformat):
             clock = 0
         # Clock 0 stops a command, such as an endstop check, instead.
         if clock:
+            now = get_clock(monotonic())
             # Ticks ahead of the MCU, negative when past, in 32 bits as the
             # MCU compares them.
-            ahead = (((clock - get_clock(monotonic()) + 0x80000000)
-                      & 0xffffffff) - 0x80000000)
-            if minclock:
-                # Klipper holds the command until minclock.
-                ahead = min(ahead, ((clock - minclock + 0x80000000)
-                                    & 0xffffffff) - 0x80000000)
+            ahead = (((clock - now + 0x80000000) & 0xffffffff) - 0x80000000)
+            # Klipper holds the command until minclock, a full host clock
+            # that can be any time before the command's own.
+            ahead -= max(0, minclock - now)
             if ahead < margin:
                 _late_command(mcu, name, ahead / freq)
         return send(data, minclock, reqclock)

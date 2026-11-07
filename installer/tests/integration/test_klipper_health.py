@@ -400,11 +400,14 @@ class LateCommandTest(unittest.TestCase):
 
         with self.assertNoLogs(level="WARNING"):
             self.set_enable(self.clock(100.02), self.clock(100.))
+            # The pin's last change 14 s back, more than the MCU's 32-bit
+            # clock spans half of.
+            self.set_enable(self.clock(100.3), self.clock(86.))
             trsync.send([1, self.clock(100.05), 1000, 4])
             stop.send([1, 0, 0, 0, 0, 0, 0, 0])
             plain.send([5, 1])
 
-        self.assertEqual(len(self.sent), 4)
+        self.assertEqual(len(self.sent), 5)
 
     def test_reports_are_rate_limited_and_count_the_rest(self) -> None:
         with self.assertLogs(level="WARNING") as logs:
