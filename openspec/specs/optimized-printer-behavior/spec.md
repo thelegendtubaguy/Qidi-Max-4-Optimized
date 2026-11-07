@@ -732,7 +732,7 @@ Optimized configuration SHALL make each USB QIDI Box heater resend an unchanged 
 - **THEN** it is resent on Klipper's normal schedule
 
 ### Requirement: Klipper main-loop health
-Optimized configuration SHALL unregister the vendor Box load-cell timers (`_read_wei_timer`, `_init_probe_data_advance`) once they are stopped and the vendor object no longer holds them, and SHALL leave every other timer registered. It SHALL warn when Klipper's timers pile up or its main loop stays saturated, and SHALL report Klipper's recent load when an endstop sync fails.
+Optimized configuration SHALL unregister the vendor Box load-cell timers (`_read_wei_timer`, `_init_probe_data_advance`) once they are stopped and the vendor object no longer holds them, and SHALL leave every other timer registered. It SHALL warn when Klipper's timers pile up or its main loop stays saturated, SHALL report Klipper's recent load when an endstop sync fails, and SHALL log MCU commands that Klipper sends too late to take effect on time.
 
 #### Scenario: Timers pile up or the main loop stays busy
 - **WHEN** Klipper's timer count grows 50 or more past its count a minute after starting, or its main thread stays at least 45% busy for five minutes
@@ -751,6 +751,11 @@ Optimized configuration SHALL unregister the vendor Box load-cell timers (`_read
 - **THEN** the console and `klippy.log` name the MCUs involved, the MCUs whose sync timed out, and for each MCU the largest gap between its status reports by its own clock and by Klipper's receive time, along with Klipper's main-thread load and largest timer delay over the previous 10 seconds and the timer count
 - **AND** `klippy.log` lists each MCU's last status reports with their receive and send spacing
 - **AND** the error is otherwise unchanged
+
+#### Scenario: Late MCU command
+- **WHEN** Klipper sends an MCU a command whose format has a `clock` or `report_clock` parameter, through Klipper's Python command wrappers, and that clock is less than 5 ms ahead of the MCU's estimated time, or of the clock of an earlier command it is held behind
+- **THEN** `klippy.log` gets a warning naming the MCU, the command, how many ms late or ahead it is, and the Python calls that sent it, at most once every 10 s for each MCU and command, with a count of the ones in between
+- **AND** the command is sent unchanged, and commands without a clock parameter are not checked
 
 ### Requirement: Macros read cheap printer facts
 Optimized macros SHALL NOT read `printer.configfile`, `printer.gcode`, `printer.multi_color_controller`, or `printer.box_extras`, whose whole status Klipper copies on its main loop. They SHALL read Box availability, whether `T_MANAGER` is registered, the loaded slot, and the configured `max_accel` from `tltg_macro_status`, which SHALL report the values those objects gave.
@@ -800,6 +805,29 @@ Optimized configuration SHALL apply upstream Klipper's fixes for homing endstop 
 #### Scenario: Timer rescheduled while its run is paused
 - **WHEN** a timer's callback pauses and another task calls `update_timer` for it
 - **THEN** the callback is not started again until the paused run returns
+
+### Requirement: Early stepper enables stay schedulable
+When the vendor stepper enable function matches the original that enables `ENABLE_DELAY_TIME` before a stepper's first step, optimized configuration SHALL schedule the enable at that time but no earlier than 20 ms after the later of the stepper MCU's estimated time and the enable pin's previous change, and no later than the first step. The enable callbacks, the pin, and the vendor `ENABLE delay` log line SHALL use that same time.
+
+#### Scenario: Klipper that enables at the first step
+- **WHEN** the vendor stepper enable has no `ENABLE_DELAY_TIME`, as on the Plus 5
+- **THEN** it is left unchanged and not listed as skipped
+
+#### Scenario: First X/Y homing move after a disable
+- **WHEN** X and Y are disabled for homing and the first homing move starts less than `ENABLE_DELAY_TIME` plus 20 ms ahead of the MCU
+- **THEN** each enable is scheduled 20 ms ahead of the MCU, before the move starts, instead of in the past
+
+#### Scenario: Enough lead
+- **WHEN** the time `ENABLE_DELAY_TIME` before the first step is at least 20 ms ahead of the MCU and of the pin's previous change
+- **THEN** the enable is scheduled at that time, as in the vendor code
+
+#### Scenario: Disable still pending on the pin
+- **WHEN** the enable pin's disable is scheduled later than the vendor enable time
+- **THEN** the enable is scheduled 20 ms after that disable, unless the first step comes sooner
+
+#### Scenario: Shared or absent enable pin
+- **WHEN** a stepper has no enable pin, or shares one another stepper already enabled
+- **THEN** it is marked enabled and its callbacks receive the same scheduled time, and no pin change is sent
 
 ### Requirement: Cheaper status updates
 Optimized configuration SHALL replace the vendor once-a-second status update pass, only when it matches the vendor original, with one that sends each subscriber the same updates while skipping objects whose status is the same object as in the previous pass and comparing `multi_color_controller` values natively before the vendor nested comparison.
