@@ -93,6 +93,7 @@ def fake_system_root(
     include_klipper_print_stats_manager: bool = False,
     include_nginx_site: bool = False,
     include_moonraker_asvc: bool = False,
+    include_moonraker_metadata: bool = False,
     qidi_kernel: bool = True,
 ) -> Path:
     root = temp_path("system-optimization-flow-")
@@ -168,11 +169,15 @@ def fake_system_root(
             (REPO_ROOT / "installer/tests/fixtures/moonraker_metadata_storage.py").read_text(),
             encoding="utf-8",
         )
+        if include_moonraker_metadata:
+            metadata = moonraker.parent / "metadata.py"
+            metadata.write_bytes((REPO_ROOT / "installer/tests/fixtures/moonraker_metadata.py").read_bytes().replace(b"\n", b"\r\n"))
         klippy_apis = moonraker.parent.parent / "klippy_apis.py"
         klippy_apis.write_bytes((REPO_ROOT / "installer/tests/fixtures/moonraker_klippy_apis.py").read_bytes().replace(b"\n", b"\r\n"))
         spoolman = moonraker.parent.parent / "spoolman.py"
         spoolman.write_bytes((REPO_ROOT / "installer/tests/fixtures/moonraker_spoolman.py").read_bytes().replace(b"\n", b"\r\n"))
         (root / "home/qidi/moonraker-env/lib/python3.9/site-packages").mkdir(parents=True)
+        (root / "home/qidi/klippy-env/lib/python3.9/site-packages").mkdir(parents=True)
     (root / "mounts").mkdir()
     (root / "mounts/root.options").write_text("rw,relatime,sync\n", encoding="utf-8")
     return root

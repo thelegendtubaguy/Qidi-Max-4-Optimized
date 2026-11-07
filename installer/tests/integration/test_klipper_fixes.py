@@ -20,7 +20,8 @@ def _load():
     """Import tltg_klipper_fixes with stand-ins for the Klipper modules it
     patches; the tests attach the classes they need."""
     saved = {name: sys.modules.get(name)
-             for name in ("mcu", "reactor", "serialhdl", "webhooks", "extras", "extras.heaters", "extras.tmc")}
+             for name in ("mcu", "reactor", "serialhdl", "webhooks", "extras", "extras.heaters",
+                          "extras.stepper_enable", "extras.tmc")}
     for name in ("mcu", "reactor", "serialhdl", "webhooks"):
         sys.modules[name] = types.ModuleType(name)
     sys.modules["serialhdl"].error = SerialError
@@ -29,11 +30,12 @@ def _load():
     package = types.ModuleType("extras")
     package.__path__ = []
     sys.modules["extras"] = package
-    for name in ("heaters", "tmc"):
+    for name in ("heaters", "stepper_enable", "tmc"):
         module = types.ModuleType("extras." + name)
         sys.modules["extras." + name] = module
         setattr(package, name, module)
     sys.modules["extras.heaters"].MAX_HEAT_TIME = 5.
+    sys.modules["extras.stepper_enable"].ENABLE_DELAY_TIME = .3
     try:
         spec = importlib.util.spec_from_file_location(
             "extras.tltg_klipper_fixes", REPO_ROOT / "installer/klipper/tltg/klipper_fixes.py")
@@ -167,6 +169,99 @@ class HeaterTest(unittest.TestCase):
         self.assertEqual(klipper_fixes._heater_get_temp(heater, 107.5)[0], 0.)
 
 
+class StepperEnableTest(unittest.TestCase):
+    """QIDI enables a stepper 0.3 s before its first step, which must still
+    be ahead of the MCU when the enable is sent."""
+
+    FREQ = 1000000
+
+    class Pin:
+        """Klipper's MCU_digital_out as stepper_enable uses it."""
+
+        def __init__(self, mcu):
+            self.mcu = mcu
+            self._last_clock = 0
+            self.sent = []
+
+        def get_mcu(self):
+            return self.mcu
+
+        def set_digital(self, print_time, value):
+            self._last_clock = int(print_time * StepperEnableTest.FREQ)
+            self.sent.append((print_time, value))
+
+    class EnablePin:
+        """QIDI's StepperEnablePin: a pin shared by several steppers, or none."""
+
+        def __init__(self, mcu_enable, enable_count=0):
+            self.mcu_enable = mcu_enable
+            self.enable_count = enable_count
+
+        def set_enable(self, print_time):
+            if not self.enable_count:
+                self.mcu_enable.set_digital(print_time, 1)
+            self.enable_count += 1
+
+        def set_disable(self, print_time):
+            self.enable_count -= 1
+            if not self.enable_count:
+                self.mcu_enable.set_digital(print_time, 0)
+
+    def setUp(self) -> None:
+        now = self.now = [10.]
+        reactor = types.SimpleNamespace(monotonic=lambda: now[0])
+        self.mcu = types.SimpleNamespace(
+            get_printer=lambda: types.SimpleNamespace(get_reactor=lambda: reactor),
+            estimated_print_time=lambda eventtime: eventtime,
+            clock_to_print_time=lambda clock: clock / self.FREQ)
+
+    def tracking(self, enable):
+        stepper = types.SimpleNamespace(get_mcu=lambda: self.mcu, get_name=lambda: "stepper_y")
+        callbacks = []
+        tracking = types.SimpleNamespace(stepper=stepper, enable=enable, is_enabled=False,
+                                         callbacks=[lambda time, on: callbacks.append(time)])
+        return tracking, callbacks
+
+    def test_enable_is_never_scheduled_in_the_past(self) -> None:
+        # (first step, pin's previous change, expected enable), with the MCU at 10 s.
+        cases = (
+            (11., None, .7),             # 0.3 s early is still ahead: QIDI's time
+            (10.16, None, .02),          # first homing move after a disable: 20 ms ahead
+            (10.3, 10.1, .12),           # after the disable still pending on the pin
+            (10.01, None, .01),          # never after the step itself
+        )
+        for print_time, last_change, expected in cases:
+            with self.subTest(print_time=print_time, last_change=last_change):
+                pin = self.Pin(self.mcu)
+                if last_change is not None:
+                    pin.set_digital(last_change, 0)
+                tracking, callbacks = self.tracking(self.EnablePin(pin))
+
+                with self.assertLogs(level="INFO") as logs:
+                    klipper_fixes._motor_enable(tracking, print_time)
+
+                self.assertAlmostEqual(pin.sent[-1][0], 10. + expected)
+                self.assertEqual(pin.sent[-1][1], 1)
+                self.assertAlmostEqual(callbacks[0], pin.sent[-1][0])
+                self.assertTrue(tracking.is_enabled)
+                self.assertIn("ENABLE delay: stepper=stepper_y enable=%.6f move=%.6f"
+                              % (10. + expected, print_time), logs.output[0])
+
+    def test_steppers_without_their_own_pin_still_enable(self) -> None:
+        # No enable pin, and a shared pin another stepper already enabled.
+        pin = self.Pin(self.mcu)
+        for enable in (self.EnablePin(None, 9999), self.EnablePin(pin, 1)):
+            with self.subTest(enable=enable):
+                tracking, callbacks = self.tracking(enable)
+
+                with self.assertLogs(level="INFO"):
+                    klipper_fixes._motor_enable(tracking, 10.16)
+
+                self.assertAlmostEqual(callbacks[0], 10.02)
+                self.assertTrue(tracking.is_enabled)
+        self.assertEqual(pin.sent, [])
+
+
 class TimerTest(unittest.TestCase):
     def test_running_timer_is_not_rescheduled(self) -> None:
         reactor = types.SimpleNamespace(_next_timer=50.)
@@ -194,6 +289,23 @@ class TimerTest(unittest.TestCase):
         klipper_fixes._check_timers(reactor, 10., False)
 
         self.assertEqual((due.waketime, idle.waketime, reactor._next_timer), (30., 15., 15.))
+
+
+class StatusEncodingTest(unittest.TestCase):
+    """Updates msgspec can't encode still reach Moonraker instead of
+    shutting Klipper down."""
+
+    def test_updates_msgspec_rejects_go_out_as_json(self) -> None:
+        def reject(data):
+            raise TypeError("dict keys must be strings")
+        saved = klipper_fixes._msgspec_encode
+        self.addCleanup(setattr, klipper_fixes, "_msgspec_encode", saved)
+        klipper_fixes._msgspec_encode = reject
+        connection = types.SimpleNamespace(send_buffer=b"", is_blocking=True)
+
+        klipper_fixes._client_send(connection, {None: 1, "temperature": 21.5})
+
+        self.assertEqual(connection.send_buffer, b'{"null":1,"temperature":21.5}\x03')
 
 
 class StatusUpdateTest(unittest.TestCase):

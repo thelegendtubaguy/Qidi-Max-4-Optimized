@@ -5,6 +5,7 @@ Evidence qualifiers are defined in `openspec/observations/README.md`. Sources: t
 ## Hardware and firmware
 
 - **Runtime-confirmed:** the `01.01.07.01` firmware manifest lists `BOX485` `02.04.01.01` and `BUFFER` `02.05.01.01` alongside the USB Box's `BOX` `02.03.01.21`.
+- **Config-confirmed:** the Plus 5 `01.01.02.01` manifest lists the same three versions with byte-identical images, and its `box485.py`, `box485_multicolor.so`, `box_protocol.so`, `box485_buffer.so`, `box485_rack.so`, `box2base.so`, and `[box485]` configuration match `01.01.07.01`. Plus 5 `01.01.01.06` and `01.01.01.07` ship no BOX485 or BUFFER image.
 - **Static-recovered:** the RS-485 Box image is a polled STM32F103 application with no USB peripheral and no Klipper protocol (see `mcu-firmware.md`). An RS-485 Box is a different device from the USB Box, not a USB Box on a different link.
 - **Config-confirmed:** `[box485]` opens `/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0` (a CH340 USB serial adapter) at 115200 baud. On a printer with only USB Boxes no such device exists, and `/dev/serial/by-id` lists only the Klipper MCUs.
 - **Static-recovered:** `box2base` strings describe a brushless feed motor with an encoder, a five-way hub, a buffer with Hall sensors, RFID reads at power-on, drying, and a factory test mode (`BOX_TEST_MODE`). One error string names its Bambu Lab counterpart.
@@ -29,4 +30,4 @@ Evidence qualifiers are defined in `openspec/observations/README.md`. Sources: t
 ## Main MCU RS-485 diagnostics
 
 - **Runtime-confirmed:** the main MCU (`QIDI_MAIN_V2_1.0.12`, firmware `02.01.01.12`) emits `#output: rs485_diag rb_drop=… uart_ore=… checksum_err=… resync=… discard=… frame_too_long=… tx_overflow=…` into `klippy.log` on a printer with only USB Boxes. Eleven lines appeared on 2026-10-30, with `checksum_err` between 1 and 9 and `resync` up to 4 while idle.
-- **Unresolved:** which bus this is. It is not the `[box485]` adapter path, which runs on the host. The closed-loop motors (`CLOSED_LOOP_MOTOR` `03.01.10.15` in the manifest) are a candidate.
+- **Static-recovered (mainboard `02.01.01.12`):** the counters belong to the mainboard's UART5 at 38400 baud, the bus to the closed-loop X and Y drivers; see [Closed-loop X/Y drivers](../qidi-platform.md#closed-loop-xy-drivers-max-4). It is not the `[box485]` adapter path, which runs on the host.

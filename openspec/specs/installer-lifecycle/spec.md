@@ -68,6 +68,11 @@ Install, reinstall, restore, and uninstall SHALL execute as serialized, idle-pri
 - **AND** installed state is committed only after postflight verifies the resulting files and ownership ledger
 - **AND** failure restores preimages or records a recovery blocker when compensation cannot complete
 
+#### Scenario: Guarded values above a declared maximum are lowered
+- **WHEN** a guarded option patch declares a maximum and its live value is a number above it, including a value the operator set
+- **THEN** install and update set it to the patch's desired value and record the live value as the value uninstall restores
+- **AND** a value at or below the maximum that matches neither the stock nor a prior-managed value is preserved as user-modified
+
 #### Scenario: Uninstall respects ownership
 - **WHEN** uninstall processes a valid ownership ledger
 - **THEN** only unchanged installer-owned state is reverted
@@ -243,6 +248,12 @@ Normal install and update SHALL apply recognized Moonraker metadata optimization
 - **THEN** G-code, metadata, and thumbnail selection use its valid selected plate index
 - **AND** missing or invalid plate metadata falls back to plate 1
 
+#### Scenario: File metadata names the filaments a print uses
+- **WHEN** the optimized metadata extractor reads a `.gcode.3mf` archive whose selected plate lists its filaments in the slice information
+- **THEN** `used_extruders` holds those filaments as zero-based tools, whatever the plate's `plate_N.json` lists
+- **AND** a plate without filaments in the slice information keeps the `plate_N.json` list
+- **AND** a G-code file without a `; used_extruders` line names every filament its `; filament used [mm]` footer gives a nonzero length
+
 #### Scenario: 3MF prints start on the sliced plate
 - **WHEN** a print of a `.gcode.3mf` archive is started without a plate number, such as from Fluidd, a history reprint, or the job queue
 - **THEN** the plate selected in the archive's slice information is printed, the same plate its metadata describes
@@ -275,23 +286,25 @@ Normal install and update SHALL apply recognized Moonraker metadata optimization
 - **AND** repeated reconciliation retains the first restore preimage without accumulating backups
 - **AND** uninstall restoration reverts only the unchanged installed file; concurrent changes and operator drift are preserved
 - **AND** the print-start plate selection is deployed the same way to Moonraker's Klippy API source, which is left unchanged when unrecognized
+- **AND** the used-filament extraction is deployed the same way to Moonraker's metadata extractor after its plate selection, and is left unchanged when the extractor is unrecognized
 
 ### Requirement: Moonraker speedup packages
-The installer SHALL make the `msgspec` and `uvloop` packages that QIDI's Moonraker already uses when importable available to it from pinned, checksum-verified wheels in the release bundle, without replacing anything in QIDI's Moonraker virtualenv, and SHALL keep the change reversible.
+The installer SHALL make the `msgspec` and `uvloop` packages that QIDI's Moonraker already uses when importable available to it, and the same packages to QIDI's Klipper for the optimized status encoding, from pinned, checksum-verified wheels in the release bundle, without replacing anything in QIDI's Moonraker or Klipper virtualenv, and SHALL keep the change reversible.
 
 #### Scenario: Packages are added beside QIDI's virtualenv
 - **WHEN** the bundle carries the pinned wheels and QIDI's Python 3.9 Moonraker virtualenv exists
 - **THEN** the installer extracts the verified wheels into a package-owned directory marked with their checksums, and only then adds a path file to the virtualenv that points at it
 - **AND** Moonraker restarts once; a Moonraker that does not answer after the restart rolls back the path file and the directory
+- **AND** when QIDI's Python 3.9 Klipper virtualenv exists, a second path file adds the same directory to it and Klipper restarts once
 - **AND** an update with different wheels replaces the directory whole, and a later failure in the same operation brings back the replaced one
 
 #### Scenario: Missing or foreign state is left alone
-- **WHEN** the bundle has no wheels, the virtualenv is missing, the directory exists without the package's marker, or an existing path file is not the package's
-- **THEN** the installer leaves them unchanged, never points Moonraker at packages that are not in place, and installs nothing else for this change
+- **WHEN** the bundle has no wheels, a virtualenv is missing, the directory exists without the package's marker, or an existing path file is not the package's
+- **THEN** the installer leaves them unchanged, never points Moonraker or Klipper at packages that are not in place, and installs nothing else for this change
 
 #### Scenario: Speedup deployment remains reversible
-- **WHEN** uninstall finds the package's path file and directory
-- **THEN** it removes the unchanged path file, then the package-owned directory, and restarts Moonraker, leaving QIDI's virtualenv as it was
+- **WHEN** uninstall finds the package's path files and directory
+- **THEN** it removes the unchanged path files, then the package-owned directory, and restarts Moonraker and Klipper, leaving QIDI's virtualenvs as they were
 - **AND** a directory that lost the package's marker or a path file changed after install is preserved and reported
 
 ### Requirement: Recoverable Fluidd QIDI Box filament display

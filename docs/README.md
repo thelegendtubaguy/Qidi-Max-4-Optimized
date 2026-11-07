@@ -16,7 +16,7 @@
 
 - [Fixes for QIDI bugs](fixes.md)
 - [If something goes wrong](troubleshooting.md): backups, restore, Box link monitor, reporting problems
-- [Optional firmware fixes](firmware.md): toolhead accelerometer and QIDI Box shutdown fixes
+- [Optional firmware fixes](firmware.md): toolhead accelerometer, QIDI Box shutdown, and Max 4 mainboard closed-loop reply fixes
 
 ## Details
 

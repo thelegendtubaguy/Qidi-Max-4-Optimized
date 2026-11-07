@@ -539,6 +539,43 @@ Optimized configuration SHALL provide a console command that moves one USB QIDI 
 - **THEN** the motor is left with the vendor code
 - **AND** the console reports an error that says to run `FIRMWARE_RESTART` before using the Box
 
+### Requirement: Filament cut with the nozzle cold
+Optimized configuration SHALL provide a console command that cuts the filament at the toolhead with the optimized cutter sequence at any nozzle temperature, without changing the heater, and SHALL refuse it while a print is running or paused or a vendor Box task is running or paused. While the cut runs, Klipper's cold-extrusion check SHALL let extruder retracts through and SHALL still refuse extrusion below `min_extrude_temp`; outside the cut the check SHALL be unchanged.
+
+#### Scenario: A cut with the nozzle cold
+- **WHEN** the printer is idle and the nozzle is below `min_extrude_temp`
+- **THEN** X and Y are homed first if either is not, then the cutter sequence runs, including its 4 mm extruder retract
+- **AND** the acceleration and G-code state are restored afterwards, also when the cut ends with an error
+- **AND** after the cut, extruder moves below `min_extrude_temp` are refused again
+
+#### Scenario: Extrusion during a cold cut
+- **WHEN** an extruder move that extrudes is queued during the cut with the nozzle below `min_extrude_temp`
+- **THEN** it is refused as Klipper refuses cold extrusion
+
+#### Scenario: A cut while the printer or Box is busy
+- **WHEN** a print is running or paused, or a vendor Box task is running or paused at a failed step
+- **THEN** the command refuses without moving, and the console says why
+
+### Requirement: QIDI Box unload and eject with the nozzle cold
+Optimized configuration SHALL let `UNLOAD_FILAMENT_CONTROL` and `EJECT_FILAMENT_CONTROL` with `COLD=1`, while no print is running or paused, run the vendor Box flow without heating the hotend, when that flow consists only of Box heat, cut, unload, and eject steps. Its extruder retracts SHALL pass the cold-extrusion check as during a cold cut, extrusion below `min_extrude_temp` SHALL still be refused, and without `COLD=1` the commands SHALL be unchanged.
+
+#### Scenario: A cold unload or eject
+- **WHEN** a Box unload or eject runs with `COLD=1` and the nozzle below `min_extrude_temp`
+- **THEN** the vendor flow parks, cuts, retracts, and unloads or ejects without any `M109`, and finishes with the hotend off and without the vendor's post-heat dwell and wipe
+- **AND** afterwards extruder moves below `min_extrude_temp` are refused again
+
+#### Scenario: Retrying a cold flow
+- **WHEN** a cold flow pauses at a failed step and `FLOW_RETRY` runs
+- **THEN** the step reruns cold, without heating
+
+#### Scenario: A flow with other steps
+- **WHEN** the vendor chooses a flow with steps other than Box heat, cut, unload, and eject, such as an external-spool unload
+- **THEN** the flow runs and heats as the vendor's does, and the console says why it heats
+
+#### Scenario: Cold during a print
+- **WHEN** `COLD=1` is given while a print is running or paused
+- **THEN** the command refuses without moving, and the console says why
+
 ### Requirement: QIDI Box flow stop
 Optimized configuration SHALL let a vendor Box flow stop, from `FLOW_STOP` or the vendor's flow-stop endpoint, end the flow and return without blocking later G-code, SHALL turn the hotend off after stopping a flow only when no print is running or paused, and SHALL leave `FLOW_RETRY` unchanged. A vendor Box flow step that raises an error instead of failing SHALL leave the flow paused on that step, as a failed step does, so `FLOW_RETRY` and `FLOW_STOP` apply.
 
@@ -662,6 +699,49 @@ The optional QIDI Box link monitor SHALL stay inert until its saved variable ena
 - **WHEN** the monitor's saved variable is absent or false
 - **THEN** no monitor log is written and printing is unaffected
 
+### Requirement: X/Y top speed within each motor's limit
+On the Max 4, the toolhead top speed SHALL keep every CoreXY motor at or below 800 mm/s of belt in any direction: `max_velocity`, Z tilt `speed`, and bed mesh `speed` SHALL be at most 565 mm/s, optimized macros and guarded speed patches SHALL not move X/Y faster than that, and `SET_VELOCITY_LIMIT VELOCITY=` SHALL not raise the limit above the configured `max_velocity`.
+
+#### Scenario: Top speed and probing travel are capped
+- **WHEN** install or update finds `max_velocity` at QIDI's 800, Z tilt or bed mesh `speed` at QIDI's 150 or this project's earlier 600, or any of them above 565, including an operator's own value
+- **THEN** each becomes 565
+- **AND** uninstall restores the value each had before install
+
+#### Scenario: Lower operator speeds are kept
+- **WHEN** an operator's `max_velocity`, Z tilt `speed`, or bed mesh `speed` is at or below 565 and differs from QIDI's and this project's values
+- **THEN** install and update leave it unchanged
+
+#### Scenario: A higher velocity request is lowered
+- **WHEN** a slicer, macro, or console command sets `SET_VELOCITY_LIMIT VELOCITY=` above the configured `max_velocity`, including through QIDI's `M203`
+- **THEN** the limit becomes the configured `max_velocity` and the console says so
+- **AND** a request at or below it, and requests that set only acceleration or corner velocity, are applied unchanged
+
+### Requirement: Optional X/Y step-loss monitor
+The optional X/Y step-loss monitor SHALL stay inert until its saved variable enables it, and on printers without QIDI's closed-loop X/Y drivers. While enabled, it SHALL report an X or Y motor slip from the drivers' position error, measured against a baseline taken after each home, and SHALL send the drivers nothing but the position-error query.
+
+#### Scenario: Only position-error queries, one at a time
+- **WHEN** the monitor is enabled and X and Y are homed with their motors on, outside homing and driver firmware upgrades
+- **THEN** it sends each driver only the position-error query, through QIDI's closed-loop interface queue, with at most one of its requests outstanding
+- **AND** it takes each motor's baseline from a read at rest after every X/Y home and after `RESET_MOTOR_POSITION_ERROR`
+
+#### Scenario: Slip during a print
+- **WHEN** the monitor is enabled during a print and a motor's position error is at least three quarters of an electrical cycle (768 of 1024 counts) from its baseline on two consecutive reads
+- **THEN** the print pauses
+- **AND** the console and Fluidd's warning banner name the motor and the slip in whole electrical cycles and millimeters of belt
+- **AND** the warning stays until X and Y have both been homed since the slip
+
+#### Scenario: Slip outside a print
+- **WHEN** the same slip occurs with no print running
+- **THEN** the console and warning banner report it and nothing pauses
+
+#### Scenario: Motion, single spikes, and homing offsets are not slips
+- **WHEN** a motor's position error swings during motion and returns, exceeds the threshold on a single read, or takes a new whole-cycle offset from an X/Y home or `RESET_MOTOR_POSITION_ERROR`
+- **THEN** no slip is reported and the print continues
+
+#### Scenario: Disabled or unsupported monitor sends nothing
+- **WHEN** the saved variable is absent or false, X or Y is not homed, or the printer has no QIDI closed-loop X/Y drivers
+- **THEN** the monitor sends nothing to the drivers
+
 ### Requirement: QIDI RS-485 device evidence
 The optimized configuration SHALL detect QIDI RS-485 Boxes, buffers, and racks, and evidence that one was attached, without changing how QIDI's code talks to them. Once detected, it SHALL record RS-485 frames in both directions, QIDI's RS-485 log lines, and status changes outside `klippy.log`, keep a shareable report current, and ask once per Klipper start for an issue. Chip ids and USB serial numbers SHALL be salted hashes. `TLTG_RS_BOX_REPORT` SHALL write the report on demand.
 
@@ -732,7 +812,7 @@ Optimized configuration SHALL make each USB QIDI Box heater resend an unchanged 
 - **THEN** it is resent on Klipper's normal schedule
 
 ### Requirement: Klipper main-loop health
-Optimized configuration SHALL unregister the vendor Box load-cell timers (`_read_wei_timer`, `_init_probe_data_advance`) once they are stopped and the vendor object no longer holds them, and SHALL leave every other timer registered. It SHALL warn when Klipper's timers pile up or its main loop stays saturated, and SHALL report Klipper's recent load when an endstop sync fails.
+Optimized configuration SHALL unregister the vendor Box load-cell timers (`_read_wei_timer`, `_init_probe_data_advance`) once they are stopped and the vendor object no longer holds them, and SHALL leave every other timer registered. It SHALL warn when Klipper's timers pile up or its main loop stays saturated, SHALL report Klipper's recent load when an endstop sync fails, and SHALL log MCU commands that Klipper sends too late to take effect on time.
 
 #### Scenario: Timers pile up or the main loop stays busy
 - **WHEN** Klipper's timer count grows 50 or more past its count a minute after starting, or its main thread stays at least 45% busy for five minutes
@@ -751,6 +831,11 @@ Optimized configuration SHALL unregister the vendor Box load-cell timers (`_read
 - **THEN** the console and `klippy.log` name the MCUs involved, the MCUs whose sync timed out, and for each MCU the largest gap between its status reports by its own clock and by Klipper's receive time, along with Klipper's main-thread load and largest timer delay over the previous 10 seconds and the timer count
 - **AND** `klippy.log` lists each MCU's last status reports with their receive and send spacing
 - **AND** the error is otherwise unchanged
+
+#### Scenario: Late MCU command
+- **WHEN** Klipper sends an MCU a command whose format has a `clock` or `report_clock` parameter, through Klipper's Python command wrappers, and that clock is less than 5 ms ahead of the MCU's estimated time, or of the clock of an earlier command it is held behind
+- **THEN** `klippy.log` gets a warning naming the MCU, the command, how many ms late or ahead it is, and the Python calls that sent it, at most once every 10 s for each MCU and command, with a count of the ones in between
+- **AND** the command is sent unchanged, and commands without a clock parameter are not checked
 
 ### Requirement: Macros read cheap printer facts
 Optimized macros SHALL NOT read `printer.configfile`, `printer.gcode`, `printer.multi_color_controller`, or `printer.box_extras`, whose whole status Klipper copies on its main loop. They SHALL read Box availability, whether `T_MANAGER` is registered, the loaded slot, and the configured `max_accel` from `tltg_macro_status`, which SHALL report the values those objects gave.
@@ -801,12 +886,39 @@ Optimized configuration SHALL apply upstream Klipper's fixes for homing endstop 
 - **WHEN** a timer's callback pauses and another task calls `update_timer` for it
 - **THEN** the callback is not started again until the paused run returns
 
+### Requirement: Early stepper enables stay schedulable
+When the vendor stepper enable function matches the original that enables `ENABLE_DELAY_TIME` before a stepper's first step, optimized configuration SHALL schedule the enable at that time but no earlier than 20 ms after the later of the stepper MCU's estimated time and the enable pin's previous change, and no later than the first step. The enable callbacks, the pin, and the vendor `ENABLE delay` log line SHALL use that same time.
+
+#### Scenario: Klipper that enables at the first step
+- **WHEN** the vendor stepper enable has no `ENABLE_DELAY_TIME`, as on the Plus 5
+- **THEN** it is left unchanged and not listed as skipped
+
+#### Scenario: First X/Y homing move after a disable
+- **WHEN** X and Y are disabled for homing and the first homing move starts less than `ENABLE_DELAY_TIME` plus 20 ms ahead of the MCU
+- **THEN** each enable is scheduled 20 ms ahead of the MCU, before the move starts, instead of in the past
+
+#### Scenario: Enough lead
+- **WHEN** the time `ENABLE_DELAY_TIME` before the first step is at least 20 ms ahead of the MCU and of the pin's previous change
+- **THEN** the enable is scheduled at that time, as in the vendor code
+
+#### Scenario: Disable still pending on the pin
+- **WHEN** the enable pin's disable is scheduled later than the vendor enable time
+- **THEN** the enable is scheduled 20 ms after that disable, unless the first step comes sooner
+
+#### Scenario: Shared or absent enable pin
+- **WHEN** a stepper has no enable pin, or shares one another stepper already enabled
+- **THEN** it is marked enabled and its callbacks receive the same scheduled time, and no pin change is sent
+
 ### Requirement: Cheaper status updates
-Optimized configuration SHALL replace the vendor once-a-second status update pass, only when it matches the vendor original, with one that sends each subscriber the same updates while skipping objects whose status is the same object as in the previous pass and comparing `multi_color_controller` values natively before the vendor nested comparison.
+Optimized configuration SHALL replace the vendor once-a-second status update pass, only when it matches the vendor original, with one that sends each subscriber the same updates while skipping objects whose status is the same object as in the previous pass and comparing `multi_color_controller` values natively before the vendor nested comparison. When Klipper can import `msgspec` and the vendor client send matches its original, Klipper SHALL encode what it sends Moonraker with `msgspec`.
 
 #### Scenario: Subscriber updates
 - **WHEN** Moonraker is subscribed and printer objects change between passes
 - **THEN** each update carries only the changed fields, and only the changed nested values of `multi_color_controller`, as with the vendor pass
+
+#### Scenario: Data msgspec cannot encode
+- **WHEN** an update holds data `msgspec` rejects, such as a dict key that is not a string
+- **THEN** that update is encoded with `json` as the vendor send does, and Klipper keeps running
 
 ### Requirement: Box heater sensors stop polling after a shutdown
 Once Klipper has shut down, a failed read of a Box heater's AHT20 SHALL stop that sensor's polling instead of raising, so Klipper stays in its shutdown state with the original reason. While Klipper is not shut down, sensor read errors SHALL propagate unchanged.

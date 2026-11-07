@@ -132,6 +132,16 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 value,
             )
 
+    def _assert_speeds(self, printer_root: Path, **values: str) -> None:
+        text = (printer_root / "config/printer.cfg").read_text(encoding="utf-8")
+        options = {"max_velocity": ("printer", "max_velocity"),
+                   "bed_mesh": ("bed_mesh", "speed"),
+                   "z_tilt": ("z_tilt", "speed")}
+        for name, value in values.items():
+            section, option = options[name]
+            self.assertEqual(
+                klipper_cfg.resolve_unique_option(text, section, option).value, value)
+
     def _assert_homing_retract_speed(self, printer_root: Path, value: str) -> None:
         text = (printer_root / "config/printer.cfg").read_text(encoding="utf-8")
         for stepper in ("stepper_x", "stepper_y"):
@@ -232,8 +242,9 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                     elif name != "tltg_box_load_approach_speed":
                         self.assertNotIn(f"{name} =", saved_variables)
 
-    def test_install_lowers_box_speed_pairs_left_at_earlier_defaults(self):
-        # The load pair is still at the earlier defaults; the operator changed one unload speed.
+    def test_install_updates_box_motion_left_at_earlier_defaults(self):
+        # The load pair and the extruder pull-back are still at earlier defaults; the operator changed one
+        # unload speed.
         printer_root, paths, _ = self._fixture("01.01.06.03")
         saved_variables_path = printer_root / "config/saved_variables.cfg"
         saved_variables_path.write_text(
@@ -241,7 +252,8 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             + "tltg_box_load_fast_speed_1 = 120\n"
             + "tltg_box_load_fast_speed_2 = 100\n"
             + "tltg_box_unload_speed_1 = 115\n"
-            + "tltg_box_unload_speed_2 = 90\n",
+            + "tltg_box_unload_speed_2 = 90\n"
+            + "tltg_box_unload_extruder_length = 50\n",
             encoding="utf-8",
         )
 
@@ -253,6 +265,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             ("tltg_box_load_fast_speed_2", "65"),
             ("tltg_box_unload_speed_1", "115"),
             ("tltg_box_unload_speed_2", "90"),
+            ("tltg_box_unload_extruder_length", "55"),
         ):
             self.assertEqual(klipper_cfg.resolve_unique_option(saved_variables, "Variables", name).value, value)
         self.assertNotIn("tltg_box_load_fast_length =", saved_variables)
@@ -590,6 +603,10 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             .replace("homing_retract_speed: 200.0", "homing_retract_speed: 1000.0"),
             encoding="utf-8",
         )
+        text = cfg.read_text(encoding="utf-8")
+        for section in ("z_tilt", "bed_mesh"):
+            text = klipper_cfg.set_option_value(text, section, "speed", "600")
+        cfg.write_text(text, encoding="utf-8")
         write_installed_state(
             printer_root / "config/tltg_optimized_state.yaml",
             InstalledState(
@@ -639,6 +656,18 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                         "1000.0",
                         "applied",
                     ),
+                    *(
+                        PatchLedgerEntry(
+                            f"{section}_speed",
+                            "config/printer.cfg",
+                            section,
+                            "speed",
+                            "150",
+                            "600",
+                            "applied",
+                        )
+                        for section in ("z_tilt", "bed_mesh")
+                    ),
                 ),
             ),
         )
@@ -647,6 +676,12 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
 
         self._assert_homing_speed(printer_root, "65")
         self._assert_homing_retract_speed(printer_root, "500.0")
+        text = cfg.read_text(encoding="utf-8")
+        for section, option, value in (("z_tilt", "speed", "565"),
+                                       ("bed_mesh", "speed", "565"),
+                                       ("printer", "max_velocity", "565")):
+            self.assertEqual(
+                klipper_cfg.resolve_unique_option(text, section, option).value, value)
         state = load_installed_state(
             printer_root / "config/tltg_optimized_state.yaml"
         )
@@ -1233,7 +1268,18 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 printer_root, paths, stock_source = self._fixture(
                     firmware, source_variant=source_variant
                 )
+                # Operator speeds: two above the 565 mm/s cap, one below it.
+                cfg = printer_root / "config/printer.cfg"
+                text = klipper_cfg.set_option_value(
+                    cfg.read_text(encoding="utf-8"), "bed_mesh", "speed", "700")
+                text = klipper_cfg.set_option_value(
+                    text, "printer", "max_velocity", "650")
+                cfg.write_text(
+                    klipper_cfg.set_option_value(text, "z_tilt", "speed", "400"),
+                    encoding="utf-8")
                 self._run_install(paths)
+                self._assert_speeds(printer_root, max_velocity="565",
+                                    bed_mesh="565", z_tilt="400")
 
                 responses = io.StringIO("Y\nunused\n")
                 base_urlopen = moonraker_urlopen()
@@ -1258,6 +1304,8 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 self.assertEqual(idle_checks, 2)
                 self.assertEqual(responses.readline(), "unused\n")
                 self._assert_homing_speed(printer_root, "50")
+                self._assert_speeds(printer_root, max_velocity="650",
+                                    bed_mesh="700", z_tilt="400")
                 self.assertEqual(
                     (paths.managed_klipper_root / "klippy/extras/homing.py").read_bytes(),
                     stock_source,

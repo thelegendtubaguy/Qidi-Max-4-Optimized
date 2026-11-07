@@ -6,7 +6,7 @@ package:
   # The id predates multi-printer support; installed state records it, so it stays.
   id: qidi-max4-optimized
   display_name: Valve Oil
-  version: "26.11.05.1"
+  version: "26.11.06.1"
 # Each firmware version belongs to exactly one printer; patch variants are keyed by firmware version.
 printers:
   - id: max4
@@ -85,6 +85,7 @@ install:
       - "box_loaded_slot.cfg"
       - "box_slot_jog.cfg"
       - "box_flow_recovery.cfg"
+      - "cold_cut.cfg"
       - "box485_monitor.cfg"
       - "spoolman.cfg"
       - "macro_status.cfg"
@@ -144,6 +145,9 @@ install:
     - id: box_flow_recovery
       source: "klipper/tltg/box_flow_recovery.py"
       destination: "klippy/extras/tltg_box_flow_recovery.py"
+    - id: cold_cut
+      source: "klipper/tltg/cold_cut.py"
+      destination: "klippy/extras/tltg_cold_cut.py"
     - id: box485_monitor
       source: "klipper/tltg/box485_monitor.py"
       destination: "klippy/extras/tltg_box485_monitor.py"
@@ -156,6 +160,12 @@ install:
     - id: chamber_exhaust_guard
       source: "klipper/tltg/chamber_exhaust_guard.py"
       destination: "klippy/extras/tltg_chamber_exhaust_guard.py"
+    - id: step_loss_monitor
+      source: "klipper/tltg/step_loss_monitor.py"
+      destination: "klippy/extras/tltg_step_loss_monitor.py"
+    - id: velocity_limit
+      source: "klipper/tltg/velocity_limit.py"
+      destination: "klippy/extras/tltg_velocity_limit.py"
 
   source_patches:
     - id: qidi_homing
@@ -291,29 +301,41 @@ patches:
           expected: "10.0"
           desired: "5.0"
 
+    - id: printer_max_velocity
+      file: "config/printer.cfg"
+      section: "printer"
+      option: "max_velocity"
+      maximum: "565"
+      variants:
+        - firmwares: ["01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01"]
+          expected: "800"
+          desired: "565"
+
     - id: z_tilt_speed
       file: "config/printer.cfg"
       section: "z_tilt"
       option: "speed"
+      maximum: "565"
       variants:
         - firmwares: ["01.01.06.03"]
           expected: "150"
-          desired: "600"
+          desired: "565"
         - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
           expected: "150"
-          desired: "600"
+          desired: "565"
 
     - id: bed_mesh_speed
       file: "config/printer.cfg"
       section: "bed_mesh"
       option: "speed"
+      maximum: "565"
       variants:
         - firmwares: ["01.01.06.03"]
           expected: "150"
-          desired: "600"
+          desired: "565"
         - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
           expected: "150"
-          desired: "600"
+          desired: "565"
 
     - id: virtual_sdcard_on_error_gcode
       file: "config/printer.cfg"
@@ -564,10 +586,10 @@ system_optimizations:
     service_worker: /home/qidi/fluidd/sw.js
   # The project's Fluidd fork release; the bundle builder downloads and verifies it.
   fluidd_build:
-    version: v1.37.7-tltg-c1b7d04
-    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-c1b7d04/fluidd.zip
+    version: v1.37.7-tltg-1ad1676
+    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-1ad1676/fluidd.zip
     archive: system/fluidd.zip
-    sha256: 45a775ddb3d5858327323759a6959826528c2626bf9d9154359d13df7bc1c8e4
+    sha256: fa4f94cc89555f6e42cf6c44d7b9a5ae90df654f6bc2868b0e32193663eff8ed
   # Wheels for QIDI's Moonraker virtualenv (Python 3.9, aarch64); the bundle builder downloads and verifies them.
   moonraker_speedups:
     wheels:

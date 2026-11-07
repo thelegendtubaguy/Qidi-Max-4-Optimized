@@ -15,12 +15,16 @@ SECTION_DELETED = "__TLTG_SECTION_DELETED__"
 
 def classify_install_patch(current: str, patch: PatchSpec, firmware_version: str, prior_state=None) -> PatchResult:
     variant = select_patch_variant(patch, firmware_version)
+    ledger_expected = None
     if current == variant.desired:
         classification = INSTALL_NOOP_DESIRED
     elif current == variant.expected:
         classification = INSTALL_APPLIED
     elif _prior_managed_value(current, prior_state, patch):
         classification = INSTALL_APPLIED
+    elif _above_maximum(current, patch):
+        classification = INSTALL_APPLIED
+        ledger_expected = current
     else:
         classification = USER_MODIFIED
     return PatchResult(
@@ -32,7 +36,17 @@ def classify_install_patch(current: str, patch: PatchSpec, firmware_version: str
         expected=variant.expected,
         desired=variant.desired,
         classification=classification,
+        ledger_expected=ledger_expected,
     )
+
+
+def _above_maximum(current: str, patch: PatchSpec) -> bool:
+    if patch.maximum is None:
+        return False
+    try:
+        return float(current) > patch.maximum
+    except ValueError:
+        return False
 
 
 
@@ -42,6 +56,8 @@ def _prior_managed_value(current: str, prior_state, patch: PatchSpec) -> bool:
         "stepper_y_homing_speed": "100",
         "stepper_x_homing_retract_speed": "1000.0",
         "stepper_y_homing_retract_speed": "1000.0",
+        "z_tilt_speed": "600",
+        "bed_mesh_speed": "600",
     }.get(patch.id)
     if prior_value is None or current != prior_value or prior_state is None:
         return False

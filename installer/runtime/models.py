@@ -91,6 +91,9 @@ class PatchSpec:
     section: str
     option: str
     variants: tuple[PatchVariantSpec, ...]
+    # A live value above this is lowered to the desired value, even one the
+    # operator set.
+    maximum: float | None = None
 
     @property
     def target_tuple(self) -> tuple[str, str, str]:
@@ -489,6 +492,9 @@ class PatchResult:
     expected: str
     desired: str
     classification: str
+    # The value uninstall restores when it isn't the variant's expected value:
+    # an operator's value lowered to a patch's maximum.
+    ledger_expected: str | None = None
 
 
 @dataclass(frozen=True)

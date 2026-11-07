@@ -30,7 +30,7 @@ Each Box's processor temperature shows in Fluidd's temperature card as **Box1 MC
 
 A load pushes filament fast for most of the way, then approaches slowly until the toolhead filament sensor trips. An unload has the extruder pull the filament back before the Box retracts it.
 
-The installer saves this project's defaults, unless you've already saved any of these settings, in which case all of yours are kept. The fast and unload speeds match QIDI's; the shorter extruder pull-back and the faster approach save time. Earlier versions saved faster speeds, 120/100 mm/s for the fast push and 115/120 mm/s for the unload. Updating lowers either pair to QIDI's speeds if both of its speeds are still at those values, and keeps a pair you've changed. Change them in Fluidd's QIDI Box card, or with `TLTG_BOX_MOTION` in the console. Run `TLTG_BOX_MOTION` with no parameters to see the current settings and each slot's profile.
+The installer saves this project's defaults, unless you've already saved any of these settings, in which case all of yours are kept. The fast and unload speeds match QIDI's; the shorter extruder pull-back and the faster approach save time. Earlier versions saved faster speeds, 120/100 mm/s for the fast push and 115/120 mm/s for the unload, and a 50 mm extruder pull-back. Updating lowers either speed pair to QIDI's speeds if both of its speeds are still at those values, raises a pull-back still at 50 mm to 55 mm, and keeps anything you've changed. Change them in Fluidd's QIDI Box card, or with `TLTG_BOX_MOTION` in the console. Run `TLTG_BOX_MOTION` with no parameters to see the current settings and each slot's profile.
 
 | Parameter | What it sets | This project | QIDI | Allowed |
 |---|---|---|---|---|
@@ -41,7 +41,7 @@ The installer saves this project's defaults, unless you've already saved any of 
 | `LOAD_ACCEL` | Load acceleration | QIDI's | 100 | 20–400 |
 | `UNLOAD_SPEED_1`, `UNLOAD_SPEED_2` | Speeds of the two unload stages, in mm/s | 65, 85 | 65, 85 | 10–150, must differ |
 | `UNLOAD_ACCEL` | Unload acceleration | QIDI's | 100 | 20–400 |
-| `UNLOAD_EXTRUDER_LENGTH` | How far the extruder pulls filament back before the Box takes over, in mm. All slots only. | 50 | 120 | 20–300 |
+| `UNLOAD_EXTRUDER_LENGTH` | How far the extruder pulls filament back before the Box takes over, in mm. All slots only. | 55 | 120 | 20–300 |
 
 ```gcode
 TLTG_BOX_MOTION FAST_SPEED_1=100 FAST_SPEED_2=100 APPROACH_SPEED=20
@@ -65,13 +65,37 @@ Slots are numbered from 0, the same as `LOAD_FILAMENT_CONTROL SLOT=`, so the car
 ### Choosing values
 
 - **`FAST_LENGTH`** is used exactly as set. On a Max 4, filament reached the toolhead sensor 1001–1016 mm into the push, so QIDI's 930 mm leaves about 70–85 mm for the slow approach. Set it past the sensor and filament reaches the toolhead at full speed.
-- **`UNLOAD_EXTRUDER_LENGTH`:** an unload starts with the extruder pulling the cut filament back 30 mm, then this much more at 10 mm/s, before the Box takes over. On a Max 4 the filament left the toolhead sensor 34 mm into the unload, about 4 mm into this second pull, so most of QIDI's 120 mm is slow pulling of free filament. The sensor sits above the extruder gears, so once it clears, the filament is out of the gears. A value of 20–30 mm keeps a margin and saves about 9 seconds per unload.
+- **`UNLOAD_EXTRUDER_LENGTH`:** an unload starts with the extruder pulling the cut filament back 30 mm, then this much more at 10 mm/s, before the Box takes over. The sensor sits above the extruder gears, so once it clears, the filament is out of the gears. How far that takes varies between printers. On one Max 4 the filament left the sensor 34 mm into the unload, about 4 mm into this second pull; on another, it once left only as a 50 mm pull ended. The 55 mm default keeps some margin over that and saves about 6.5 seconds per unload over QIDI's 120 mm. If unloads fail with `QDE_004_008` (`Extruder unloading failure.`) and nothing is caught between the Box and the toolhead, set it back to QIDI's with `TLTG_BOX_MOTION UNLOAD_EXTRUDER_LENGTH=vendor`.
 
 If a setting saved with `SAVE_VARIABLE` is invalid, the affected load or unload uses QIDI's motion and the console says why. If a QIDI firmware update changes how the Box moves filament in a way these settings don't recognize, the Box keeps QIDI's motion and the console says so.
 
 ## Eject
 
 QIDI's eject parks the toolhead over the waste chute before and after the Box pulls the filament back, so it homes X and Y on a printer that isn't homed. When the eject only needs the Box to pull filament back, because nothing is fed past the Box hub or another slot's filament is loaded, the toolhead now stays where it is. An eject that first has to heat and unload filament from the toolhead still parks the way QIDI does. Either way the eject turns the hotend off and disables the extruder motor afterward.
+
+## Cutting the filament
+
+`TLTG_CUT_FILAMENT`, and **Cut** on the QIDI Box card, cuts the filament at the toolhead without heating the nozzle, for example to free Box filament caught in the hub from Fluidd. It homes X and Y first if either isn't homed, then runs the same cutter moves as a filament change. On the Max 4, the cutter cuts cold filament and the extruder sits above the cutter, so the extruder's 4 mm pull-back after the cut moves only filament that never enters the hotend. The piece below the cut stays in the hotend until the next load pushes it out, as after any cut.
+
+- The nozzle heater isn't changed. Klipper normally refuses every extruder move, pull-backs included, with the nozzle below `min_extrude_temp` (135 °C on the Max 4). During the cut it allows pull-backs and still refuses pushing filament forward.
+- The acceleration and positioning mode are put back afterwards, even if the cut stops with an error.
+- It's refused while a print is running or paused, or while the Box is busy, including while a failed Box step waits for `FLOW_RETRY` or `FLOW_STOP`.
+
+### Unloading and ejecting cold
+
+QIDI's Box unload and eject first heat the nozzle to the top of the filament's printing range, 280 °C for some ASA, then cut and pull the filament back. With `COLD=1` they run the same steps without heating:
+
+```gcode
+UNLOAD_FILAMENT_CONTROL SLOT=1 COLD=1
+EJECT_FILAMENT_CONTROL SLOT=1 COLD=1
+```
+
+**Unload** and **Eject** on the QIDI Box card send `COLD=1` unless a print is paused. The toolhead parks over the waste chute, homing X and Y first if needed, then the filament is cut and pulled back as usual. The nozzle heater stays off, and with no heat there's no ooze, so QIDI's 5 second wait and nozzle wipe at the end are skipped. Only pull-backs are allowed with the nozzle cold, as for the cut.
+
+- `COLD=1` is refused while a print is running or paused.
+- If a step fails, **Retry** (`FLOW_RETRY`) runs it cold again.
+- An unload that would also unload the external spool still heats, and the console says so.
+- If a cold unload keeps failing, for example because the cut didn't go all the way through, **Stop** it, then unload from the console without `COLD=1` to heat the nozzle as QIDI does.
 
 ## Moving a slot by hand
 
@@ -138,6 +162,8 @@ When a step of a Box load, unload, or eject fails, QIDI pauses it with a line su
 With QIDI's own code, `FLOW_STOP` on a paused flow never finished: every later command waited behind it, and only restarting Klipper, followed by `FIRMWARE_RESTART`, got the printer back. It now finishes straight away.
 
 A step can also end with an error instead of failing, such as `Error during homing e_endstop: Communication timeout during homing` from a Box motor move. QIDI then left the flow running with the nozzle hot, and neither the card nor `FLOW_RETRY` could do anything with it. The flow is now paused on that step, with `Step BOX_LOAD failed. Pausing flow.` before the error, so Retry and Stop work as for any failed step.
+
+QIDI's Box moves, such as the park over the waste chute, assume absolute positioning but don't set it. If relative positioning was left on, for example by a command that stopped with an error before switching back, every heat step failed with `Move out of range` until Klipper restarted. A load, unload, or eject started or retried with no print running or paused now switches to absolute positioning first, as `G90` does. During a print, positioning is left as the print set it.
 
 ### Failed tool changes during a print
 

@@ -37,6 +37,28 @@
 # print. T_MANAGER now runs only while a print is running or paused; otherwise
 # it says to load the slot instead.
 #
+# Relative positioning left over from an earlier command, such as G91 from a
+# script that stopped with an error before its G90, sent QIDI's flows'
+# absolute moves off the bed: MOVE_TO_TRASH, which sets no G90, failed with "Move out
+# of range" on every BOX_HEAT until Klipper restarted. A flow started or
+# retried while no print is running or paused now switches to absolute
+# positioning first, as G90 does; a print keeps its own.
+#
+# Cold unload and eject: UNLOAD_FILAMENT_CONTROL and EJECT_FILAMENT_CONTROL
+# with COLD=1, outside a print, run QIDI's flow without heating the nozzle.
+# The Max 4's cutter cuts cold filament and the extruder sits above it, so
+# the cut and the extruder's pull-back move only filament that never enters
+# the hotend. QIDI's flows never read the nozzle temperature: they heat with
+# M109 to the filament's highest printing temperature in their heat step, in
+# the unload step, and on retry, and their cut and unload pull back with
+# G1 E moves that Klipper's cold-extrusion check refuses. A cold flow runs
+# inside tltg_cold_cut's cold_retracts(), which lets those pull-backs through
+# and still refuses extrusion, with every M109 skipped and the flow's
+# temperature cleared, so its completion turns the nozzle off without QIDI's
+# 5 s dwell and wipe. FLOW_RETRY of a paused cold flow retries it cold. Only
+# flows made of Box heat, cut, unload, and eject steps run cold; any other,
+# such as an unload of the external spool, heats as usual and says so.
+#
 # During a print, T_MANAGER runs its steps itself and reports them as flow 13.
 # A step that fails pauses that flow (box_extras._pause_print_retry_flow) and
 # sends PAUSE, and RESUME's TRY_RESUME_PRINT redoes the tool change from the
@@ -45,6 +67,7 @@
 # error handling cancelled the print. It now pauses the flow and the print the
 # same way, unless Klipper has shut down.
 
+import contextlib
 import logging
 
 import greenlet
@@ -60,6 +83,8 @@ MAX_HUB_RETRACT = 1500.
 # clear anywhere in the last piece, so park that much less.
 PARK_DISTANCE = 260. - RETRACT_PIECE
 SLOT_STATE_LOADED = 1
+# Steps a cold flow may run; heat steps only park once M109 is skipped.
+COLD_STEPS = ("BOX_HEAT", "BOX_CUT", "BOX_UNLOAD", "BOX_EJECT")
 
 
 def _slot_number(slot):
@@ -121,6 +146,10 @@ class BoxFlowRecovery:
         self.originals = {}
         # Greenlets running FLOW_STOP, which hold Klipper's G-code lock.
         self._locked = set()
+        # A COLD=1 unload or eject is starting its flow.
+        self._cold_requested = False
+        # The flow a cold unload or eject left paused, for FLOW_RETRY.
+        self._cold_task = None
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
 
     # ----------------------------------------------------------------- setup
@@ -139,7 +168,7 @@ class BoxFlowRecovery:
         for name in ("start_flow", "retry"):
             if callable(getattr(manager, name, None)):
                 setattr(manager, name,
-                        self._wrap_flow_runner(getattr(manager, name)))
+                        self._wrap_flow_runner(getattr(manager, name), name))
         for name, handler in (
                 ("FLOW_STOP", self.cmd_FLOW_STOP),
                 ("UNLOAD_FILAMENT_CONTROL", self.cmd_UNLOAD_FILAMENT_CONTROL),
@@ -173,10 +202,26 @@ class BoxFlowRecovery:
         return tracker if getattr(tracker, "slots", None) else None
 
     # ------------------------------------------------------- failed steps
-    def _wrap_flow_runner(self, original):
+    def _wrap_flow_runner(self, original, name):
         def run(*args, **kwargs):
             try:
-                return original(*args, **kwargs)
+                self._absolute_positioning()
+            except Exception:
+                logging.exception("tltg_box_flow_recovery: switching to "
+                                  "absolute positioning failed")
+            if name == "start_flow":
+                cold = self._cold_requested and self._cold_flow(
+                    args[0] if args else kwargs.get("flow_id"))
+                self._cold_task = None
+            else:
+                cold = self._cold_task is not None \
+                    and self._task() is self._cold_task
+            try:
+                if not cold:
+                    return original(*args, **kwargs)
+                self.manager.current_flow_temp = None
+                with self._cold():
+                    return original(*args, **kwargs)
             except Exception as e:
                 try:
                     self._pause_after_error(e)
@@ -184,7 +229,64 @@ class BoxFlowRecovery:
                     logging.exception("tltg_box_flow_recovery: pausing the "
                                       "flow after a step error failed")
                 raise
+            finally:
+                # After a step error is paused, so its retry stays cold too.
+                if cold:
+                    task = self._task()
+                    self._cold_task = task if getattr(
+                        task, "is_paused", False) else None
         return run
+
+    # ------------------------------------------------------------- cold flows
+    def _cold_flow(self, flow_id):
+        """Whether flow FLOW_ID can run cold; says why not."""
+        steps = (getattr(self.manager, "FLOW_MAP", None) or {}).get(flow_id)
+        if steps is None:
+            raise self.printer.command_error(
+                "Box flow %s not run: COLD=1 doesn't recognize it. Run the "
+                "command without COLD=1 to heat the nozzle." % (flow_id,))
+        others = [step for step in steps if step not in COLD_STEPS]
+        if others:
+            message = ("Box flow %s heats the nozzle: COLD=1 covers only Box "
+                       "unload and eject steps, not %s."
+                       % (flow_id, ", ".join(others)))
+            logging.info("tltg_box_flow_recovery: %s", message)
+            self.gcode.respond_info(message)
+            return False
+        logging.info("tltg_box_flow_recovery: flow %s runs cold: %s",
+                     flow_id, ", ".join(steps) or "no steps")
+        return True
+
+    @contextlib.contextmanager
+    def _cold(self):
+        """Cold retracts allowed and M109 skipped."""
+        cold_cut = self.printer.lookup_object("tltg_cold_cut", None)
+        with cold_cut.cold_retracts():
+            heat = self.gcode.register_command("M109", None)
+
+            def skip_heat(gcmd):
+                logging.info("tltg_box_flow_recovery: cold Box flow skipped "
+                             "%s", gcmd.get_commandline())
+
+            if heat is not None:
+                self.gcode.register_command("M109", skip_heat)
+            try:
+                yield
+            finally:
+                if heat is not None:
+                    self.gcode.register_command("M109", None)
+                    self.gcode.register_command(
+                        "M109", heat, desc=self.gcode.gcode_help.get("M109"))
+
+    def _absolute_positioning(self):
+        if self._print_state() in ("printing", "paused"):
+            return
+        gcode_move = self.printer.lookup_object("gcode_move", None)
+        if gcode_move is None or getattr(gcode_move, "absolute_coord", True):
+            return
+        gcode_move.absolute_coord = True
+        logging.info("tltg_box_flow_recovery: relative positioning was on; "
+                     "switched to absolute for the Box flow")
 
     def _pause_after_error(self, error):
         task = self._task()
@@ -311,6 +413,16 @@ class BoxFlowRecovery:
 
     def _filament_command(self, action, gcmd):
         original = self.originals[action + "_FILAMENT_CONTROL"]
+        cold = gcmd.get_int("COLD", 0, minval=0, maxval=1)
+        if cold:
+            state = self._print_state()
+            if state in ("printing", "paused"):
+                raise gcmd.error("Box %s not run: COLD=1 runs only while no "
+                                 "print is running or paused, and a print is "
+                                 "%s." % (action.lower(), state))
+            if self.printer.lookup_object("tltg_cold_cut", None) is None:
+                raise gcmd.error("Box %s not run: COLD=1 needs "
+                                 "tltg_cold_cut." % (action.lower(),))
         try:
             plan = self._plan(action, gcmd)
         except Exception:
@@ -318,7 +430,13 @@ class BoxFlowRecovery:
                               action.lower())
             plan = None
         if plan is None:
-            return original(gcmd)
+            if not cold:
+                return original(gcmd)
+            self._cold_requested = True
+            try:
+                return original(gcmd)
+            finally:
+                self._cold_requested = False
         kind, slot, detail = plan
         if kind == "refuse":
             self._refuse(action, slot, detail)

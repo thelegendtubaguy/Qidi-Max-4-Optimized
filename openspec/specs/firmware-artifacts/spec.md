@@ -33,3 +33,19 @@ The Box image SHALL be generated only from the pinned stock `02.03.01.21` applic
 - **WHEN** a Box running the patched image shuts down
 - **THEN** it completes its shutdown handlers and reports the original shutdown reason instead of re-entering shutdown
 - **AND** the data dictionary it serves is identical to stock apart from the version
+
+### Requirement: Mainboard changes are limited to the closed-loop reply fix
+The Max 4 mainboard image SHALL be generated only from the pinned stock `02.01.01.12` application and SHALL differ from it only in its closed-loop reply-length lookup, the dictionary version `02.01.01.12-tltg-clreplies1` with matching `identify` lengths, and the lookup placed in the space the recompressed dictionary frees. The lookup MUST list only function codes whose driver replies have one fixed length. The bundle MUST NOT contain a QIDI mainboard image.
+
+#### Scenario: Listed replies reach the host on their last byte
+- **WHEN** a closed-loop driver reply with a listed function code arrives at a mainboard running the patched image
+- **THEN** the mainboard forwards it to the host as soon as its last byte is parsed, instead of after 50 ms of bus silence
+- **AND** the data dictionary it serves is identical to stock apart from the version
+
+#### Scenario: Patched image comes from the board's own readback
+- **WHEN** the mainboard fix is installed
+- **THEN** the patched image is generated on the printer from the mainboard's verified stock readback
+
+#### Scenario: Other replies are unchanged
+- **WHEN** a reply with any other function code, malformed bytes, or noise arrives
+- **THEN** the patched mainboard forwards exactly what stock forwards, at the same time

@@ -315,5 +315,112 @@ class LoadCellProbeSyncFailureTest(unittest.TestCase):
         self.assertEqual(self.messages, [])
 
 
+class LateCommandTest(unittest.TestCase):
+    """Commands sent with their MCU clock already past, which QIDI's
+    mainboard reports only as "Timer too close"."""
+
+    FREQ = 168000000
+
+    def setUp(self) -> None:
+        test = self
+        self.now = [100.]
+        self.sent = []
+
+        class CommandWrapper:
+            def __init__(self, msgformat):
+                self.msgformat = msgformat
+
+            def send(self, data=(), minclock=0, reqclock=0):
+                test.sent.append((self.msgformat.split()[0], list(data), minclock))
+
+        class MCU:
+            """The shape of Klipper's MCU."""
+
+            def __init__(self):
+                reactor = types.SimpleNamespace(monotonic=lambda: test.now[0])
+                self._clocksync = types.SimpleNamespace(
+                    get_clock=lambda eventtime: int(eventtime * test.FREQ))
+                self.get_printer = lambda: types.SimpleNamespace(get_reactor=lambda: reactor)
+
+            def get_name(self):
+                return "mcu"
+
+            def seconds_to_clock(self, time):
+                return int(time * test.FREQ)
+
+            def lookup_command(self, msgformat, cq=None):
+                return CommandWrapper(msgformat)
+
+            def lookup_query_command(self, msgformat, respformat, oid=None, cq=None, is_async=False):
+                return CommandWrapper(msgformat)
+
+        self.assertTrue(klipper_health._watch_late_commands(MCU))
+        self.assertTrue(klipper_health._watch_late_commands(MCU))
+        self.mcu = MCU()
+        health = object.__new__(klipper_health.KlipperHealth)
+        health.reactor = types.SimpleNamespace(monotonic=lambda: test.now[0])
+        health.late_commands = {}
+        klipper_health._current[0] = health
+        self.addCleanup(klipper_health._current.__setitem__, 0, None)
+        self.pin = self.mcu.lookup_command("queue_digital_out oid=%c clock=%u on_ticks=%u")
+
+    def clock(self, seconds):
+        return int(seconds * self.FREQ)
+
+    def set_enable(self, clock, minclock=0):
+        # A caller whose name the report should show.
+        self.pin.send([3, clock, 1], minclock=minclock, reqclock=clock)
+
+    def test_late_commands_name_the_command_and_caller(self) -> None:
+        cases = (
+            (self.clock(99.862), 0, "queue_digital_out on 'mcu' 138.0 ms late when sent"),
+            # Past only in the MCU's 32-bit clock, as a truncated clock is.
+            (self.clock(99.97) & 0xffffffff, 0, "30.0 ms late"),
+            # Ahead of the MCU, but held behind the pin's change 40 ms later.
+            (self.clock(100.02), self.clock(100.06), "40.0 ms late"),
+            (self.clock(100.003), 0, "only 3.0 ms ahead"),
+        )
+        for clock, minclock, expected in cases:
+            with self.subTest(expected=expected):
+                klipper_health._current[0].late_commands.clear()
+                with self.assertLogs(level="WARNING") as logs:
+                    self.set_enable(clock, minclock)
+                self.assertIn(expected, logs.output[0])
+                self.assertIn("test_klipper_health.py", logs.output[0])
+                self.assertIn(" set_enable < ", logs.output[0])
+                self.assertEqual(self.sent[-1], ("queue_digital_out", [3, clock, 1], minclock))
+
+    def test_commands_on_time_or_without_a_clock_are_not_reported(self) -> None:
+        trsync = self.mcu.lookup_command(
+            "trsync_start oid=%c report_clock=%u report_ticks=%u expire_reason=%c")
+        stop = self.mcu.lookup_command(
+            "endstop_home oid=%c clock=%u sample_ticks=%u sample_count=%c rest_ticks=%u "
+            "pin_value=%c trsync_oid=%c trigger_reason=%c")
+        plain = self.mcu.lookup_command("set_digital_out pin=%u value=%c")
+
+        with self.assertNoLogs(level="WARNING"):
+            self.set_enable(self.clock(100.02), self.clock(100.))
+            # The pin's last change 14 s back, more than the MCU's 32-bit
+            # clock spans half of.
+            self.set_enable(self.clock(100.3), self.clock(86.))
+            trsync.send([1, self.clock(100.05), 1000, 4])
+            stop.send([1, 0, 0, 0, 0, 0, 0, 0])
+            plain.send([5, 1])
+
+        self.assertEqual(len(self.sent), 5)
+
+    def test_reports_are_rate_limited_and_count_the_rest(self) -> None:
+        with self.assertLogs(level="WARNING") as logs:
+            for step in range(5):
+                self.now[0] = 100. + step
+                self.set_enable(self.clock(self.now[0] - .1))
+            self.now[0] = 110.5
+            self.set_enable(self.clock(self.now[0] - .1))
+
+        self.assertEqual(len(logs.output), 2)
+        self.assertIn("(4 more since the last report)", logs.output[1])
+        self.assertEqual(len(self.sent), 6)
+
+
 if __name__ == "__main__":
     unittest.main()

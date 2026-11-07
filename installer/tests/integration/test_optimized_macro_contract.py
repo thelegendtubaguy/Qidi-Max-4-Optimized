@@ -393,7 +393,9 @@ class OptimizedMacroContractTests(unittest.TestCase):
     def test_z_home_uses_fast_randomized_center_target(self):
         globals_text = (OPTIMIZED_MACRO_ROOT / "globals.cfg").read_text(encoding="utf-8")
         self.assertIn("variable_z_home_randomize_radius: 10", globals_text)
-        self.assertIn("variable_move_to_z_travel_speed_xy: 45000", globals_text)
+        # The fastest travel stays inside the max_velocity cap (mm/s → mm/min).
+        travel = re.search(r"^variable_move_to_z_travel_speed_xy: (\d+)$", globals_text, re.M)
+        self.assertLessEqual(int(travel.group(1)), 565 * 60)
 
         move_gcode = self._macro_gcode("_OPTIMIZED_MOVE_TO_Z_HOME_POINT")
         self.assertEqual(move_gcode.count("range(-radius, radius + 1)|random"), 2)
@@ -1168,3 +1170,85 @@ class ChamberExhaustGuardTest(unittest.TestCase):
         self.assertEqual(sim.fan, 0.)
         self.assertNotIn("rest of the print", sim.messages[0])
         self.assertIs(guard.get_status()["stopped"], False)
+
+
+spec = importlib.util.spec_from_file_location(
+    "tltg_velocity_limit", REPO_ROOT / "installer/klipper/tltg/velocity_limit.py"
+)
+velocity_limit = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(velocity_limit)
+
+
+class VelocityLimitTest(unittest.TestCase):
+    """SET_VELOCITY_LIMIT, and QIDI's M203 through it, can't raise the speed
+    limit above printer.cfg's max_velocity."""
+
+    def run_command(self, params):
+        class Toolhead:
+            max_velocity = 565.
+
+            def cmd_SET_VELOCITY_LIMIT(self, gcmd):
+                velocity = gcmd.get_float("VELOCITY", None)
+                if velocity is not None:
+                    self.max_velocity = velocity
+
+        class Gcmd:
+            def __init__(self, params):
+                self.params = dict(params)
+                self.messages = []
+
+            def get_float(self, name, default=None, above=None):
+                return float(self.params[name]) if name in self.params else default
+
+            def get_command_parameters(self):
+                return self.params
+
+            def respond_info(self, message):
+                self.messages.append(message)
+
+        commands = {"SET_VELOCITY_LIMIT": object()}
+        toolhead = Toolhead()
+
+        class Gcode:
+            gcode_help = {}
+
+            def register_command(self, name, handler, desc=None):
+                old = commands.pop(name, None)
+                if handler is not None:
+                    commands[name] = handler
+                return old
+
+        class Printer:
+            handlers = {}
+
+            def lookup_object(self, name, default=None):
+                return {"gcode": gcode, "toolhead": toolhead}.get(name, default)
+
+            def register_event_handler(self, event, handler):
+                self.handlers[event] = handler
+
+        class Section:
+            def getfloat(self, name, above=None):
+                return 565.
+
+        gcode, printer = Gcode(), Printer()
+
+        class Config:
+            def get_printer(self):
+                return printer
+
+            def getsection(self, name):
+                return Section()
+
+        velocity_limit.load_config(Config())
+        printer.handlers["klippy:connect"]()
+        gcmd = Gcmd(params)
+        commands["SET_VELOCITY_LIMIT"](gcmd)
+        return toolhead.max_velocity, gcmd.messages
+
+    def test_velocity_above_max_velocity_is_lowered(self) -> None:
+        velocity, (message,) = self.run_command({"VELOCITY": "800"})
+        self.assertEqual(velocity, 565.)
+        self.assertIn("using 565 mm/s", message)
+        self.assertEqual(self.run_command({"VELOCITY": "300"}), (300., []))
+        self.assertEqual(self.run_command({"ACCEL": "5000"}), (565., []))

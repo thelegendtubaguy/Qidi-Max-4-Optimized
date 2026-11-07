@@ -48,6 +48,7 @@ The installer first asks whether to flash a fix for the toolhead board's acceler
 
 ### QIDI Box
 - Faster, tunable loading and unloading.
+- Cut, unload, and eject filament without heating the nozzle.
 - Box heater control from Fluidd, and Box processor temperatures.
 - Edit QIDI's filament list from Fluidd, including brands such as Bambu, Overture, and Polymaker.
 
@@ -68,12 +69,14 @@ The installer first asks whether to flash a fix for the toolhead board's acceler
 - The real error instead of a bare `MCU shutdown`.
 - Fewer Boxes dropping with `Lost communication with MCU 'mcu_boxN'`.
 - Multi-plate 3MF files print the right plate from Fluidd, reprints, and the job queue.
+- On the Max 4, a top speed that keeps the X/Y motors from skipping on fast diagonal moves.
 
 [All fixes →](docs/fixes.md)
 
 ### Tools
 - A guided nozzle load-cell check, probe accuracy, and bed screw helpers.
 - A switch to stop the external spool's runout sensor from pausing prints.
+- On the Max 4, an optional monitor that pauses the print when an X or Y motor slips.
 
 [Tools →](docs/tools.md)
 
@@ -81,7 +84,7 @@ The installer first asks whether to flash a fix for the toolhead board's acceler
 
 - [Every setting and command in one table](docs/settings.md)
 - [If something goes wrong](docs/troubleshooting.md): restoring backups and reporting problems
-- [Optional firmware fixes](docs/firmware.md) for the toolhead board and the QIDI Box
+- [Optional firmware fixes](docs/firmware.md) for the toolhead board, the QIDI Box, and the Max 4 mainboard
 - [What the installer changes on your printer](docs/under-the-hood.md)
 - [Changelog](CHANGELOG.md)
 - [Help test releases](TESTING.md) and [run the dev branch](DEVELOPMENT.md)

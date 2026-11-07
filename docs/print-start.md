@@ -7,7 +7,7 @@ Prints sliced with this project's [start G-code](install.md#slicer-start-g-code)
 ## What's faster
 
 - **Homing:** print preparation doesn't home anything twice. On the Max 4, X and Y home at 65 mm/s instead of 50 and back off 20 mm instead of 50, and QIDI's closed-loop homing checks stay in place.
-- **Leveling and bed mesh:** the moves between probe points run at 600 mm/s instead of 150, at your printer's full acceleration (30000 mm/s² on the Max 4) instead of QIDI's 10000. Saving the new mesh no longer freezes Klipper for over two seconds.
+- **Leveling and bed mesh:** the moves between probe points run at 565 mm/s instead of 150, at your printer's full acceleration (30000 mm/s² on the Max 4) instead of QIDI's 10000. Saving the new mesh no longer freezes Klipper for over two seconds.
 - **Filament handling:** less fixed waiting around the cutter, chute wipes, and saving settings. The [QIDI Box](qidi-box.md#load-and-unload-speed) loads and unloads faster.
 - **Filament stays loaded** between prints, so the next print with the same slot skips the unload and reload. See [below](#end-of-print-filament).
 - **Filament changes** to a slot that's already loaded skip heating to the filament-change temperature and waiting to cool back down, saving about 25 seconds per change.

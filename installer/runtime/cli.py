@@ -47,11 +47,12 @@ from .system_optimizations import (
 from .uninstall import run_uninstall
 from .thr_firmware import flash_thr_firmware, validate_thr_firmware_request
 from .box_firmware import run_box_firmware
+from .mainboard_firmware import run_mainboard_firmware
 
 DEFAULT_PRINTER_DATA_ROOT = Path("/home/qidi/printer_data")
 DEFAULT_FIRMWARE_MANIFEST = Path("/home/qidi/update/firmware_manifest.json")
 DEFAULT_MOONRAKER_URL = "http://127.0.0.1:7125/printer/objects/query?print_stats"
-
+FIRMWARE_MODES = {"box-firmware", "mainboard-firmware"}
 
 
 def main(
@@ -107,7 +108,7 @@ def main(
             )
             return 0
 
-        if not args.dry_run and not (args.mode == "box-firmware" and args.box_action == "status"):
+        if not args.dry_run and not (args.mode in FIRMWARE_MODES and args.box_action == "status"):
             repair_installer_ownership(paths, reporter=reporter, environ=env, input_stream=input_stream)
 
         if args.mode == "box-firmware":
@@ -119,6 +120,20 @@ def main(
                     reporter=reporter,
                     action=args.box_action,
                     boxes=args.box,
+                    input_stream=input_stream,
+                    environ=env,
+                )
+            reporter.debug(event="cli.complete", mode=args.mode, return_code=rc)
+            return rc
+
+        if args.mode == "mainboard-firmware":
+            if args.box_action == "status":
+                return run_mainboard_firmware(paths=paths, reporter=reporter, action="status", environ=env)
+            with acquire(paths.lock_path):
+                rc = run_mainboard_firmware(
+                    paths=paths,
+                    reporter=reporter,
+                    action=args.box_action,
                     input_stream=input_stream,
                     environ=env,
                 )
@@ -550,9 +565,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "disable-auto-updates",
             "complete-host-reboot",
             "box-firmware",
+            "mainboard-firmware",
         ],
     )
-    parser.add_argument("box_action", nargs="?", choices=["status", "install", "restore", "rescue"], help="box-firmware action: status, install, restore, or rescue.")
+    parser.add_argument("box_action", nargs="?", choices=["status", "install", "restore", "rescue"], help="box-firmware or mainboard-firmware action: status, install, restore, or rescue.")
     parser.add_argument("--box", type=int, action="append", metavar="N", help="box-firmware: limit install or restore to Box N (repeatable); rescue needs exactly one.")
     parser.add_argument("-v", "--version", dest="show_version", action="store_true", help="Show the installer package version and exit.")
     parser.add_argument("--plain", action="store_true", help="Use plain text output instead of the rich terminal UI.")
@@ -611,8 +627,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--keep-system-optimizations is only supported with uninstall.")
     if args.flash_thr_fifo and args.mode != "install":
         parser.error("--flash-thr-fifo is only supported with install.")
-    if (args.mode == "box-firmware") != (args.box_action is not None):
-        parser.error("box-firmware needs one of status, install, restore, or rescue; other modes take no action.")
+    if (args.mode in FIRMWARE_MODES) != (args.box_action is not None):
+        parser.error("box-firmware and mainboard-firmware need one of status, install, restore, or rescue; other modes take no action.")
     if args.box and args.mode != "box-firmware":
         parser.error("--box is only supported with box-firmware.")
     if args.reboot_host and args.mode not in {"install", "uninstall"}:

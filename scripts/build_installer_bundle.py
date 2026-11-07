@@ -31,6 +31,7 @@ ALLOWED_FILES = [
     "installer/release/restore.sh",
     "installer/release/auto-update.sh",
     "installer/release/box-firmware.sh",
+    "installer/release/mainboard-firmware.sh",
     "scripts/flash_thr_firmware.py",
     "scripts/thr_bootloaders.py",
     "scripts/build_thr_firmware.py",
@@ -39,6 +40,10 @@ ALLOWED_FILES = [
     "scripts/build_box_firmware.py",
     "firmware/max4-box-shutdown-fix-v1.json",
     "firmware/BOX_FIRMWARE.md",
+    "scripts/flash_mcu_firmware.py",
+    "scripts/build_mcu_firmware.py",
+    "firmware/max4-mcu-closed-loop-replies-v1.json",
+    "firmware/MAINBOARD_FIRMWARE.md",
     "firmware/FLASHING.md",
     "scripts/build_zram_modules.py",
     "kernel/qidi_max4_zram_defconfig",
@@ -93,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
     shutil.copy2(REPO_ROOT / "installer/release/restore.sh", bundle_root / "restore.sh")
     shutil.copy2(REPO_ROOT / "installer/release/auto-update.sh", bundle_root / "auto-update.sh")
     shutil.copy2(REPO_ROOT / "installer/release/box-firmware.sh", bundle_root / "box-firmware.sh")
+    shutil.copy2(REPO_ROOT / "installer/release/mainboard-firmware.sh", bundle_root / "mainboard-firmware.sh")
     ignore = shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo")
     for directory in ALLOWED_DIRECTORIES:
         source = REPO_ROOT / directory

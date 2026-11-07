@@ -142,6 +142,13 @@ def main(argv: list[str] | None = None) -> int:
     box_help = run_command([str(bundle_root / "box-firmware.sh"), "--help"], cwd=bundle_root, env=os.environ.copy())
     if box_tool_help.returncode != 0 or box_help.returncode != 0 or "rescue" not in box_help.stdout:
         raise SystemExit(box_tool_help.stdout + box_tool_help.stderr + box_help.stdout + box_help.stderr)
+    for relative in ("mainboard-firmware.sh", "scripts/flash_mcu_firmware.py", "scripts/build_mcu_firmware.py", "firmware/max4-mcu-closed-loop-replies-v1.json", "firmware/MAINBOARD_FIRMWARE.md"):
+        if not (bundle_root / relative).is_file():
+            raise SystemExit("bundle is missing mainboard firmware support: " + relative)
+    mainboard_tool_help = run_command([sys.executable, str(bundle_root / "scripts/flash_mcu_firmware.py"), "--help"], cwd=bundle_root, env=os.environ.copy())
+    mainboard_help = run_command([str(bundle_root / "mainboard-firmware.sh"), "--help"], cwd=bundle_root, env=os.environ.copy())
+    if mainboard_tool_help.returncode != 0 or mainboard_help.returncode != 0 or "mainboard-firmware" not in mainboard_help.stdout:
+        raise SystemExit(mainboard_tool_help.stdout + mainboard_tool_help.stderr + mainboard_help.stdout + mainboard_help.stderr)
     version_output = run_command([str(bundle_root / "install.sh"), "-v"], cwd=bundle_root, env=os.environ.copy())
     if version_output.returncode != 0:
         raise SystemExit(version_output.stdout + version_output.stderr)
@@ -192,8 +199,8 @@ def main(argv: list[str] | None = None) -> int:
             for name in ("box_link_monitor", "box_mcu_temperature", "background_save_config",
                          "box_heater_refresh", "klipper_health", "macro_status", "printer_warnings", "klipper_fixes", "save_variables_fast",
                          "box_feed_motion", "box_eject", "box_filament_guard", "box_loaded_slot",
-                         "box_slot_jog", "box_flow_recovery",
-                         "box485_monitor", "spoolman", "probe_test", "chamber_exhaust_guard")
+                         "box_slot_jog", "box_flow_recovery", "cold_cut",
+                         "box485_monitor", "spoolman", "probe_test", "chamber_exhaust_guard", "step_loss_monitor", "velocity_limit")
         }
         for module_target, module_source in module_targets.items():
             if not module_target.is_file():
