@@ -99,9 +99,19 @@ class ContractError(RuntimeError):
 def load_and_validate_contract(contract_path: Path) -> ContractReport:
     contract = json.loads(contract_path.read_text(encoding="utf-8"))
     macro_files = expand_macro_files(contract.get("macro_files", []), contract_path)
+    # A contract for a printer other than the Max 4 names that printer's stock config, which the installer
+    # changes by its firmware's patches; the repository's config/ is the Max 4's.
+    stock_config = contract.get("stock_config")
+    if stock_config:
+        excluded_sections = manifest_deleted_sections(
+            REPO_ROOT / require_str(stock_config, "root", contract_path),
+            require_str(stock_config, "firmware", contract_path),
+        )
+    else:
+        excluded_sections = manifest_deleted_sections()
     macros, duplicates = parse_macro_definitions(
         macro_files,
-        excluded_sections=manifest_deleted_sections(),
+        excluded_sections=excluded_sections,
     )
     if duplicates:
         rows = [

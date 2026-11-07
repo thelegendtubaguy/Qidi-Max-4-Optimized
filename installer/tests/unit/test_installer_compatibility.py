@@ -56,10 +56,10 @@ class InstallerCompatibilityTests(unittest.TestCase):
         ).hexdigest()
         self.assertEqual(self.envelope.schema_version, 2)
         self.assertEqual(len(self.envelope.allowed_patch_targets), 33)
-        self.assertEqual(len(self.envelope.source_patches), 5)
+        self.assertEqual(len(self.envelope.source_patches), 6)
         self.assertEqual(
             digest,
-            "ffffa8e179d722dabaa3d4ff2f435738b1cbd0b720818aebe1dc18f59a813a39",
+            "119b37714efa0d122c9eac9a0849958ccb1cc06b093169a8948f4169d0b60d5b",
         )
 
     def test_manifest_rejects_printers_that_share_an_identity(self) -> None:

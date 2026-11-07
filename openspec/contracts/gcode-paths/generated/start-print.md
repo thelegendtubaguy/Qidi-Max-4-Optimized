@@ -252,7 +252,7 @@ Forbidden patterns:
 
 Condition: `all optimized starts`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:207-239`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:197-229`
 
 Direct visible macro calls in branch slice:
 
@@ -275,7 +275,7 @@ Forbidden patterns:
 
 Condition: `tltg_keep_loaded_between_prints == 1 and retained physical state is proven`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:240-276`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:230-266`
 
 Direct visible macro calls in branch slice:
 
@@ -323,7 +323,7 @@ Forbidden patterns:
 
 Condition: `box_enabled and retention is disabled or retained physical state is not proven`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:277-318`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:267-308`
 
 Direct visible macro calls in branch slice:
 
@@ -375,7 +375,7 @@ Forbidden patterns:
 
 Condition: `!box_available || !enable_box`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:319-353`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:309-343`
 
 Direct visible macro calls in branch slice:
 
@@ -547,7 +547,7 @@ Forbidden patterns:
 
 Condition: `PATTERN=MIXED selects the print-start pre-scrape wipe; omitted or other values select the fast silicone wipe; both release waste through the optimized chute drop`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:168-174`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:158-164`
 
 Direct visible macro calls in branch slice:
 
@@ -648,7 +648,7 @@ Forbidden patterns:
 
 Condition: `external-spool start, with optional vendor chute cleanup guarded by Box object availability`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:188-203`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:178-193`
 
 Direct visible macro calls in branch slice:
 
@@ -684,7 +684,7 @@ Forbidden patterns:
 
 Condition: `fresh Box or external-spool scrape complete and vendor chute cleanup object available`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:178-183`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:168-173`
 
 Direct visible macro calls in branch slice:
 
@@ -709,7 +709,7 @@ Forbidden patterns:
 
 Condition: `PRE_SCRAPE=1 selects mixed-speed start wiping; omitted or zero retains fast non-start cleanup`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:506-552`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:496-542`
 
 Direct visible macro calls in branch slice:
 

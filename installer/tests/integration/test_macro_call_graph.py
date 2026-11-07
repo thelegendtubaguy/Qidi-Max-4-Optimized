@@ -9,7 +9,6 @@ from installer.runtime.manifest import load_manifest
 from installer.tests.helpers import REPO_ROOT
 
 
-CONFIG_ROOT = REPO_ROOT / "config"
 OPTIMIZED_MACRO_ROOT = REPO_ROOT / "installer" / "klipper" / "tltg-optimized-macros"
 PRINTER_MACRO_ROOT = REPO_ROOT / "installer" / "klipper" / "printers"
 
@@ -65,18 +64,23 @@ class MacroCallGraphTests(unittest.TestCase):
         )
 
     def test_installed_runtime_macro_call_graph_is_acyclic(self):
-        files = unique_paths(
-            (
-                *collect_config_tree_files(CONFIG_ROOT),
-                *installed_macro_files("max4"),
-            )
-        )
-        self.assert_macro_graph_is_acyclic(files)
+        plus5_root = REPO_ROOT / "installer/stock/qidi-plus5-defaults/firmwares/01.01.02.01"
+        for printer, root, firmware in (("max4", REPO_ROOT, None), ("plus5", plus5_root, "01.01.02.01")):
+            with self.subTest(printer=printer):
+                files = unique_paths(
+                    (
+                        *collect_config_tree_files(root / "config"),
+                        *installed_macro_files(printer),
+                    )
+                )
+                self.assert_macro_graph_is_acyclic(files, manifest_deleted_sections(root, firmware))
 
-    def assert_macro_graph_is_acyclic(self, files: tuple[Path, ...]) -> None:
+    def assert_macro_graph_is_acyclic(
+        self, files: tuple[Path, ...], excluded_sections: frozenset[tuple[Path, str]]
+    ) -> None:
         macros, duplicates = parse_macro_definitions(
             files,
-            excluded_sections=manifest_deleted_sections(),
+            excluded_sections=excluded_sections,
         )
         if duplicates:
             self.fail(
@@ -119,11 +123,15 @@ def unique_paths(paths) -> tuple[Path, ...]:
     return tuple(result)
 
 
-def manifest_deleted_sections() -> frozenset[tuple[Path, str]]:
+def manifest_deleted_sections(
+    root: Path = REPO_ROOT, firmware: str | None = None
+) -> frozenset[tuple[Path, str]]:
+    """Sections the installer removes, under a tree laid out like the printer's: every firmware's by default."""
     manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
     return frozenset(
-        ((REPO_ROOT / patch.file).resolve(), patch.section.lower())
+        ((root / patch.file).resolve(), patch.section.lower())
         for patch in manifest.patches.delete_sections
+        if firmware is None or any(firmware in variant.firmwares for variant in patch.variants)
     )
 
 

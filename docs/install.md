@@ -67,12 +67,14 @@ The installer stops and disables `usbdevice.service`. To check that ADB is off, 
 ## Slicer start G-code
 
 > [!TIP]
-> In OrcaSlicer 2.4.0 or later, subscribe to the [OrcaCloud bundle](https://cloud.orcaslicer.com/b/4c4b3b74c745). Your slicer then gets updates by itself, with nothing to copy and paste.
+> On the Max 4, in OrcaSlicer 2.4.0 or later, subscribe to the [OrcaCloud bundle](https://cloud.orcaslicer.com/b/4c4b3b74c745). Your slicer then gets updates by itself, with nothing to copy and paste.
 
-Otherwise, copy the machine G-code into your slicer by hand from the folder for your slicer. These are for the Max 4:
+Otherwise, copy the machine G-code into your slicer by hand from the folder for your slicer and printer:
 
-- OrcaSlicer: [`orcaslicer_gcode/`](../orcaslicer_gcode/)
-- QIDI Studio: [`qidistudio_gcode/`](../qidistudio_gcode/)
+| Slicer | QIDI Max 4 | QIDI Plus 5 |
+|---|---|---|
+| OrcaSlicer | [`orcaslicer_gcode/`](../orcaslicer_gcode/) | [`orcaslicer_gcode/plus5/`](../orcaslicer_gcode/plus5/) |
+| QIDI Studio | [`qidistudio_gcode/`](../qidistudio_gcode/) | [`qidistudio_gcode/plus5/`](../qidistudio_gcode/plus5/) |
 
 The two do the same thing; only their placeholder syntax differs. Files sliced with QIDI's stock G-code still print normally after installing, without the faster start.
 

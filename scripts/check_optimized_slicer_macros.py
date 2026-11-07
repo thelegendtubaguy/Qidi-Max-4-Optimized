@@ -27,6 +27,7 @@ ALLOWED_EXTERNAL_COMMANDS = {
     "G90",
     "G92",
     "G92_",
+    "M1006",
     "M82",
     "M83",
     "M1002",
@@ -97,14 +98,19 @@ def build_dynamic_prefixes(macros: set[str]) -> set[str]:
     return prefixes
 
 
-def iter_slicer_files(repo_root: Path = REPO_ROOT) -> list[Path]:
+# Each printer's slicer packs: the Max 4's at the top of each pack folder, other printers' in a subfolder.
+PRINTER_PACK_FOLDERS = {"max4": "", "plus5": "plus5"}
+
+
+def iter_slicer_files(repo_root: Path = REPO_ROOT, printer: str | None = None) -> list[Path]:
     files: list[Path] = []
-    for directory in (
-        repo_root / "orcaslicer_gcode",
-        repo_root / "qidistudio_gcode",
-    ):
-        if directory.exists():
-            files.extend(sorted(directory.glob("*.gcode")))
+    for name, folder in PRINTER_PACK_FOLDERS.items():
+        if printer is not None and name != printer:
+            continue
+        for pack in ("orcaslicer_gcode", "qidistudio_gcode"):
+            directory = repo_root / pack / folder
+            if directory.exists():
+                files.extend(sorted(directory.glob("*.gcode")))
     return files
 
 
@@ -139,7 +145,7 @@ def is_allowed_external_command(command: str, segment: str, command_end: int) ->
 
 
 def validate_qidistudio_compatibility(repo_root: Path, path: Path) -> list[str]:
-    if path.parent != repo_root / "qidistudio_gcode":
+    if (repo_root / "qidistudio_gcode") not in path.parents:
         return []
 
     failures: list[str] = []
@@ -161,15 +167,25 @@ def validate_qidistudio_compatibility(repo_root: Path, path: Path) -> list[str]:
 def validate_repo(
     repo_root: Path = REPO_ROOT,
 ) -> tuple[list[str], list[Path], set[str]]:
-    # The slicer packs target the Max 4, so they may call its printer-specific macros too.
-    macros = iter_macro_names(
-        repo_root / "installer" / "klipper" / "tltg-optimized-macros",
-        repo_root / "installer" / "klipper" / "printers" / "max4",
-    )
+    failures: list[str] = []
+    checked_files: list[Path] = []
+    all_macros: set[str] = set()
+    # Each printer's packs may call that printer's own macros as well as the common ones.
+    for printer in PRINTER_PACK_FOLDERS:
+        macros = iter_macro_names(
+            repo_root / "installer" / "klipper" / "tltg-optimized-macros",
+            repo_root / "installer" / "klipper" / "printers" / printer,
+        )
+        files = iter_slicer_files(repo_root, printer)
+        failures.extend(_validate_files(repo_root, files, macros))
+        checked_files.extend(files)
+        all_macros |= macros
+    return failures, checked_files, all_macros
+
+
+def _validate_files(repo_root: Path, checked_files: list[Path], macros: set[str]) -> list[str]:
     dynamic_prefixes = build_dynamic_prefixes(macros)
     failures: list[str] = []
-    checked_files = iter_slicer_files(repo_root)
-
     for path in checked_files:
         failures.extend(validate_qidistudio_compatibility(repo_root, path))
         for line_number, raw_line in enumerate(path.read_text().splitlines(), start=1):
@@ -195,8 +211,7 @@ def validate_repo(
             failures.append(
                 f"{path.relative_to(repo_root)}:{line_number}: unknown command '{command}' in '{segment}'"
             )
-
-    return failures, checked_files, macros
+    return failures
 
 
 def main() -> int:

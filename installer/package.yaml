@@ -6,7 +6,7 @@ package:
   # The id predates multi-printer support; installed state records it, so it stays.
   id: qidi-max4-optimized
   display_name: Valve Oil
-  version: "26.11.06.1"
+  version: "26.11.07.1"
 # Each firmware version belongs to exactly one printer; patch variants are keyed by firmware version.
 printers:
   - id: max4
@@ -19,6 +19,13 @@ printers:
       - "01.01.06.04"
       - "01.01.06.05"
       - "01.01.07.01"
+  - id: plus5
+    display_name: QIDI Plus 5
+    soc_file_prefix: QD_PLUS5_SOC_
+    stock_snapshots: stock/qidi-plus5-defaults/firmwares
+    macros: klipper/printers/plus5
+    firmware:
+      - "01.01.02.01"
 
 backup:
   source_directory: "config"
@@ -190,6 +197,10 @@ install:
           source: "klipper/qidi/homing-sync-reset.py"
           expected_sha256: "0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761"
           desired_sha256: "09a57808075b7022ad65619f5a23deeec80c5d682a43e8ee101f8d62c984f33a"
+        - firmware: "01.01.02.01"
+          source: "klipper/qidi/homing-sync-reset.py"
+          expected_sha256: "0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761"
+          desired_sha256: "09a57808075b7022ad65619f5a23deeec80c5d682a43e8ee101f8d62c984f33a"
 
 patches:
   set_options:
@@ -297,7 +308,7 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "10.0"
           desired: "5.0"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.02.01"]
           expected: "10.0"
           desired: "5.0"
 
@@ -345,7 +356,7 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "CANCEL_PRINT"
           desired: "OPTIMIZED_CANCEL_PRINT_ON_ERROR"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.02.01"]
           expected: "CANCEL_PRINT"
           desired: "OPTIMIZED_CANCEL_PRINT_ON_ERROR"
 
@@ -357,7 +368,7 @@ patches:
         - firmwares: ["01.01.06.03", "01.01.06.04"]
           expected: "0.0015"
           desired: "0.00075"
-        - firmwares: ["01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.05", "01.01.07.01", "01.01.02.01"]
           expected: "0.0005"
           desired: "0.00075"
 
@@ -369,7 +380,7 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "True"
           desired: "False"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.02.01"]
           expected: "True"
           desired: "False"
 
@@ -483,6 +494,8 @@ patches:
           expected_normalized_sha256: "82ddb60dd79950a1b0e551295aca9c3c05cd3f4f0ed77ac2888d4faf18c724a8"
         - firmwares: ["01.01.07.01"]
           expected_normalized_sha256: "4466d08166d675b207e2256e4072b1b79ca5b3d83b07a272efc2bef4d41ab4cc"
+        - firmwares: ["01.01.02.01"]
+          expected_normalized_sha256: "171e3cdbbb8f049a2c1aa43a7ad0176e8a5027ba0c51c8acbf95794a13877112"
 
     - id: pause_resume_cancel_resume
       file: "config/klipper-macros-qd/pause_resume_cancel.cfg"
@@ -492,7 +505,7 @@ patches:
           expected_normalized_sha256: "b11be3af49980c38029cfeaf9dcbd4db8bb2e5970f40b2bb7626fe7337a86017"
         - firmwares: ["01.01.06.04", "01.01.06.05"]
           expected_normalized_sha256: "b11be3af49980c38029cfeaf9dcbd4db8bb2e5970f40b2bb7626fe7337a86017"
-        - firmwares: ["01.01.07.01"]
+        - firmwares: ["01.01.07.01", "01.01.02.01"]
           expected_normalized_sha256: "866bc3a0ab78901653e69116a13ad723f700622dd5df0d0541fcfac12099293b"
 
     - id: filament_cut_filament_1
@@ -503,12 +516,14 @@ patches:
           expected_normalized_sha256: "130d5ec6b0201c52b7abc4a54ef7095ae9397d5c0318fe12a2c477c2a94225d0"
         - firmwares: ["01.01.07.01"]
           expected_normalized_sha256: "79234acad35e02bf68724057dc355e2e85e29c5f001fce4566e2550f3d1d5c44"
+        - firmwares: ["01.01.02.01"]
+          expected_normalized_sha256: "ffae6fa66d2b77ef6be5f5ac8ba70537448e1e527edc9278acc5b2b497e74f1e"
 
     - id: heaters_m109_0
       file: "config/klipper-macros-qd/heaters.cfg"
       section: "gcode_macro m109.0"
       variants:
-        - firmwares: ["01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.02.01"]
           expected_normalized_sha256: "50260f1efe090bd27f49c61a34b960989cfa2cdff5656bc5193cbbfc6a387b77"
 
     - id: fans_m106
@@ -517,6 +532,8 @@ patches:
       variants:
         - firmwares: ["01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01"]
           expected_normalized_sha256: "07741866908f39c8c37ec70f47cc682aeb5c0d2e38396cd5ba64c6915b1d2bf0"
+        - firmwares: ["01.01.02.01"]
+          expected_normalized_sha256: "2d4964dccaf400fe1c6c25a47f80db0817eeae34e276688a0b3a448f5c272a84"
 
     - id: kinematics_homing_override
       file: "config/klipper-macros-qd/kinematics.cfg"
@@ -526,6 +543,8 @@ patches:
           expected_normalized_sha256: "6a924478b351dea193bf1060f5747b151bba3de4c5627c7faac741ad7b164cf4"
         - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
           expected_normalized_sha256: "6a924478b351dea193bf1060f5747b151bba3de4c5627c7faac741ad7b164cf4"
+        - firmwares: ["01.01.02.01"]
+          expected_normalized_sha256: "9606aaf2bae0cf123b5e73615aa45631e5f93b1a7704638a1c9bbe7de16e7a1b"
 
     - id: start_end_apply_print_offset
       file: "config/klipper-macros-qd/start_end.cfg"
@@ -533,7 +552,7 @@ patches:
       variants:
         - firmwares: ["01.01.06.03"]
           expected_normalized_sha256: "ea8be4dae3bc5bbe881b8e3ca5c49e0b28a74b17cb9a4d8515d598bd006ce3a7"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.02.01"]
           expected_normalized_sha256: "ea8be4dae3bc5bbe881b8e3ca5c49e0b28a74b17cb9a4d8515d598bd006ce3a7"
 
 postflight:

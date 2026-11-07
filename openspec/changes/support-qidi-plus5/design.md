@@ -50,6 +50,19 @@ Evidence lives in `openspec/observations/qidi-platform.md` under QIDI Plus 5. In
 
 **D4. Plus 5 homing ports QIDI's sequence first.** That sequence is: both drivers at 0.9 A, `G28.6245197` per axis, Y-X-Y, 10 mm backoff, and a 2 s settle. The first port keeps every current and dwell. Trimming dwells, as the Max 4 work did (`G4` before speed), waits for timed stock and optimized homing on the printer. Sensorless homing depends on current and speed, so no speed or current change ships without repeated homing checks.
 
+**D4a. What the Plus 5 port changes from QIDI's macros.**
+- `G28 X`, `G28 Y`, and `G28 Z` home that one axis with the same per-axis steps. QIDI's override ignores them, and the common macros expect them to work.
+- Homing clears the bed mesh, as on the Max 4. It doesn't call QIDI's undefined `BEEP`.
+- The cut drops QIDI's 2 s exit dwell, as on the Max 4.
+- Every other coordinate, speed, current, and dwell is QIDI's Plus 5 value. The waste-chute final approach uses the shared `trash_final_approach_speed_xy`.
+- Of the printer.cfg patches, the Plus 5 gets Z homing retract 5 mm, the error cancel macro, the hotend-fan tachometer interval, and quiet timelapse frames. Its Z homing is the same load-cell probe as the Max 4's.
+
+**D4b. Slicer packs live in `plus5/` subfolders.** The Max 4 packs stay where operators' links point. The Plus 5 packs follow QIDI's Plus 5 profiles:
+- Temperature compensation uses `M1006 Z`.
+- The prime-line fallback is X180 to X140.
+- Filament changes use QIDI's Plus 5 wipe.
+- They leave out the Max 4 OrcaSlicer pack's `M106 P4` polar-cooler line until the Plus 5 is known to have one.
+
 **D5. The screen card rotates in the service.** The service knows the framebuffer's geometry and the touchscreen's axis ranges. A portrait framebuffer on a printer whose UI is landscape is rotated before encoding. Taps are mapped back through the same rotation, and the touchscreen's own axis ranges decide whether the touch coordinates are portrait or landscape. The rotation direction is a per-printer fact recorded once it is observed.
 
 ## Data to collect on a running Plus 5
