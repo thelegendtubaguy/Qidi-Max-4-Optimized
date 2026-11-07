@@ -89,6 +89,10 @@ Unload and Eject now pull back a slot's filament that a failed load left between
 
 A 3MF file started without a plate number, for example from Fluidd, a reprint, or the job queue, prints the plate it was sliced on instead of plate 1. Before, files exported from a plate other than plate 1 failed with `3MF processing error: [Errno 2] No such file or directory`.
 
+## Filaments a file uses
+
+Fluidd's Box print dialog lists the filaments Moonraker says a file uses. Moonraker now reads them from what the slicer wrote for that file: for a 3MF, the filaments its plate uses; for an OrcaSlicer G-code file, the filaments it gives a length. Before, OrcaSlicer G-code files named none, and when OrcaSlicer exported several plates into one 3MF, only the plate selected in OrcaSlicer named any, and it named every plate's filaments.
+
 ## Faster Moonraker startup
 
 Unchanged 3MF files reuse their metadata instead of being re-extracted every time Moonraker starts. The first restart after installing rebuilds it once, and after that only new or changed files are read. Manual metadata rescans keep QIDI's thumbnails, and a failed rescan keeps the previous metadata.

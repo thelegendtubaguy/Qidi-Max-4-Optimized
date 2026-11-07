@@ -248,6 +248,12 @@ Normal install and update SHALL apply recognized Moonraker metadata optimization
 - **THEN** G-code, metadata, and thumbnail selection use its valid selected plate index
 - **AND** missing or invalid plate metadata falls back to plate 1
 
+#### Scenario: File metadata names the filaments a print uses
+- **WHEN** the optimized metadata extractor reads a `.gcode.3mf` archive whose selected plate lists its filaments in the slice information
+- **THEN** `used_extruders` holds those filaments as zero-based tools, whatever the plate's `plate_N.json` lists
+- **AND** a plate without filaments in the slice information keeps the `plate_N.json` list
+- **AND** a G-code file without a `; used_extruders` line names every filament its `; filament used [mm]` footer gives a nonzero length
+
 #### Scenario: 3MF prints start on the sliced plate
 - **WHEN** a print of a `.gcode.3mf` archive is started without a plate number, such as from Fluidd, a history reprint, or the job queue
 - **THEN** the plate selected in the archive's slice information is printed, the same plate its metadata describes
@@ -280,6 +286,7 @@ Normal install and update SHALL apply recognized Moonraker metadata optimization
 - **AND** repeated reconciliation retains the first restore preimage without accumulating backups
 - **AND** uninstall restoration reverts only the unchanged installed file; concurrent changes and operator drift are preserved
 - **AND** the print-start plate selection is deployed the same way to Moonraker's Klippy API source, which is left unchanged when unrecognized
+- **AND** the used-filament extraction is deployed the same way to Moonraker's metadata extractor after its plate selection, and is left unchanged when the extractor is unrecognized
 
 ### Requirement: Moonraker speedup packages
 The installer SHALL make the `msgspec` and `uvloop` packages that QIDI's Moonraker already uses when importable available to it from pinned, checksum-verified wheels in the release bundle, without replacing anything in QIDI's Moonraker virtualenv, and SHALL keep the change reversible.
