@@ -70,6 +70,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             include_klipper_print_stats_manager=True,
             include_nginx_site=True,
             include_moonraker_asvc=True,
+            include_moonraker_metadata=True,
         )
         host_run = fake_host_run(system_root)
         moonraker = system_root / "home/qidi/moonraker/moonraker/components/file_manager/file_manager.py"
@@ -86,6 +87,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         stats_manager_before = stats_manager.read_bytes()
         klippy_apis = system_root / "home/qidi/moonraker/moonraker/components/klippy_apis.py"
         klippy_apis_before = klippy_apis.read_bytes()
+        metadata = system_root / "home/qidi/moonraker/moonraker/components/file_manager/metadata.py"
+        metadata_before = metadata.read_bytes()
         spoolman = system_root / "home/qidi/moonraker/moonraker/components/spoolman.py"
         spoolman_before = spoolman.read_bytes()
         nginx_site = system_root / remote_screen.NGINX_SITE.lstrip("/")
@@ -226,6 +229,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertIn(b"\r\n", moonraker.read_bytes())
         self.assertEqual(moonraker.stat().st_mode & 0o777, 0o640)
         self.assertIn(b"            plateindex = self._tltg_3mf_plate_index(filename)\r\n", klippy_apis.read_bytes())
+        # Fluidd's Box slot dialog gets the filaments a file uses, for the plate a 3MF prints.
+        self.assertIn("plate_index = _3mf_selected_plate_index(", metadata.read_text(encoding="utf-8"))
+        self.assertIn("each plate's own filaments", metadata.read_text(encoding="utf-8"))
         self.assertIn(b"        self._highest_epos = self._last_epos\r\n", spoolman.read_bytes())
         self.assertIn(FLUIDD_BOX_OPERATION, state.system_ledger["restore_preimages"])
         self.assertIn(PATCH_MARKER.encode(), fluidd.read_bytes())
@@ -421,6 +427,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(box_config.read_bytes(), box_config_before)
         self.assertEqual(stats_manager.read_bytes(), stats_manager_before)
         self.assertEqual(klippy_apis.read_bytes(), klippy_apis_before)
+        self.assertEqual(metadata.read_bytes(), metadata_before)
         self.assertEqual(spoolman.read_bytes(), spoolman_before)
         self.assertFalse(probe_helper.exists())
         self.assertFalse(filament_link.is_symlink())
