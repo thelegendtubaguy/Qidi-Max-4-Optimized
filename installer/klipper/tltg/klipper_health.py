@@ -42,12 +42,25 @@
 # end, and startup macros read many times. In both modules copy.deepcopy is
 # replaced with a plain copy of the same dicts, lists, tuples, and values,
 # several times faster; anything else still goes to copy.deepcopy.
+#
+# Late MCU commands: a command that takes effect at an MCU clock, such as a
+# pin change or an endstop sync's timeout, must reach the MCU before that
+# clock. QIDI's Max 4 mainboard runs one that arrives late at once and logs
+# "Timer too close" to klippy.log, which names neither the command nor what
+# sent it. Each command whose format has a clock is checked as Klipper sends
+# it: when its clock is already past, or nearly so, by the MCU's estimated
+# time, or by the clock of an earlier command on its queue that it must wait
+# for, klippy.log gets a warning naming the MCU, the command, how late it
+# is, and the Python calls that sent it. Other commands are not wrapped.
+# Steps go out from Klipper's C code and are not checked.
 
 import collections
 import copy
 import logging
+import os
 import sys
 import time
+import traceback
 import types
 
 # QIDI box_extras / box2base load-cell callbacks whose stopped timers leak.
@@ -79,6 +92,16 @@ SYNC_REPORTS_LOGGED = 12
 # Objects whose modules deep-copy whole statuses: QIDI's Box status, and
 # Klipper's macro access to every object's status.
 STATUS_COPIERS = ("multi_color_controller", "gcode_macro")
+# Command parameters holding the MCU clock a command takes effect at.
+CLOCK_PARAMS = ("clock", "report_clock")
+# A command less than this ahead of its MCU when sent is reported: the
+# mainboard link's round trip alone is about 1 ms.
+LATE_COMMAND_MARGIN = 0.005
+# Each MCU's command is reported at most this often; the next report counts
+# the ones in between.
+LATE_COMMAND_REPEAT = 10.
+# Python calls listed with a late command, innermost first.
+LATE_COMMAND_STACK = 8
 
 # The KlipperHealth of the running Klipper; the endstop wrapper outlives a
 # RESTART, which creates a new one.
@@ -283,6 +306,84 @@ def _wrap_home_wait(cls, error, failure):
     return True
 
 
+def _late_command(mcu, command, ahead):
+    health = _current[0]
+    if health is None:
+        return
+    try:
+        # The caller of the command's send.
+        health.note_late_command(mcu.get_name(), command, ahead,
+                                 sys._getframe(2))
+    except Exception:
+        logging.exception("tltg_klipper_health: late command report failed")
+
+
+def watch_command(mcu, command, msgformat):
+    """Check each send of an MCU command whose format has a clock. Returns
+    True when its sends are checked."""
+    parts = msgformat.split()
+    index = next((i for i, arg in enumerate(parts[1:])
+                  if arg.split("=")[0] in CLOCK_PARAMS), None)
+    send = getattr(command, "send", None)
+    get_clock = getattr(getattr(mcu, "_clocksync", None), "get_clock", None)
+    if index is None or send is None or get_clock is None:
+        return False
+    freq = float(mcu.seconds_to_clock(1.))
+    if freq <= 0.:
+        return False
+    monotonic = mcu.get_printer().get_reactor().monotonic
+    margin = LATE_COMMAND_MARGIN * freq
+    name = parts[0]
+
+    def send_checked(data=(), minclock=0, reqclock=0):
+        try:
+            clock = data[index]
+        except (IndexError, KeyError, TypeError):
+            clock = 0
+        # Clock 0 stops a command, such as an endstop check, instead.
+        if clock:
+            # Ticks ahead of the MCU, negative when past, in 32 bits as the
+            # MCU compares them.
+            ahead = (((clock - get_clock(monotonic()) + 0x80000000)
+                      & 0xffffffff) - 0x80000000)
+            if minclock:
+                # Klipper holds the command until minclock.
+                ahead = min(ahead, ((clock - minclock + 0x80000000)
+                                    & 0xffffffff) - 0x80000000)
+            if ahead < margin:
+                _late_command(mcu, name, ahead / freq)
+        return send(data, minclock, reqclock)
+    command.send = send_checked
+    return True
+
+
+def _watch_late_commands(cls):
+    """Make cls, Klipper's MCU, check the commands it looks up that have a
+    clock. Returns True when it does."""
+    lookups = [(name, getattr(cls, name, None))
+               for name in ("lookup_command", "lookup_query_command")]
+    if any(lookup is None for _name, lookup in lookups):
+        return False
+
+    def wrap(lookup):
+        if getattr(lookup, "_tltg_klipper_health", False):
+            return lookup
+
+        def lookup_watched(mcu, msgformat, *args, **kwargs):
+            command = lookup(mcu, msgformat, *args, **kwargs)
+            try:
+                watch_command(mcu, command, msgformat)
+            except Exception:
+                logging.exception("tltg_klipper_health: cannot check %s",
+                                  msgformat)
+            return command
+        lookup_watched._tltg_klipper_health = True
+        return lookup_watched
+    for name, lookup in lookups:
+        setattr(cls, name, wrap(lookup))
+    return True
+
+
 _PLAIN_VALUES = (str, int, float, bool, type(None))
 
 
@@ -344,6 +445,7 @@ class KlipperHealth:
         self.timer_baseline = None
         self.samples = collections.deque(maxlen=HISTORY)
         self.last_warning = {}
+        self.late_commands = {}
         self._next_cleanup = 0.
         self._next_report = None
         self._waketime = None
@@ -356,6 +458,9 @@ class KlipperHealth:
                                HOMING_TIMEOUT, HOMING_TIMEOUT):
             logging.info("tltg_klipper_health: Klipper's endstop layout is "
                          "not as expected; homing timeouts are not reported")
+        if not _watch_late_commands(getattr(mcu, "MCU", None)):
+            logging.info("tltg_klipper_health: Klipper's MCU commands are not "
+                         "as expected; late commands are not reported")
         if not _wrap_trsync(getattr(mcu, "MCU_trsync", None)):
             logging.info("tltg_klipper_health: Klipper's endstop sync is not "
                          "as expected; failed syncs do not report their "
@@ -491,6 +596,32 @@ class KlipperHealth:
         if detail:
             logging.info("tltg_klipper_health: %s", detail)
         self.gcode.respond_info(message)
+
+    # --------------------------------------------------------- late commands
+    def note_late_command(self, mcu_name, command, ahead, frame):
+        """Log a command sent with its clock past, or nearly, by `ahead`
+        seconds, and the Python calls that sent it from frame."""
+        eventtime = self.reactor.monotonic()
+        key = (mcu_name, command)
+        last, skipped = self.late_commands.get(key, (None, 0))
+        if last is not None and eventtime - last < LATE_COMMAND_REPEAT:
+            self.late_commands[key] = (last, skipped + 1)
+            return
+        self.late_commands[key] = (eventtime, 0)
+        calls = traceback.StackSummary.extract(
+            traceback.walk_stack(frame), limit=LATE_COMMAND_STACK,
+            lookup_lines=False)
+        if ahead < 0.:
+            timing = "%.1f ms late" % (-ahead * 1000.,)
+        else:
+            timing = "only %.1f ms ahead" % (ahead * 1000.,)
+        logging.warning(
+            "tltg_klipper_health: late MCU command: %s on '%s' %s when sent"
+            "%s; called from %s", command, mcu_name, timing,
+            " (%d more since the last report)" % (skipped,) if skipped else "",
+            " < ".join("%s:%d %s" % (os.path.basename(call.filename),
+                                     call.lineno, call.name)
+                       for call in calls) or "unknown")
 
     def get_status(self, eventtime=None):
         """Live figures for Fluidd's System Utilization charts: the timer

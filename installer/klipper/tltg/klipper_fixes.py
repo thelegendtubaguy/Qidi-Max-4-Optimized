@@ -1,11 +1,12 @@
-# Upstream Klipper fixes and main-loop savings for Valve Oil.
+# Upstream Klipper fixes, a stepper enable fix, and main-loop savings for
+# Valve Oil.
 #
 # QIDI's Klipper is upstream Klipper from August 2024 with QIDI's changes.
 # Upstream has since fixed bugs in code QIDI left as it was. This module
-# applies those fixes, and two cheaper versions of main-loop code, to QIDI's
-# classes when Klipper loads it, each only when the function it replaces is
-# exactly the one it was written for; otherwise that change is skipped and
-# klippy.log says so.
+# applies those fixes, a fix for QIDI's own early stepper enable, and two
+# cheaper versions of main-loop code, to QIDI's classes when Klipper loads
+# it, each only when the function it replaces is exactly the one it was
+# written for; otherwise that change is skipped and klippy.log says so.
 #
 # - Homing endstop sync (upstream 8e6e467eb): MCU_trsync.start scheduled
 #   the trsync start and timeout messages for the time they take effect
@@ -39,6 +40,15 @@
 #   (most gcode_macro objects), and runs QIDI's nested comparison of
 #   multi_color_controller only on values that differ. Moonraker receives
 #   the same updates.
+# - Stepper enables (QIDI's Max 4 Klipper): QIDI enables a stepper 0.3 s
+#   before its first move so the motor locks first, but a move after the
+#   stepper was disabled, such as the first X/Y homing move, can start only
+#   about 0.16 s ahead of the MCU. The enable was then scheduled in the past
+#   and reached the MCU late, which QIDI's mainboard logs as "Timer too
+#   close". The enable now goes no earlier than 20 ms after the MCU's
+#   current time and the enable pin's previous change, and no later than
+#   the move; an enable 0.3 s early that is still ahead of those is
+#   unchanged. Klipper that enables at the move needs no change.
 
 import gc
 import hashlib
@@ -49,13 +59,22 @@ import mcu
 import reactor
 import serialhdl
 import webhooks
-from . import heaters, tmc
+from . import heaters, stepper_enable, tmc
 
 MARKER = "_tltg_klipper_fixes"
 MAX_MAINTHREAD_TIME = 5.
 QUELL_STALE_TIME = 7.
 MAINTHREAD_INTERVAL = 1.
 NO_COMMUNICATION = "No communication with MCU"
+# How far ahead of its MCU's current time a stepper enable is scheduled, at
+# least, so that it reaches the MCU before its time. The enable goes out on
+# its pin's own command queue as soon as it is queued, ahead of the move's
+# step messages, whose times are later, and the mainboard link's round trip
+# is about 1 ms; 20 ms leaves room for the serial thread to be scheduled on
+# a busy host and for clock estimate error. On the Max 4, the first homing
+# move after X/Y are disabled starts about 160 ms ahead of the MCU, so the
+# motor still locks about 140 ms before it moves.
+ENABLE_MARGIN = 0.020
 
 # SHA-256 of each replaced function's source, line endings removed, as
 # shipped in QIDI firmware 01.01.07.01.
@@ -86,6 +105,8 @@ ORIGINALS = {
         "0ea257db086cd06aec86e30638ceda91ec100882268aa6a2b601e28f3f5cee02",
     "QueryStatusHelper._do_query":
         "9a74a0b5a7e416c0e682a081c2ba3103364397edb0d40cfad3dddbae166bd2e1",
+    "EnableTracking.motor_enable":
+        "4c98062e7e62f23b182fa789a31cbd28994d0d91dacc4ddb429d9ba08301eeee",
 }
 
 
@@ -244,6 +265,46 @@ def _handle_stepper_enable(self, print_time, is_enable):
             else:
                 self._do_disable(print_time)
     self.printer.get_reactor().register_callback(enable_disable)
+
+
+# --------------------------------------------------------- stepper enables
+def _enable_time(tracking, print_time):
+    """When to enable a stepper whose first step is at print_time: QIDI's
+    ENABLE_DELAY_TIME before it, but no earlier than ENABLE_MARGIN after
+    both the stepper MCU's current time and the enable pin's last scheduled
+    change, and no later than the step. Klipper holds a pin command until
+    the pin's previous change is due, so one scheduled before that change
+    reaches the MCU late too."""
+    early = max(0., print_time - stepper_enable.ENABLE_DELAY_TIME)
+    stepper_mcu = tracking.stepper.get_mcu()
+    earliest = stepper_mcu.estimated_print_time(
+        stepper_mcu.get_printer().get_reactor().monotonic())
+    pin = getattr(tracking.enable, "mcu_enable", None)
+    last_clock = getattr(pin, "_last_clock", 0)
+    if last_clock:
+        earliest = max(earliest,
+                       pin.get_mcu().clock_to_print_time(last_clock))
+    return min(print_time, max(early, earliest + ENABLE_MARGIN))
+
+
+def _fix_stepper_enable():
+    if not hasattr(stepper_enable, "ENABLE_DELAY_TIME"):
+        # This Klipper enables steppers at the move, as upstream does.
+        return None
+    return _replace(stepper_enable.EnableTracking, "motor_enable",
+                    "EnableTracking.motor_enable", _motor_enable)
+
+
+def _motor_enable(self, print_time):
+    if not self.is_enabled:
+        # Enable ahead of the move, so the motor locks before it moves.
+        enable_time = _enable_time(self, print_time)
+        for cb in self.callbacks:
+            cb(enable_time, True)
+        self.enable.set_enable(enable_time)
+        self.is_enabled = True
+        logging.info("ENABLE delay: stepper=%s enable=%.6f move=%.6f",
+                     self.stepper.get_name(), enable_time, print_time)
 
 
 # ----------------------------------------------------------------- heaters
@@ -434,6 +495,7 @@ class KlipperFixes:
             ("status update pass", lambda: _replace(
                 webhooks.QueryStatusHelper, "_do_query",
                 "QueryStatusHelper._do_query", _do_query)),
+            ("stepper enable timing", _fix_stepper_enable),
         ]
         applied, skipped = [], []
         for name, fix in fixes:
@@ -442,6 +504,9 @@ class KlipperFixes:
             except Exception:
                 logging.exception("tltg_klipper_fixes: %s failed", name)
                 ok = False
+            if ok is None:
+                # Not needed on this Klipper.
+                continue
             (applied if ok else skipped).append(name)
         self.mainthread_check = "heater main-loop check" in applied
         logging.info("tltg_klipper_fixes: applied %s", ", ".join(applied)
