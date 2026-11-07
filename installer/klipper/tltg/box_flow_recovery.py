@@ -37,6 +37,13 @@
 # print. T_MANAGER now runs only while a print is running or paused; otherwise
 # it says to load the slot instead.
 #
+# Relative positioning left over from an earlier command, such as G91 from a
+# script that stopped with an error before its G90, sent QIDI's flows'
+# absolute moves off the bed: MOVE_TO_TRASH, which sets no G90, failed with "Move out
+# of range" on every BOX_HEAT until Klipper restarted. A flow started or
+# retried while no print is running or paused now switches to absolute
+# positioning first, as G90 does; a print keeps its own.
+#
 # During a print, T_MANAGER runs its steps itself and reports them as flow 13.
 # A step that fails pauses that flow (box_extras._pause_print_retry_flow) and
 # sends PAUSE, and RESUME's TRY_RESUME_PRINT redoes the tool change from the
@@ -176,6 +183,11 @@ class BoxFlowRecovery:
     def _wrap_flow_runner(self, original):
         def run(*args, **kwargs):
             try:
+                self._absolute_positioning()
+            except Exception:
+                logging.exception("tltg_box_flow_recovery: switching to "
+                                  "absolute positioning failed")
+            try:
                 return original(*args, **kwargs)
             except Exception as e:
                 try:
@@ -185,6 +197,16 @@ class BoxFlowRecovery:
                                       "flow after a step error failed")
                 raise
         return run
+
+    def _absolute_positioning(self):
+        if self._print_state() in ("printing", "paused"):
+            return
+        gcode_move = self.printer.lookup_object("gcode_move", None)
+        if gcode_move is None or getattr(gcode_move, "absolute_coord", True):
+            return
+        gcode_move.absolute_coord = True
+        logging.info("tltg_box_flow_recovery: relative positioning was on; "
+                     "switched to absolute for the Box flow")
 
     def _pause_after_error(self, error):
         task = self._task()
