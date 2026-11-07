@@ -50,7 +50,7 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 
 | What | Change |
 |---|---|
-| `~/tltg-optimized-macros/` | The installer, `restore.sh`, `auto-update.sh`, and `box-firmware.sh`. |
+| `~/tltg-optimized-macros/` | The installer, `restore.sh`, `auto-update.sh`, `box-firmware.sh`, and `mainboard-firmware.sh`. |
 | `/etc/systemd/system/tltg-optimized-auto-update.{service,timer}` | Only if you turn on [automatic updates](install.md#automatic-updates). |
 | `~/printer_data/logs/tltg_box485.log`, `tltg_box485_report.json`, and `~/printer_data/.tltg_box485_salt` | Written only when [RS-485 Box hardware](qidi-box.md#rs-485-boxes) is detected or `TLTG_RS_BOX_REPORT` runs. The salt keeps the codes that replace hardware ids the same on this printer. |
 | DNS, package sources, `xl2tpd`, `bluetooth`, `usbdevice.service` ([ADB](install.md#adb)), `algo_app`, `rockchip.service`, touchscreen images | The [OS optimizations](install.md#os-optimizations), which every install and update applies; `algo_app` only if you turn off AI detection. |

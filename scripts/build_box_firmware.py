@@ -19,25 +19,29 @@ def load_manifest(path: Path = PATCH_MANIFEST) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def patch_box(stock: bytes, manifest: dict) -> bytes:
-    box = manifest["box"]
-    if len(stock) != box["size"] or sha256(stock) != box["stock_sha256"]:
-        raise ValueError("Unrecognized stock Box image; no patch applied")
+def apply_patches(stock: bytes, spec: dict, label: str) -> bytes:
+    """Apply a manifest's hash-locked patches to the pinned stock image."""
+    if len(stock) != spec["size"] or sha256(stock) != spec["stock_sha256"]:
+        raise ValueError(f"Unrecognized stock {label} image; no patch applied")
     patched = bytearray(stock)
-    for patch in box["patches"]:
+    for patch in spec["patches"]:
         offset = int(patch["offset"], 0)
         after = bytes.fromhex(patch["after"])
         current = stock[offset:offset + len(after)]
         if "before" in patch:
             before = bytes.fromhex(patch["before"])
             if len(before) != len(after) or current != before:
-                raise ValueError(f"Box preimage mismatch at {patch['offset']}")
+                raise ValueError(f"{label} preimage mismatch at {patch['offset']}")
         elif sha256(current) != patch["before_sha256"]:
-            raise ValueError(f"Box preimage mismatch at {patch['offset']}")
+            raise ValueError(f"{label} preimage mismatch at {patch['offset']}")
         patched[offset:offset + len(after)] = after
-    if sha256(patched) != box["patched_sha256"]:
-        raise ValueError("Patched Box checksum mismatch; no image generated")
+    if sha256(patched) != spec["patched_sha256"]:
+        raise ValueError(f"Patched {label} checksum mismatch; no image generated")
     return bytes(patched)
+
+
+def patch_box(stock: bytes, manifest: dict) -> bytes:
+    return apply_patches(stock, manifest["box"], "Box")
 
 
 def main() -> int:
