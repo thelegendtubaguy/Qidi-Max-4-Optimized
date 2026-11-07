@@ -50,3 +50,26 @@ TLTG_FILAMENT_SENSOR ENABLE=1
 The console shows when the toolhead sensor trips and whether it will pause.
 
 ![Filament sensor console output](../.github/images/tltg-filament-sensor-console.png)
+
+## X/Y step-loss monitor
+
+On the Max 4, X and Y are driven by QIDI's closed-loop motors. Each has an encoder and knows how far it is behind where it was told to be, but nothing in QIDI's software asks. When a motor slips, for example when the toolhead hits a curled part or the belt binds, the motor stays behind, and the rest of the print is shifted. The motor doesn't move back, and the printer doesn't notice.
+
+The step-loss monitor asks both motors how far behind they are several times a second and pauses the print when one slips. It's **off by default**; turn it on from Fluidd's console:
+
+```gcode
+SAVE_VARIABLE VARIABLE=tltg_step_loss_monitor VALUE=1
+```
+
+Set it back to `0` to turn it off. Both take effect without a restart.
+
+**What it does:**
+
+- It runs while X and Y are homed and their motors are on. It records where each motor stands after every X/Y home and checks each motor about twice a second.
+- When a motor slips during a print, the print pauses. The console shows `!! The stepper_x motor slipped 14 step cycles (10.9 mm of belt): the toolhead is no longer where Klipper thinks it is. Home X and Y before moving it again. The print is paused.`, and Fluidd's red warning banner shows how far each motor has slipped in total since X and Y were homed.
+- A slip with no print running shows the same message without pausing.
+- The warning stays until X and Y are homed again. Klipper's position is wrong after a slip, so don't resume a paused print unless a shifted layer doesn't matter; cancel it and home instead.
+
+**How it tells a slip from normal motion:** a motor that slips falls behind by whole steps of 4 motor steps, 0.78 mm of belt each, and stays there. Normal printing moves leave a motor at most about 0.1 mm behind, and it catches up once the move ends. The monitor reports a slip once a motor is three quarters of a step cycle (0.59 mm of belt) away from where it stood after homing, on two checks in a row. A slip of less than one step cycle isn't detected.
+
+Each motor answers in about 60 ms, a delay in the mainboard's firmware, so a slip is reported up to about a second after it happens. The monitor only asks the motors for their position; it doesn't change any motor setting. Printers without QIDI's closed-loop X/Y motors, such as the Plus 5, aren't affected.

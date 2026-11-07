@@ -68,12 +68,14 @@ The installer first asks whether to flash a fix for the toolhead board's acceler
 - The real error instead of a bare `MCU shutdown`.
 - Fewer Boxes dropping with `Lost communication with MCU 'mcu_boxN'`.
 - Multi-plate 3MF files print the right plate from Fluidd, reprints, and the job queue.
+- On the Max 4, a top speed that keeps the X/Y motors from skipping on fast diagonal moves.
 
 [All fixes →](docs/fixes.md)
 
 ### Tools
 - A guided nozzle load-cell check, probe accuracy, and bed screw helpers.
 - A switch to stop the external spool's runout sensor from pausing prints.
+- On the Max 4, an optional monitor that pauses the print when an X or Y motor slips.
 
 [Tools →](docs/tools.md)
 

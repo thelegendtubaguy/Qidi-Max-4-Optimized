@@ -202,6 +202,7 @@ def parse_manifest(raw: Any) -> Manifest:
                 )
                 for variant in _require_list_of_mapping(item, "variants")
             ),
+            maximum=_optional_patch_maximum(item, patch_id),
         )
         if patch.target_tuple in seen_targets:
             raise ManifestValidationError(
@@ -722,6 +723,22 @@ def _require_str(mapping: dict[str, Any], key: str) -> str:
     if not isinstance(value, str) or not value:
         raise ManifestValidationError(f"Expected non-empty string at {key}.")
     return value
+
+
+def _optional_patch_maximum(item: dict[str, Any], patch_id: str) -> float | None:
+    if "maximum" not in item:
+        return None
+    try:
+        maximum = float(_require_str(item, "maximum"))
+        desired = [float(_require_str(variant, "desired"))
+                   for variant in _require_list_of_mapping(item, "variants")]
+    except ValueError:
+        raise ManifestValidationError(
+            f"Patch {patch_id} maximum and desired values must be numbers.")
+    if any(value > maximum for value in desired):
+        raise ManifestValidationError(
+            f"Patch {patch_id} desired value is above its maximum.")
+    return maximum
 
 
 def _require_int(mapping: dict[str, Any], key: str) -> int:

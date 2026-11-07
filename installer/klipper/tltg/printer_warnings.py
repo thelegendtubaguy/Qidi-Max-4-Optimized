@@ -3,7 +3,8 @@
 # Publishes the problems an operator should fix before printing as Klipper
 # status, so Fluidd shows them on every page until they are gone, and the
 # optimized macros print the same text in the console at startup and after
-# every home:
+# every home. Problems: a missing input shaper calibration, and an X/Y motor
+# slip reported by tltg_step_loss_monitor (until X and Y are homed again):
 #
 #   warnings  a list of {"id", "level", "title", "message"}, with level
 #             "warning" or "error"; empty when nothing is wrong
@@ -51,9 +52,21 @@ class PrinterWarnings:
                        " and " + limit,
         }]
 
+    def _step_loss(self):
+        monitor = self.printer.lookup_object("tltg_step_loss_monitor", None)
+        message = getattr(monitor, "message", None)
+        if not message:
+            return []
+        return [{
+            "id": "xy_step_loss",
+            "level": "error",
+            "title": "X/Y lost position.",
+            "message": message,
+        }]
+
     def get_status(self, eventtime=None):
         try:
-            warnings = self._input_shaper()
+            warnings = self._step_loss() + self._input_shaper()
         except Exception:
             if not self.failed:
                 logging.exception("tltg_printer_warnings: check failed")

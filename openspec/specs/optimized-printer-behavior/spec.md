@@ -662,6 +662,49 @@ The optional QIDI Box link monitor SHALL stay inert until its saved variable ena
 - **WHEN** the monitor's saved variable is absent or false
 - **THEN** no monitor log is written and printing is unaffected
 
+### Requirement: X/Y top speed within each motor's limit
+On the Max 4, the toolhead top speed SHALL keep every CoreXY motor at or below 800 mm/s of belt in any direction: `max_velocity`, Z tilt `speed`, and bed mesh `speed` SHALL be at most 565 mm/s, optimized macros and guarded speed patches SHALL not move X/Y faster than that, and `SET_VELOCITY_LIMIT VELOCITY=` SHALL not raise the limit above the configured `max_velocity`.
+
+#### Scenario: Top speed and probing travel are capped
+- **WHEN** install or update finds `max_velocity` at QIDI's 800, Z tilt or bed mesh `speed` at QIDI's 150 or this project's earlier 600, or any of them above 565, including an operator's own value
+- **THEN** each becomes 565
+- **AND** uninstall restores the value each had before install
+
+#### Scenario: Lower operator speeds are kept
+- **WHEN** an operator's `max_velocity`, Z tilt `speed`, or bed mesh `speed` is at or below 565 and differs from QIDI's and this project's values
+- **THEN** install and update leave it unchanged
+
+#### Scenario: A higher velocity request is lowered
+- **WHEN** a slicer, macro, or console command sets `SET_VELOCITY_LIMIT VELOCITY=` above the configured `max_velocity`, including through QIDI's `M203`
+- **THEN** the limit becomes the configured `max_velocity` and the console says so
+- **AND** a request at or below it, and requests that set only acceleration or corner velocity, are applied unchanged
+
+### Requirement: Optional X/Y step-loss monitor
+The optional X/Y step-loss monitor SHALL stay inert until its saved variable enables it, and on printers without QIDI's closed-loop X/Y drivers. While enabled, it SHALL report an X or Y motor slip from the drivers' position error, measured against a baseline taken after each home, and SHALL send the drivers nothing but the position-error query.
+
+#### Scenario: Only position-error queries, one at a time
+- **WHEN** the monitor is enabled and X and Y are homed with their motors on, outside homing and driver firmware upgrades
+- **THEN** it sends each driver only the position-error query, through QIDI's closed-loop interface queue, with at most one of its requests outstanding
+- **AND** it takes each motor's baseline from a read at rest after every X/Y home and after `RESET_MOTOR_POSITION_ERROR`
+
+#### Scenario: Slip during a print
+- **WHEN** the monitor is enabled during a print and a motor's position error is at least three quarters of an electrical cycle (768 of 1024 counts) from its baseline on two consecutive reads
+- **THEN** the print pauses
+- **AND** the console and Fluidd's warning banner name the motor and the slip in whole electrical cycles and millimeters of belt
+- **AND** the warning stays until X and Y have both been homed since the slip
+
+#### Scenario: Slip outside a print
+- **WHEN** the same slip occurs with no print running
+- **THEN** the console and warning banner report it and nothing pauses
+
+#### Scenario: Motion, single spikes, and homing offsets are not slips
+- **WHEN** a motor's position error swings during motion and returns, exceeds the threshold on a single read, or takes a new whole-cycle offset from an X/Y home or `RESET_MOTOR_POSITION_ERROR`
+- **THEN** no slip is reported and the print continues
+
+#### Scenario: Disabled or unsupported monitor sends nothing
+- **WHEN** the saved variable is absent or false, X or Y is not homed, or the printer has no QIDI closed-loop X/Y drivers
+- **THEN** the monitor sends nothing to the drivers
+
 ### Requirement: QIDI RS-485 device evidence
 The optimized configuration SHALL detect QIDI RS-485 Boxes, buffers, and racks, and evidence that one was attached, without changing how QIDI's code talks to them. Once detected, it SHALL record RS-485 frames in both directions, QIDI's RS-485 log lines, and status changes outside `klippy.log`, keep a shareable report current, and ask once per Klipper start for an issue. Chip ids and USB serial numbers SHALL be salted hashes. `TLTG_RS_BOX_REPORT` SHALL write the report on demand.
 

@@ -527,7 +527,8 @@ def _execute_install(
                     file=result.file,
                     section=result.section,
                     option=result.option,
-                    expected=_preserve_prior_expected(result, prior_state),
+                    expected=result.ledger_expected
+                    or _preserve_prior_expected(result, prior_state),
                     desired=result.desired,
                     install_result=result.classification,
                 )

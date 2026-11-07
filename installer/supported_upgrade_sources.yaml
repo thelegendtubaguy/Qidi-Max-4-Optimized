@@ -34,6 +34,9 @@ allowed_patch_targets:
   section: homing_override
   option: __section__
 - file: config/printer.cfg
+  section: printer
+  option: max_velocity
+- file: config/printer.cfg
   section: z_tilt
   option: speed
 - file: config/printer.cfg
