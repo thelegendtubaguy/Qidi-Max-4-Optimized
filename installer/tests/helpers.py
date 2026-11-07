@@ -177,6 +177,7 @@ def fake_system_root(
         spoolman = moonraker.parent.parent / "spoolman.py"
         spoolman.write_bytes((REPO_ROOT / "installer/tests/fixtures/moonraker_spoolman.py").read_bytes().replace(b"\n", b"\r\n"))
         (root / "home/qidi/moonraker-env/lib/python3.9/site-packages").mkdir(parents=True)
+        (root / "home/qidi/klippy-env/lib/python3.9/site-packages").mkdir(parents=True)
     (root / "mounts").mkdir()
     (root / "mounts/root.options").write_text("rw,relatime,sync\n", encoding="utf-8")
     return root

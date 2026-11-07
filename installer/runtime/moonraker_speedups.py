@@ -31,6 +31,14 @@ RESTART_SERVICE = "moonraker.service"
 # Package-created path files start with a marker line so later package versions replace earlier ones.
 PATH_MARKER = "# tltg-optimized:moonraker-speedups\n"
 PATH_CONTENT = PATH_MARKER + f"{DESTINATION}\n"
+# Klipper's tltg_klipper_fixes encodes the status it sends Moonraker with msgspec when it can import it. A second path
+# file adds the same directory to QIDI's Klipper virtualenv, also Python 3.9; Klipper doesn't use uvloop.
+KLIPPER_PATH_OPERATION = "klipper_speedups_path"
+KLIPPER_SITE_PACKAGES = "/home/qidi/klippy-env/lib/python3.9/site-packages"
+KLIPPER_PATH_FILE = f"{KLIPPER_SITE_PACKAGES}/tltg-klipper-speedups.pth"
+KLIPPER_RESTART_SERVICE = "klipper.service"
+KLIPPER_PATH_MARKER = "# tltg-optimized:klipper-speedups\n"
+KLIPPER_PATH_CONTENT = KLIPPER_PATH_MARKER + f"{DESTINATION}\n"
 MAX_ENTRIES = 4096
 MAX_BYTES = 64 * 1024 * 1024
 
@@ -48,6 +56,12 @@ def patch_path_file(current: str) -> str:
     if current == "" or current.startswith(PATH_MARKER):
         return PATH_CONTENT
     raise InstallerError(f"Existing {PATH_FILE} is unrecognized and was preserved.")
+
+
+def patch_klipper_path_file(current: str) -> str:
+    if current == "" or current.startswith(KLIPPER_PATH_MARKER):
+        return KLIPPER_PATH_CONTENT
+    raise InstallerError(f"Existing {KLIPPER_PATH_FILE} is unrecognized and was preserved.")
 
 
 def digest(sha256s: Iterable[str]) -> str:

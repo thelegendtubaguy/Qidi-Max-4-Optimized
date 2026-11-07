@@ -291,6 +291,23 @@ class TimerTest(unittest.TestCase):
         self.assertEqual((due.waketime, idle.waketime, reactor._next_timer), (30., 15., 15.))
 
 
+class StatusEncodingTest(unittest.TestCase):
+    """Updates msgspec can't encode still reach Moonraker instead of
+    shutting Klipper down."""
+
+    def test_updates_msgspec_rejects_go_out_as_json(self) -> None:
+        def reject(data):
+            raise TypeError("dict keys must be strings")
+        saved = klipper_fixes._msgspec_encode
+        self.addCleanup(setattr, klipper_fixes, "_msgspec_encode", saved)
+        klipper_fixes._msgspec_encode = reject
+        connection = types.SimpleNamespace(send_buffer=b"", is_blocking=True)
+
+        klipper_fixes._client_send(connection, {None: 1, "temperature": 21.5})
+
+        self.assertEqual(connection.send_buffer, b'{"null":1,"temperature":21.5}\x03')
+
+
 class StatusUpdateTest(unittest.TestCase):
     """Moonraker's once-a-second update carries only what changed."""
 
