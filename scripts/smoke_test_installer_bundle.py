@@ -193,7 +193,7 @@ def main(argv: list[str] | None = None) -> int:
                          "box_heater_refresh", "klipper_health", "macro_status", "printer_warnings", "klipper_fixes", "save_variables_fast",
                          "box_feed_motion", "box_eject", "box_filament_guard", "box_loaded_slot",
                          "box_slot_jog", "box_flow_recovery",
-                         "box485_monitor", "spoolman", "probe_test", "chamber_exhaust_guard")
+                         "box485_monitor", "spoolman", "probe_test", "chamber_exhaust_guard", "step_loss_monitor", "velocity_limit")
         }
         for module_target, module_source in module_targets.items():
             if not module_target.is_file():

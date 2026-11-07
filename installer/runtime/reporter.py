@@ -843,7 +843,7 @@ def install_patch_intent_rows(patch_results: tuple[PatchResult, ...]) -> tuple[s
     for item in patch_results:
         if item.classification == INSTALL_APPLIED:
             rows.append(
-                f"would apply {item.id} | {item.file} | [{item.section}] | {item.option} | {item.expected} -> {item.desired}"
+                f"would apply {item.id} | {item.file} | [{item.section}] | {item.option} | {item.current} -> {item.desired}"
             )
             continue
         if item.classification == INSTALL_NOOP_DESIRED:

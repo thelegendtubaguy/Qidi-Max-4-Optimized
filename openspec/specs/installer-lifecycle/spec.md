@@ -68,6 +68,11 @@ Install, reinstall, restore, and uninstall SHALL execute as serialized, idle-pri
 - **AND** installed state is committed only after postflight verifies the resulting files and ownership ledger
 - **AND** failure restores preimages or records a recovery blocker when compensation cannot complete
 
+#### Scenario: Guarded values above a declared maximum are lowered
+- **WHEN** a guarded option patch declares a maximum and its live value is a number above it, including a value the operator set
+- **THEN** install and update set it to the patch's desired value and record the live value as the value uninstall restores
+- **AND** a value at or below the maximum that matches neither the stock nor a prior-managed value is preserved as user-modified
+
 #### Scenario: Uninstall respects ownership
 - **WHEN** uninstall processes a valid ownership ledger
 - **THEN** only unchanged installer-owned state is reverted

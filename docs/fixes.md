@@ -63,6 +63,12 @@ On the Max 4, QIDI's Klipper turns a motor on 0.3 seconds before it moves, so th
 
 A few `Timer too close` lines during prints have no known cause yet. When Klipper sends a board a command, such as a pin or fan change, whose time has already passed or is under 5 ms away, `klippy.log` gets a `late MCU command` warning naming the board, the command, how late it was, and the Klipper code that sent it, at most once every 10 seconds for each command. Please include those lines when reporting a problem.
 
+## X/Y motors skipping at top speed
+
+QIDI sets the Max 4's top speed to 800 mm/s, but that limit applies to the toolhead, not to each motor. The Max 4 is a CoreXY: a diagonal move turns one X/Y motor up to 1.41 times as fast as the toolhead moves, so at 800 mm/s one motor's belt runs at about 1130 mm/s. On the test printer, back-and-forth diagonals at 800 mm/s and 30000 mm/s² made the X motor skip about 60 mm of belt, loudly, and the printer didn't notice. At 500 mm/s, where the motor's belt runs at about 710 mm/s, nothing skipped.
+
+The top speed is now 565 mm/s, which keeps every motor at or below 800 mm/s of belt in any direction. Moves between bed mesh and leveling points, and this project's fastest travel moves, run at 565 mm/s instead of 600 and 750. A slicer or command that sets a higher speed with `SET_VELOCITY_LIMIT VELOCITY=` or `M203` gets 565 mm/s and a console note, as QIDI's Klipper already does for acceleration. The slicer's own speeds, up to 500 mm/s travel in QIDI's Max 4 profile, are unchanged. Install and update lower any `max_velocity`, bed mesh `speed`, or Z-tilt `speed` in `printer.cfg` above 565 to 565, including ones you set yourself; lower values are kept, and uninstall puts back the values you had. The [X/Y step-loss monitor](tools.md#xy-step-loss-monitor) can tell you if a motor skips anyway.
+
 ## Unknown Box filaments shutting Klipper down
 
 Loading a slot whose saved filament isn't in QIDI's list no longer shuts Klipper down. See [QIDI Box](qidi-box.md#filaments-missing-from-qidis-list).
