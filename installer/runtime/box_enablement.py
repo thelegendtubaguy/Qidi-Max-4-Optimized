@@ -146,7 +146,7 @@ BOX_MOTION_DEFAULTS = {
     "tltg_box_load_approach_speed": "15",
     "tltg_box_unload_speed_1": "65",
     "tltg_box_unload_speed_2": "85",
-    "tltg_box_unload_extruder_length": "70",
+    "tltg_box_unload_extruder_length": "55",
 }
 # Settings earlier releases saved as defaults, in groups. Update moves a group
 # the operator left at those values to the current defaults; a group with any

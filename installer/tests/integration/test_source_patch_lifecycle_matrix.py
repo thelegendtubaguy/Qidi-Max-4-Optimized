@@ -255,7 +255,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             ("tltg_box_load_fast_speed_2", "65"),
             ("tltg_box_unload_speed_1", "115"),
             ("tltg_box_unload_speed_2", "90"),
-            ("tltg_box_unload_extruder_length", "70"),
+            ("tltg_box_unload_extruder_length", "55"),
         ):
             self.assertEqual(klipper_cfg.resolve_unique_option(saved_variables, "Variables", name).value, value)
         self.assertNotIn("tltg_box_load_fast_length =", saved_variables)
