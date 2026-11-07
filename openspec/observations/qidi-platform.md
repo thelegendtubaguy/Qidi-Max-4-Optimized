@@ -91,8 +91,8 @@ Comparisons in this section are against Max 4 firmware `01.01.07.01`, released t
   - `stepper_enable.py`: enables steppers at the move's print time, without Max 4's `ENABLE_DELAY_TIME` of 0.3 s early enable and its `ENABLE delay` log line.
   - `spi_temperature.py`: `MAX6675_MULT` is `0.25 * 1.03`, commented as reading 3% higher so the actual temperature is lower.
   - `neopixel.py`: the `FLOW` effect uses green `100` instead of `50`.
-  - `box_stepper.so` (SHA-256 `fc20d82a58b740c0d5e23a4043c23f3d2b9dcb386e72cda4e4619292331f6589`): adds Cython locals `extruder_load_length_2` and `extruder_load_length_3`, each with `_speed` and `_accel` variants. **Unresolved:** the load behavior they implement.
-  - `box_extras.so` (SHA-256 `e668d661600c4bbb737850a28e5c935adb5fe7ffc98eb93a16f5521402ae2871`): same size and readable string set as the Max 4 binary, different code. **Unresolved:** what changed.
+  - `box_stepper.so` (SHA-256 `fc20d82a58b740c0d5e23a4043c23f3d2b9dcb386e72cda4e4619292331f6589`): replaces the multi-step Box load and unload homes with single moves; see `qidi-box/hardware-and-protocols.md`, QIDI Plus 5 `box_extras` and `box_stepper`.
+  - `box_extras.so` (SHA-256 `e668d661600c4bbb737850a28e5c935adb5fe7ffc98eb93a16f5521402ae2871`): same code as the Max 4 binary except the X positions in the `CLEAR_OOZE` and `CLEAR_FLUSH` wipes; see the same section.
 - **Config-confirmed:** `config/printer.cfg` against Max 4 `01.01.07.01`:
   - X and Y are open loop. There is no `[cl_interface]` or `[closed_loop x|y]`. X and Y use `[tmc2240 stepper_x|y]` over software SPI (`PA5`/`PA6`/`PA7`, chip selects `PD2` and `PC12`) at `run_current: 1.07`, `stealthchop_threshold: 0`, and `driver_SGT: 1`. Endstops are sensorless (`tmc2240_stepper_x:virtual_endstop`, `tmc2240_stepper_y:virtual_endstop`) with `homing_retract_dist: 0`.
   - Travel: X `-7` to `326` (endstop `325`, positive), Y `-5` to `340` (endstop `-3`), Z max `310` with `position_endstop_reverse: 300`.

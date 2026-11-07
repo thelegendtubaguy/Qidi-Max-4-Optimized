@@ -20,9 +20,11 @@ import math
 import os
 import re
 
-# Named box_stepper.so builds, for reporting only: any QIDI Box code with the
-# multi-step home methods is wrapped, and each call must still match the
-# traced argument shape and look plausible before it is changed.
+# box_stepper.so builds this module wraps; each call must still match the
+# traced argument shape and look plausible before it is changed. Other builds
+# are left alone: the Plus 5's (01.01.02.01) keeps the multi-step methods but
+# loads and unloads through single do_home moves, so wrapping it would report
+# settings that never apply.
 KNOWN_BUILDS = {
     "58ee8c61bffc3d4e18edc9e56a326495b6a218348bbfb13f7a012a946039b0a5":
         "01.01.07.01",
@@ -337,9 +339,14 @@ class BoxFeedMotion:
                             "box_stepper.so")
         try:
             digest = _hash_file(path)
-            build = KNOWN_BUILDS.get(digest, "box_stepper.so %s" % (digest[:12],))
         except OSError:
-            build = "box_stepper"
+            self._set_status("inactive: QIDI's box_stepper.so not found")
+            return
+        build = KNOWN_BUILDS.get(digest)
+        if build is None:
+            self._set_status("inactive: box_stepper.so %s is not a QIDI Box "
+                             "build this module knows" % (digest[:12],))
+            return
         slots = {}
         for name, obj in self.printer.lookup_objects("box_stepper"):
             methods = [getattr(obj, attr, None) for attr in

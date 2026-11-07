@@ -30,6 +30,8 @@ Each Box's processor temperature shows in Fluidd's temperature card as **Box1 MC
 
 A load pushes filament fast for most of the way, then approaches slowly until the toolhead filament sensor trips. An unload has the extruder pull the filament back before the Box retracts it.
 
+These settings work on the Max 4 only. On the Plus 5, QIDI's Box code loads and unloads with different moves, so the settings stay off there and `TLTG_BOX_MOTION` reports them inactive.
+
 The installer saves this project's defaults, unless you've already saved any of these settings, in which case all of yours are kept. The fast and unload speeds match QIDI's; the shorter extruder pull-back and the faster approach save time. Earlier versions saved faster speeds, 120/100 mm/s for the fast push and 115/120 mm/s for the unload, and a 50 mm extruder pull-back. Updating lowers either speed pair to QIDI's speeds if both of its speeds are still at those values, raises a pull-back still at 50 mm to 55 mm, and keeps anything you've changed. Change them in Fluidd's QIDI Box card, or with `TLTG_BOX_MOTION` in the console. Run `TLTG_BOX_MOTION` with no parameters to see the current settings and each slot's profile.
 
 | Parameter | What it sets | This project | QIDI | Allowed |

@@ -190,6 +190,18 @@ Harnessed `slot_sync()` saved the owning stepper's slot name regardless of its `
 - Pushing the filament back into the inlet by hand ran the vendor's normal automatic slot load.
 - **Config-confirmed:** QIDI's `klippy/extras/stepper_enable.py` sets `ENABLE_DELAY_TIME = 0.300`. `motor_enable(print_time)` schedules the enable pin `0.3 s` before `print_time` and logs `ENABLE delay: stepper=<name> enable=<time> move=<time>`.
 
+## QIDI Plus 5 `box_extras` and `box_stepper`
+
+Plus 5 firmware `01.01.02.01` ships `box_extras.so` SHA-256 `e668d661600c4bbb737850a28e5c935adb5fe7ffc98eb93a16f5521402ae2871` and `box_stepper.so` SHA-256 `fc20d82a58b740c0d5e23a4043c23f3d2b9dcb386e72cda4e4619292331f6589`. The other Box modules (`multi_color_controller`, `box_device`, `box_protocol`, `box_rfid`, `box_autofeed`, `box_detect`) are byte-identical to Max 4 `01.01.07.01`. Comparisons below are against the Max 4 `01.01.07.01` builds, with both run in the arm64 Python 3.9 harness on the same inputs.
+
+- **Static-recovered:** `box_extras` has the same methods, instructions, and numeric constants; only two G-code strings differ.
+- **Harness-recovered:** across all 78 `BoxExtras` and `ToolChange` methods, only those strings change output. The `CLEAR_OOZE` wipe uses `X109`/`X95`/`X123`/`X110` instead of `X163`/`X145`/`X175`, and `CLEAR_FLUSH` moves to `X140` instead of `X180` before `MOVE_TO_TRASH`.
+- **Static-recovered:** in `box_stepper`, only `__init__`, `cmd_EXTRUDER_LOAD`, `cmd_EXTRUDER_UNLOAD`, `extruder_load_single_func`, `extruder_unload_single_func`, and `slot_unload_single_func` changed. The `multi_extruder_*` saved-variable keys are gone.
+- **Harness-recovered:** the second load stage is one `do_home` of 720 mm at 100 mm/s and acceleration 100 (`extruder_load_length_2` and its `_speed` and `_accel`). It replaces the 550/380/240 mm three-step home. Only if that move fails does a 250 mm move at 25 mm/s and acceleration 50 follow (`extruder_load_length_3`). The Box-only unload is one `do_home` of −1500 mm at 100 mm/s and acceleration 50 (`extruder_unload_length_1`). It replaces the −350/−1150 mm double-step home, and its retry also runs at 100 mm/s. `do_home_three_steps` and `do_home_double_steps` still exist but are never called.
+- **Harness-recovered:** an unload's second extruder retract defaults to `G1 E-100 F800` (`exl_2`), against `G1 E-120 F600`. Toolhead positions follow the smaller bed: `Y315`, `X315`, `Y120`, and shake moves over X/Y 95–225 and Y 315/160. The `*_single_func` load and unload methods now save `retry_step` on failure, as the `cmd_*` versions already did.
+- **Config-confirmed:** no Plus 5 config file sets any of these keys, so the defaults above apply.
+- **Unresolved:** live Box load and unload timing on a Plus 5, and what reads the new `retry_step` saves.
+
 ## Cleanup scripts
 
 `CLEAR_FLUSH`:

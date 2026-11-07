@@ -2,7 +2,7 @@
 
 - [x] 1.1 Record the operator reports from issue 190 in the Plus 5 observations.
 - [x] 1.2 Add `installer/stock/qidi-plus5-defaults/firmwares/01.01.02.01/` from `Qidi-Plus5-Defaults` `25001402`, and check it against the payload hashes.
-- [ ] 1.3 Compare Plus 5 and Max 4 `box_extras.so` and `box_stepper.so` in the vendor harness, covering every method a package Box module wraps or calls. Record the result in the QIDI Box observations.
+- [x] 1.3 Compare Plus 5 and Max 4 `box_extras.so` and `box_stepper.so` in the vendor harness, covering every method a package Box module wraps or calls. Record the result in the QIDI Box observations. Only `tltg_box_feed_motion` depended on the changed code; it now stays inactive on unlisted `box_stepper.so` builds.
 - [x] 1.4 Classify every guarded patch, source patch, and extra module for the Plus 5: applies unchanged, needs a Plus 5 variant, or Max 4-only. Draft the `01.01.02.01` variants.
 - [x] 1.5 Draft `installer/klipper/printers/plus5/` (`homing.cfg`, `nozzle_motion.cfg`, `printer_profile.cfg`) from QIDI's Plus 5 macros, with stock currents and dwells.
 - [x] 1.6 Split the start-print contract per printer (`start-print-plus5.path.json`), and draft the Plus 5 OrcaSlicer and QIDI Studio packs in `orcaslicer_gcode/plus5/` and `qidistudio_gcode/plus5/` from QIDI's Plus 5 profiles.
