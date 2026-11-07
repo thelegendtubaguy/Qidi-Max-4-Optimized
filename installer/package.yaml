@@ -564,10 +564,10 @@ system_optimizations:
     service_worker: /home/qidi/fluidd/sw.js
   # The project's Fluidd fork release; the bundle builder downloads and verifies it.
   fluidd_build:
-    version: v1.37.7-tltg-a7b8de5
-    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-a7b8de5/fluidd.zip
+    version: v1.37.7-tltg-c362c41
+    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-c362c41/fluidd.zip
     archive: system/fluidd.zip
-    sha256: f16ad17fcb3aa1e02de0bf55117158db65c1b135f906dbe4d5cf5e8f7721be0f
+    sha256: fb320f4901ea5a03856b792e7f331427ccdcdff59d466241917a29c4a8ce9e24
   # Wheels for QIDI's Moonraker virtualenv (Python 3.9, aarch64); the bundle builder downloads and verifies them.
   moonraker_speedups:
     wheels:
