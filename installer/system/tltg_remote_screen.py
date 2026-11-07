@@ -35,6 +35,9 @@ else:
 LISTEN_HOST = "127.0.0.1"
 LISTEN_PORT = 7130
 FRAMEBUFFER = "/dev/fb0"
+# A screen mounted on its side has a portrait framebuffer that QIDI's app draws its landscape UI into, as on the
+# Plus 5 (480x800). The card turns such frames this many degrees clockwise so the UI is upright.
+PORTRAIT_UI_ROTATION = 90
 POLL_INTERVAL = 0.1
 MIN_FRAME_INTERVAL = 0.12
 # Each poll compares every SAMPLE_STEP-th row, starting one row later each time.
@@ -88,6 +91,10 @@ class Framebuffer:
             if bpp != 32 or offsets not in ((16, 8, 0), (0, 8, 16)):
                 raise Unavailable(f"unsupported pixel format: {bpp} bpp, RGB offsets {offsets}")
             self.mode = "BGRX" if offsets == (16, 8, 0) else "RGBX"
+            self.rotation = PORTRAIT_UI_ROTATION if self.height > self.width else 0
+            turned = self.rotation in (90, 270)
+            self.display_width = self.height if turned else self.width
+            self.display_height = self.width if turned else self.height
             self.row_bytes = self.width * 4
             try:
                 self.stride = int(Path(f"/sys/class/graphics/{Path(path).name}/stride").read_text())
@@ -119,9 +126,22 @@ class Framebuffer:
 
     def encode(self, frame: bytes) -> bytes:
         image = Image.frombuffer("RGB", (self.width, self.height), frame, "raw", self.mode, self.stride, 1)
+        if self.rotation:
+            # Pillow's ROTATE_* turn counterclockwise.
+            image = image.transpose(getattr(Image.Transpose, f"ROTATE_{360 - self.rotation}"))
         out = io.BytesIO()
         image.save(out, "JPEG", quality=JPEG_QUALITY)
         return out.getvalue()
+
+    def to_framebuffer(self, x: int, y: int) -> tuple[int, int]:
+        """The framebuffer pixel under a point on the upright image the card shows."""
+        if self.rotation == 90:
+            return y, self.height - 1 - x
+        if self.rotation == 180:
+            return self.width - 1 - x, self.height - 1 - y
+        if self.rotation == 270:
+            return self.width - 1 - y, x
+        return x, y
 
     def close(self) -> None:
         self.map.close()
@@ -293,6 +313,7 @@ class Viewer:
             return
         if not isinstance(x, int) or not isinstance(y, int) or isinstance(x, bool) or isinstance(y, bool):
             return
+        x, y = self.server.framebuffer.to_framebuffer(x, y)
         if action == "down":
             await asyncio.sleep(max(0.0, touch.released_at + MIN_GAP - time.monotonic()))
             touch.press(self, x, y)
@@ -421,8 +442,8 @@ class ScreenServer:
             return
         await viewer.send_json({
             "type": "hello",
-            "width": self.framebuffer.width,
-            "height": self.framebuffer.height,
+            "width": self.framebuffer.display_width,
+            "height": self.framebuffer.display_height,
             "touch": self.touch is not None,
             "touch_error": self.touch_error,
         })

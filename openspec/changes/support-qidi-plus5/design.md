@@ -63,7 +63,7 @@ Evidence lives in `openspec/observations/qidi-platform.md` under QIDI Plus 5. In
 - Filament changes use QIDI's Plus 5 wipe.
 - They leave out the Max 4 OrcaSlicer pack's `M106 P4` polar-cooler line until the Plus 5 is known to have one.
 
-**D5. The screen card rotates in the service.** The service knows the framebuffer's geometry and the touchscreen's axis ranges. A portrait framebuffer on a printer whose UI is landscape is rotated before encoding. Taps are mapped back through the same rotation, and the touchscreen's own axis ranges decide whether the touch coordinates are portrait or landscape. The rotation direction is a per-printer fact recorded once it is observed.
+**D5. The screen card rotates in the service.** The service knows the framebuffer's geometry and the touchscreen's axis ranges. A portrait framebuffer on a printer whose UI is landscape is rotated before encoding. Taps are mapped back through the same rotation, and the touchscreen's own axis ranges decide whether the touch coordinates are portrait or landscape. Any portrait framebuffer is turned by one constant, `PORTRAIT_UI_ROTATION`. Its 90° clockwise value is a guess until 2.3 observes the direction, and the tap mapping assumes the touchscreen reports framebuffer coordinates.
 
 ## Data to collect on a running Plus 5
 

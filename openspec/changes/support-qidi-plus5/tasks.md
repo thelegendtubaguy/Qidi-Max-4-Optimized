@@ -6,7 +6,7 @@
 - [x] 1.4 Classify every guarded patch, source patch, and extra module for the Plus 5: applies unchanged, needs a Plus 5 variant, or Max 4-only. Draft the `01.01.02.01` variants.
 - [x] 1.5 Draft `installer/klipper/printers/plus5/` (`homing.cfg`, `nozzle_motion.cfg`, `printer_profile.cfg`) from QIDI's Plus 5 macros, with stock currents and dwells.
 - [x] 1.6 Split the start-print contract per printer (`start-print-plus5.path.json`), and draft the Plus 5 OrcaSlicer and QIDI Studio packs in `orcaslicer_gcode/plus5/` and `qidistudio_gcode/plus5/` from QIDI's Plus 5 profiles.
-- [ ] 1.7 Add screen rotation and touch mapping to the Printer screen service, with the direction as a per-printer setting.
+- [x] 1.7 Add screen rotation and touch mapping to the Printer screen service. A portrait framebuffer turns `PORTRAIT_UI_ROTATION` (90°) clockwise; 2.3 confirms the direction and that the touchscreen reports framebuffer coordinates.
 - [x] 1.8 Extend the lifecycle and patch matrix tests to run against the Plus 5 snapshot.
 
 ## 2. On the Plus 5, read-only
