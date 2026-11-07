@@ -1,5 +1,9 @@
 # Changelog
 
+## 26.11.06.1
+- The QIDI Box's default extruder pull-back at the start of an unload is now 70 mm instead of 50 mm. On one Max 4, unloads with 50 mm kept failing with `QDE_004_008` (`Extruder unloading failure.`): the filament often hadn't left the toolhead sensor by the end of the pull. Updating raises a pull-back still at 50 mm to 70 mm and keeps one you've changed. QIDI's is 120 mm; set it back with `TLTG_BOX_MOTION UNLOAD_EXTRUDER_LENGTH=vendor` if unloads still fail. See [Load and unload speed](docs/qidi-box.md#load-and-unload-speed).
+- Fixed Fluidd's QIDI Box card saying the external spool was loaded while a Box slot was feeding the toolhead, during prints and during failed unloads. QIDI leaves its record of the slot driving the extruder empty at those times, and the card took filament at the toolhead with no slot recorded to be the external spool's. Box filament passes the Box hub's sensor and the external spool's doesn't, so with filament at the hub the card now shows the Box slot at the hub. Fluidd is updated to v1.37.7-tltg-a7b8de5.
+
 ## 26.11.05.1
 - The project is now called Valve Oil and lives at `https://github.com/thelegendtubaguy/valve-oil`. Links to the old address redirect, and the installer and automatic updates now download from the new one, so there's nothing to do. The installer shows the new name; macro names, files on the printer, and slicer profiles are unchanged.
 - The installer now checks which printer it's on as well as its firmware version. QIDI's firmware manifest names the printer model in its file name, and if that model doesn't match the firmware version, the installer stops with `Your firmware version is not supported.` before changing anything. This prepares for supporting printers other than the Max 4; nothing changes on a Max 4.

@@ -6,7 +6,7 @@ package:
   # The id predates multi-printer support; installed state records it, so it stays.
   id: qidi-max4-optimized
   display_name: Valve Oil
-  version: "26.11.05.1"
+  version: "26.11.06.1"
 # Each firmware version belongs to exactly one printer; patch variants are keyed by firmware version.
 printers:
   - id: max4
@@ -564,10 +564,10 @@ system_optimizations:
     service_worker: /home/qidi/fluidd/sw.js
   # The project's Fluidd fork release; the bundle builder downloads and verifies it.
   fluidd_build:
-    version: v1.37.7-tltg-c1b7d04
-    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-c1b7d04/fluidd.zip
+    version: v1.37.7-tltg-a7b8de5
+    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-a7b8de5/fluidd.zip
     archive: system/fluidd.zip
-    sha256: 45a775ddb3d5858327323759a6959826528c2626bf9d9154359d13df7bc1c8e4
+    sha256: f16ad17fcb3aa1e02de0bf55117158db65c1b135f906dbe4d5cf5e8f7721be0f
   # Wheels for QIDI's Moonraker virtualenv (Python 3.9, aarch64); the bundle builder downloads and verifies them.
   moonraker_speedups:
     wheels:
