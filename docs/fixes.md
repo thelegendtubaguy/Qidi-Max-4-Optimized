@@ -93,6 +93,8 @@ A 3MF file started without a plate number, for example from Fluidd, a reprint, o
 
 Fluidd's Box print dialog lists the filaments Moonraker says a file uses. Moonraker now reads them from what the slicer wrote for that file: for a 3MF, the filaments its plate uses; for an OrcaSlicer G-code file, the filaments it gives a length. Before, OrcaSlicer G-code files named none, and when OrcaSlicer exported several plates into one 3MF, only the plate selected in OrcaSlicer named any, and it named every plate's filaments.
 
+While a Box is connected, Fluidd opens the Box print dialog for every print. For a file that still names no filaments, it lists every filament in the file's slicer project and needs a slot for at least one.
+
 ## Faster Moonraker startup
 
 Unchanged 3MF files reuse their metadata instead of being re-extracted every time Moonraker starts. The first restart after installing rebuilds it once, and after that only new or changed files are read. Manual metadata rescans keep QIDI's thumbnails, and a failed rescan keeps the previous metadata.
