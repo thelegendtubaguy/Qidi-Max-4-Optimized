@@ -8,23 +8,23 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from installer.runtime import box_firmware
+from installer.runtime import box_firmware, mainboard_firmware
 from installer.runtime.auto_update import LOCK_HELD_ENV
 from installer.runtime.cli import main, parse_args, resolve_runtime_paths
 from installer.runtime.errors import InstallerError
 from installer.runtime.models import InstallResult
 from installer.runtime.reporter import create_reporter
-from installer.runtime.safety import BOX_RECOVERY_MARKER, ensure_no_recovery_sentinel
+from installer.runtime.safety import BOX_RECOVERY_MARKER, MAINBOARD_RECOVERY_MARKER, ensure_no_recovery_sentinel
 from installer.tests.helpers import REPO_ROOT, build_env, copy_base_runtime, temp_path
 from scripts import flash_box_firmware as protocol
-from scripts.build_box_firmware import patch_box
+from scripts.build_box_firmware import apply_patches
 
-USB = {"mcu_box1": "2-1.4.2", "mcu_box2": "2-1.4.1.2"}
+USB = {"mcu_box1": "2-1.4.2", "mcu_box2": "2-1.4.1.2", "mcu": "2-1.3"}
 
 
-def synthetic_manifest():
-    manifest = json.loads((REPO_ROOT / "firmware/max4-box-shutdown-fix-v1.json").read_text())
-    box = manifest["box"]
+def synthetic_manifest(name="max4-box-shutdown-fix-v1.json"):
+    manifest = json.loads((REPO_ROOT / "firmware" / name).read_text())
+    box = protocol.image_spec(manifest)
     stock = bytearray(box["size"])
     for entry in box["patches"]:
         if "before" in entry:
@@ -50,7 +50,8 @@ def synthetic_manifest():
 class Printer:
     def __init__(self, manifest, stock, boot, apps, *, failure=None):
         self.manifest, self.boot, self.failure = manifest, boot, failure
-        self.apps = {name: (patch_box(stock, manifest) if kind == "patched" else stock) for name, kind in apps.items()}
+        self.apps = {name: (apply_patches(stock, protocol.image_spec(manifest), "test") if kind == "patched" else stock)
+                     for name, kind in apps.items()}
         self.states = {"klipper.service": "active", "qidi-client.service": "active",
                        "tltg-optimized-auto-update.timer": "inactive"}
         self.original = dict(self.states)
@@ -65,7 +66,8 @@ class Printer:
                   "extruder": {"target": 0}, "heater_bed": {"target": 0}, "heater_generic chamber": {"target": self.chamber}}
         for name, app in self.apps.items():
             kind = protocol.image_identity(app, self.manifest)
-            status["mcu " + name] = {"mcu_version": self.manifest["box"]["patched_version" if kind == "patched" else "stock_version"]}
+            version = protocol.image_spec(self.manifest)["patched_version" if kind == "patched" else "stock_version"]
+            status["mcu" if name == "mcu" else "mcu " + name] = {"mcu_version": version}
         return io.BytesIO(json.dumps({"result": {"status": status}}).encode())
 
     def run(self, command, **kwargs):
@@ -83,7 +85,7 @@ class Printer:
         if command[0] == "systemctl":
             self.states[command[2]] = "inactive" if command[1] == "stop" else "active"
             return result()
-        assert command[1].endswith("/scripts/flash_box_firmware.py"), command
+        assert command[1].endswith(("/scripts/flash_box_firmware.py", "/scripts/flash_mcu_firmware.py")), command
         assert all(state == "inactive" for state in self.states.values()), "serial access while services run"
         name = {usb: box for box, usb in USB.items()}[command[command.index("--usb") + 1]]
         if command[2] == "snapshot":
@@ -191,6 +193,99 @@ class BoxFirmwareFlowTests(unittest.TestCase):
         env = build_env(root, moonraker_url="http://printer.invalid")
         with patch("installer.runtime.cli.run_install", return_value=InstallResult((), (), "label", None)), \
                 patch("installer.runtime.cli.run_box_firmware", side_effect=AssertionError("Unexpected Box firmware access")):
+            self.assertEqual(main(["install", "--yes", "--plain"], bundle_root=REPO_ROOT, environ=env, stream=io.StringIO()), 0)
+
+
+class MainboardFirmwareFlowTests(unittest.TestCase):
+    def fixture(self, kind, *, soc_file="QD_MAX4_SOC_01.01.07.01_20261016_Release_NA", **kwargs):
+        root = temp_path("mainboard-firmware-flow-")
+        manifest, stock, boot = synthetic_manifest("max4-mcu-closed-loop-replies-v1.json")
+        bundle = root / "bundle"
+        (bundle / "scripts").mkdir(parents=True)
+        (bundle / "firmware").mkdir()
+        (bundle / "scripts/flash_mcu_firmware.py").write_text("# fixture")
+        (bundle / mainboard_firmware.MANIFEST).write_text(json.dumps(manifest))
+        data = root / "printer_data"
+        (data / "config").mkdir(parents=True)
+        (data / "config/MCU_ID.cfg").write_text("[mcu]\nserial: /dev/serial/by-id/mcu\n")
+        (data / "firmware_manifest.json").write_text(json.dumps({"SOC": {"file": soc_file, "version": "01.01.07.01"}}))
+        (root / "klippy-env/bin").mkdir(parents=True)
+        (root / "klippy-env/bin/python").write_text("")
+        paths = resolve_runtime_paths(bundle_root=bundle, environ=build_env(data, moonraker_url="http://printer.invalid/printer/objects/query"))
+        printer = Printer(manifest, stock, boot, {"mcu": kind}, **kwargs)
+        reporter = create_reporter(io.StringIO(), prefer_plain=True, bundle_root=REPO_ROOT, environ={})
+        return paths, printer, reporter
+
+    def execute(self, paths, printer, reporter, action, answer="FLASH\n", **kwargs):
+        return mainboard_firmware.run_mainboard_firmware(
+            paths=paths, reporter=reporter, action=action, input_stream=io.StringIO(answer),
+            run=printer.run, urlopen=printer.urlopen, sleep=lambda seconds: None,
+            clock=iter(range(0, 10 ** 6, 10)).__next__, resolve_usb=lambda serial: USB[serial.rsplit("/", 1)[1]], **kwargs)
+
+    def identity(self, printer):
+        return protocol.image_identity(printer.apps["mcu"], printer.manifest)
+
+    def test_install_and_restore_flash_only_when_needed_and_verify(self):
+        paths, printer, reporter = self.fixture("stock")
+        self.assertEqual(self.execute(paths, printer, reporter, "install"), 0)
+        self.assertEqual((printer.transfers, self.identity(printer)), ([("mcu", False)], "patched"))
+        self.assertEqual(printer.states, printer.original)
+        self.assertFalse((paths.printer_data_root / MAINBOARD_RECOVERY_MARKER).exists())
+        verification, = (paths.printer_data_root / mainboard_firmware.BACKUP_DIRECTORY).glob("*/verification.json")
+        self.assertTrue(json.loads(verification.read_text())["verified"])
+        self.assertEqual(self.execute(paths, printer, reporter, "install"), 0)
+        self.assertEqual(len(printer.transfers), 1)
+        self.assertEqual(self.execute(paths, printer, reporter, "restore"), 0)
+        self.assertEqual((printer.transfers[-1], self.identity(printer)), (("mcu", False), "stock"))
+        self.assertEqual(printer.states, printer.original)
+
+    def test_unsupported_bootloader_is_captured_without_programming(self):
+        paths, printer, reporter = self.fixture("stock", failure="unknown-boot")
+        self.assertEqual(self.execute(paths, printer, reporter, "install"), 0)
+        self.assertEqual((printer.transfers, printer.states), ([], printer.original))
+        self.assertFalse((paths.printer_data_root / MAINBOARD_RECOVERY_MARKER).exists())
+        self.assertIn("not changed: unsupported bootloader", reporter.stream.getvalue())
+
+    def test_unsafe_states_and_cancellation_never_touch_services(self):
+        for case in ("printing", "chamber-hot", "cancel", "automatic-update", "not-max4"):
+            with self.subTest(case=case):
+                paths, printer, reporter = self.fixture(
+                    "stock", soc_file="QD_PLUS5_SOC_01.01.02.01_Release" if case == "not-max4" else "QD_MAX4_SOC_01.01.07.01")
+                printer.print_state = "printing" if case == "printing" else "standby"
+                printer.chamber = 60 if case == "chamber-hot" else 0
+                environ = {LOCK_HELD_ENV: "1"} if case == "automatic-update" else None
+                if case == "cancel":
+                    self.assertEqual(self.execute(paths, printer, reporter, "install", answer="flash\n"), 1)
+                else:
+                    with self.assertRaises(InstallerError):
+                        self.execute(paths, printer, reporter, "install", environ=environ)
+                self.assertEqual((printer.transfers, printer.states), ([], printer.original))
+
+    def test_failed_write_blocks_installer_until_rescue_restores_stock(self):
+        paths, printer, reporter = self.fixture("stock", failure="transfer")
+        with self.assertRaises(mainboard_firmware.MainboardFirmwareError):
+            self.execute(paths, printer, reporter, "install")
+        self.assertTrue((paths.printer_data_root / MAINBOARD_RECOVERY_MARKER).is_file())
+        self.assertTrue(all(state == "inactive" for state in printer.states.values()))
+        self.assertIn("mainboard-firmware.sh rescue", reporter.stream.getvalue())
+        with self.assertRaises(InstallerError):
+            ensure_no_recovery_sentinel(paths.recovery_sentinel_path)
+        with self.assertRaises(InstallerError):
+            self.execute(paths, printer, reporter, "install")
+        self.assertEqual(self.execute(paths, printer, reporter, "rescue"), 0)
+        self.assertEqual((printer.transfers[-1], self.identity(printer)), (("mcu", True), "stock"))
+        self.assertEqual(printer.states, printer.original)
+        self.assertFalse((paths.printer_data_root / MAINBOARD_RECOVERY_MARKER).exists())
+
+    def test_mainboard_firmware_is_only_reachable_through_its_own_mode(self):
+        self.assertEqual(parse_args(["mainboard-firmware", "install"]).box_action, "install")
+        for argv in (["mainboard-firmware"], ["mainboard-firmware", "install", "--box", "1"], ["mainboard-firmware", "install", "--yes"]):
+            with self.subTest(argv=argv), self.assertRaises(SystemExit):
+                parse_args(argv)
+        root = copy_base_runtime()
+        env = build_env(root, moonraker_url="http://printer.invalid")
+        with patch("installer.runtime.cli.run_install", return_value=InstallResult((), (), "label", None)), \
+                patch("installer.runtime.cli.run_mainboard_firmware", side_effect=AssertionError("Unexpected mainboard firmware access")):
             self.assertEqual(main(["install", "--yes", "--plain"], bundle_root=REPO_ROOT, environ=env, stream=io.StringIO()), 0)
 
 

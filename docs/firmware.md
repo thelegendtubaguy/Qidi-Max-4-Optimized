@@ -2,9 +2,9 @@
 
 [← Back to the README](../README.md)
 
-Two optional fixes for bugs in QIDI's firmware. Neither is installed unless you ask for it, and uninstalling this project doesn't change firmware.
+Three optional fixes for QIDI's firmware. None is installed unless you ask for it, and uninstalling this project doesn't change firmware.
 
-Both need an idle, ready printer with every heater target at zero. **Keep the printer powered on until the fix finishes.**
+All three need an idle, ready printer with every heater target at zero. **Keep the printer powered on until the fix finishes.**
 
 ## Toolhead accelerometer fix
 
@@ -45,3 +45,22 @@ The script asks you to type `FLASH`, and stops Klipper and the touchscreen for a
 A fixed Box reports its version as `02.03.01.21-tltg-shutdownfix1` in Fluidd and `klippy.log`.
 
 **If a flash fails:** see [QIDI Box firmware shutdown fix](../firmware/BOX_FIRMWARE.md).
+
+## Mainboard closed-loop reply fix
+
+On the Max 4, the X and Y motors are closed-loop: each one's driver knows where the motor is and answers questions about it over a bus that the mainboard runs. QIDI's mainboard firmware (`02.01.01.12`) passes an answer on to Klipper the moment it ends only for the status and version questions. Every other answer, including position error, encoder position, temperature, and the acknowledgement of each setting QIDI sends while homing, waits for 50 ms of silence on the bus, so it takes about 70 ms. This fix tells the mainboard how long each of those answers is, so it passes them on at their last byte. Answers it doesn't list are handled exactly as before. On the test printer, position-error, encoder, and temperature answers came back in a median 7–8 ms instead of 68–73 ms. Homing takes as long as before. The [X/Y step-loss monitor](tools.md#xy-step-loss-monitor) and QIDI's own motor checks work with or without it.
+
+**How to install:** the installer never installs or offers it. Run it yourself over SSH from the installer folder:
+
+```sh
+cd ~/tltg-optimized-macros
+./mainboard-firmware.sh status    # whether the mainboard has the fix
+./mainboard-firmware.sh install   # flash it
+./mainboard-firmware.sh restore   # put QIDI's stock mainboard firmware back
+```
+
+The script asks you to type `FLASH`, and stops Klipper and the touchscreen for about three minutes; the printer can't move or heat until they start again. It only flashes the mainboard bootloader and firmware build it recognizes, reads the result back to verify it, and keeps the stock firmware under `~/printer_data/.tltg_mainboard_firmware_backups/`.
+
+A fixed mainboard reports its version as `02.01.01.12-tltg-clreplies1` in Fluidd and `klippy.log`.
+
+**If a flash fails:** see [Max 4 mainboard closed-loop reply fix](../firmware/MAINBOARD_FIRMWARE.md).

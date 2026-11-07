@@ -30,4 +30,4 @@ Evidence qualifiers are defined in `openspec/observations/README.md`. Sources: t
 ## Main MCU RS-485 diagnostics
 
 - **Runtime-confirmed:** the main MCU (`QIDI_MAIN_V2_1.0.12`, firmware `02.01.01.12`) emits `#output: rs485_diag rb_drop=… uart_ore=… checksum_err=… resync=… discard=… frame_too_long=… tx_overflow=…` into `klippy.log` on a printer with only USB Boxes. Eleven lines appeared on 2026-10-30, with `checksum_err` between 1 and 9 and `resync` up to 4 while idle.
-- **Unresolved:** which bus this is. It is not the `[box485]` adapter path, which runs on the host. The closed-loop motors (`CLOSED_LOOP_MOTOR` `03.01.10.15` in the manifest) are a candidate.
+- **Static-recovered (mainboard `02.01.01.12`):** the counters belong to the mainboard's UART5 at 38400 baud, the bus to the closed-loop X and Y drivers; see [Closed-loop X/Y drivers](../qidi-platform.md#closed-loop-xy-drivers-max-4). It is not the `[box485]` adapter path, which runs on the host.

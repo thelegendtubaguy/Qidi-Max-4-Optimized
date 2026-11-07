@@ -142,6 +142,13 @@ def main(argv: list[str] | None = None) -> int:
     box_help = run_command([str(bundle_root / "box-firmware.sh"), "--help"], cwd=bundle_root, env=os.environ.copy())
     if box_tool_help.returncode != 0 or box_help.returncode != 0 or "rescue" not in box_help.stdout:
         raise SystemExit(box_tool_help.stdout + box_tool_help.stderr + box_help.stdout + box_help.stderr)
+    for relative in ("mainboard-firmware.sh", "scripts/flash_mcu_firmware.py", "scripts/build_mcu_firmware.py", "firmware/max4-mcu-closed-loop-replies-v1.json", "firmware/MAINBOARD_FIRMWARE.md"):
+        if not (bundle_root / relative).is_file():
+            raise SystemExit("bundle is missing mainboard firmware support: " + relative)
+    mainboard_tool_help = run_command([sys.executable, str(bundle_root / "scripts/flash_mcu_firmware.py"), "--help"], cwd=bundle_root, env=os.environ.copy())
+    mainboard_help = run_command([str(bundle_root / "mainboard-firmware.sh"), "--help"], cwd=bundle_root, env=os.environ.copy())
+    if mainboard_tool_help.returncode != 0 or mainboard_help.returncode != 0 or "mainboard-firmware" not in mainboard_help.stdout:
+        raise SystemExit(mainboard_tool_help.stdout + mainboard_tool_help.stderr + mainboard_help.stdout + mainboard_help.stderr)
     version_output = run_command([str(bundle_root / "install.sh"), "-v"], cwd=bundle_root, env=os.environ.copy())
     if version_output.returncode != 0:
         raise SystemExit(version_output.stdout + version_output.stderr)
