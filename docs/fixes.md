@@ -36,6 +36,7 @@ Klipper also does less work on its main loop, so Box motor moves keep more headr
 - Spoolman's slot tracking reads the loaded slot directly instead of building QIDI's Box status twice a second.
 - Klipper checks its timers, about 70 of them, many times a second; that now takes about a third less time.
 - QIDI's once-a-second status update for Fluidd and the touchscreen skips macros whose values haven't changed and compares QIDI's Box status faster. Fluidd and the touchscreen receive the same updates.
+- Klipper encodes the status it sends Moonraker with `msgspec` instead of Python's `json`, in about a third of the time. The installer adds `msgspec` to QIDI's Klipper. Anything `msgspec` can't encode goes out with `json` as before.
 
 The timer and status changes come from the same module as the [fixes from newer Klipper](#fixes-from-newer-klipper), with the same check: each is skipped, and listed as skipped in `klippy.log`, if QIDI's code isn't exactly the version it was written for.
 

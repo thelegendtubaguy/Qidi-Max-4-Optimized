@@ -248,6 +248,15 @@ GUARDED_FILE_PATCHES = {
         skip_unrecognized=True,
         create_if_missing=True,
     ),
+    moonraker_speedups.KLIPPER_PATH_OPERATION: _GuardedFilePatch(
+        label="Klipper speedups path file",
+        file=lambda spec: moonraker_speedups.KLIPPER_PATH_FILE,
+        patch=moonraker_speedups.patch_klipper_path_file,
+        restart_service=moonraker_speedups.KLIPPER_RESTART_SERVICE,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+    ),
     restart_on_exit.MOONRAKER_OPERATION: _GuardedFilePatch(
         label="Moonraker restart-on-exit drop-in",
         file=lambda spec: restart_on_exit.FILES[restart_on_exit.MOONRAKER_OPERATION],
@@ -773,6 +782,11 @@ def _moonraker_env_present(root: Path) -> bool:
     return not _path_has_symlink_component(site_packages, root=root) and site_packages.is_dir()
 
 
+def _klippy_env_present(root: Path) -> bool:
+    site_packages = _map_path(root, moonraker_speedups.KLIPPER_SITE_PACKAGES)
+    return not _path_has_symlink_component(site_packages, root=root) and site_packages.is_dir()
+
+
 def _moonraker_speedups_state(spec: SystemOptimizationsSpec, root: Path) -> str:
     """Raises MoonrakerSpeedupsError when the package wheels are missing or invalid."""
     destination = _map_path(root, moonraker_speedups.DESTINATION)
@@ -1210,10 +1224,12 @@ def apply_system_optimizations(
                     raise SystemOptimizationError(f"Required {guarded.label} was modified and was preserved.")
                 reporter.line(f"{guarded.label} was modified after install and was preserved.")
                 continue
-            if operation_id == moonraker_speedups.PATH_OPERATION and not (
-                _moonraker_env_present(root) and _moonraker_speedups_current(spec, root)
-            ):
-                # Never point Moonraker at packages that aren't in place.
+            env_present = {
+                moonraker_speedups.PATH_OPERATION: _moonraker_env_present,
+                moonraker_speedups.KLIPPER_PATH_OPERATION: _klippy_env_present,
+            }.get(operation_id)
+            if env_present is not None and not (env_present(root) and _moonraker_speedups_current(spec, root)):
+                # Never point Moonraker or Klipper at packages that aren't in place.
                 actions.append(
                     _action_record(
                         operation_id=operation_id,
@@ -3083,9 +3099,10 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         restart_on_exit.KLIPPER_OPERATION,
         webcam_id.OPERATION,
         *service_priority.SERVICES,
-        # The path file goes after the packages it points at, so restoration removes it first.
+        # The path files go after the packages they point at, so restoration removes them first.
         MOONRAKER_SPEEDUPS_OPERATION,
         moonraker_speedups.PATH_OPERATION,
+        moonraker_speedups.KLIPPER_PATH_OPERATION,
         FILAMENT_CONFIG_OPERATION,
         FLUIDD_BUILD_OPERATION,
         remote_screen.UNIT_OPERATION,
@@ -3159,7 +3176,7 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
     if operation_id in (
         moonraker_klippy_apis.OPERATION, moonraker_spoolman.OPERATION, moonraker_allowed_services.OPERATION,
         moonraker_used_extruders.OPERATION, moonraker_speedups.PATH_OPERATION,
-        restart_on_exit.MOONRAKER_OPERATION, restart_on_exit.KLIPPER_OPERATION,
+        moonraker_speedups.KLIPPER_PATH_OPERATION, restart_on_exit.MOONRAKER_OPERATION, restart_on_exit.KLIPPER_OPERATION,
         webcam_id.OPERATION, *service_priority.SERVICES, zram_swap.UNIT_OPERATION, cpu_governor.OPERATION,
         remote_screen.UNIT_OPERATION, remote_screen.SERVER_OPERATION, remote_screen.NGINX_OPERATION,
     ):
@@ -3611,6 +3628,7 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             webcam_id.OPERATION,
             MOONRAKER_SPEEDUPS_OPERATION,
             moonraker_speedups.PATH_OPERATION,
+            moonraker_speedups.KLIPPER_PATH_OPERATION,
             *service_priority.SERVICES,
             ZRAM_SWAP_OPERATION,
             zram_swap.UNIT_OPERATION,

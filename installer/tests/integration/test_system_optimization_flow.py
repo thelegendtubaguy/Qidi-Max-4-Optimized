@@ -265,9 +265,10 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         # Without a package Fluidd build, nginx keeps serving QIDI's patched bundle.
         self.assertEqual(nginx_site.read_bytes(), nginx_site_before)
         self.assertEqual(state.system_ledger["outcomes"][system_optimizations.FLUIDD_BUILD_OPERATION]["status"], "missing")
-        # Without the package's wheels, Moonraker is never pointed at a speedups directory.
+        # Without the package's wheels, Moonraker and Klipper are never pointed at a speedups directory.
         self.assertEqual(state.system_ledger["outcomes"][moonraker_speedups.OPERATION]["status"], "missing")
         self.assertEqual(state.system_ledger["outcomes"][moonraker_speedups.PATH_OPERATION]["status"], "skipped")
+        self.assertEqual(state.system_ledger["outcomes"][moonraker_speedups.KLIPPER_PATH_OPERATION]["status"], "skipped")
         self.assertEqual(asvc.read_bytes(), asvc_before + b"\nqidi-client\n")
         fluidd_current = fluidd.read_bytes()
         # Earlier package versions left owned Fluidd patches, including an older Box motion section, that updates must replace in place.
@@ -318,6 +319,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         previous_speedups = system_root / moonraker_speedups.PREVIOUS.lstrip("/")
         speedups_marker = speedups / moonraker_speedups.MARKER
         speedups_path = system_root / moonraker_speedups.PATH_FILE.lstrip("/")
+        klipper_speedups_path = system_root / moonraker_speedups.KLIPPER_PATH_FILE.lstrip("/")
         speedups_digest = moonraker_speedups.digest(wheel.sha256 for wheel in manifest.system_optimizations.moonraker_speedups.wheels)
 
         def failing_restart(unit):
@@ -344,6 +346,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertFalse(build.exists())
         self.assertFalse(speedups.exists())
         self.assertFalse(speedups_path.exists())
+        self.assertFalse(klipper_speedups_path.exists())
         self.assertEqual(nginx_site.read_bytes(), nginx_site_before)
         self.assertEqual(fluidd.read_bytes(), fluidd_current)
         reconciled = reconcile(reconciled)
@@ -353,6 +356,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual((speedups / "msgspec/_core.so").stat().st_mode & 0o777, 0o755)
         self.assertEqual((speedups / "uvloop/__init__.py").stat().st_mode & 0o777, 0o644)
         self.assertEqual(speedups_path.read_text(encoding="utf-8"), moonraker_speedups.PATH_CONTENT)
+        self.assertEqual(klipper_speedups_path.read_text(encoding="utf-8"), moonraker_speedups.KLIPPER_PATH_CONTENT)
         self.assertIn(b"\r\n    root /home/qidi/tltg-fluidd;\r\n    gzip_static on;\r\n", nginx_site.read_bytes())
         self.assertIn(b"location /tltg-screen/ {\r\n", nginx_site.read_bytes())
         self.assertNotIn(b"\n", nginx_site.read_bytes().replace(b"\r\n", b""))
@@ -437,6 +441,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertFalse(speedups.exists())
         self.assertFalse(speedups_path.exists())
         self.assertTrue(speedups_path.parent.is_dir())
+        self.assertFalse(klipper_speedups_path.exists())
+        self.assertTrue(klipper_speedups_path.parent.is_dir())
         self.assertFalse(screen_unit.exists())
         self.assertFalse(screen_server.exists())
         self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "disabled")

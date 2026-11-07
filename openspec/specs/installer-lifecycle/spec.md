@@ -289,21 +289,22 @@ Normal install and update SHALL apply recognized Moonraker metadata optimization
 - **AND** the used-filament extraction is deployed the same way to Moonraker's metadata extractor after its plate selection, and is left unchanged when the extractor is unrecognized
 
 ### Requirement: Moonraker speedup packages
-The installer SHALL make the `msgspec` and `uvloop` packages that QIDI's Moonraker already uses when importable available to it from pinned, checksum-verified wheels in the release bundle, without replacing anything in QIDI's Moonraker virtualenv, and SHALL keep the change reversible.
+The installer SHALL make the `msgspec` and `uvloop` packages that QIDI's Moonraker already uses when importable available to it, and the same packages to QIDI's Klipper for the optimized status encoding, from pinned, checksum-verified wheels in the release bundle, without replacing anything in QIDI's Moonraker or Klipper virtualenv, and SHALL keep the change reversible.
 
 #### Scenario: Packages are added beside QIDI's virtualenv
 - **WHEN** the bundle carries the pinned wheels and QIDI's Python 3.9 Moonraker virtualenv exists
 - **THEN** the installer extracts the verified wheels into a package-owned directory marked with their checksums, and only then adds a path file to the virtualenv that points at it
 - **AND** Moonraker restarts once; a Moonraker that does not answer after the restart rolls back the path file and the directory
+- **AND** when QIDI's Python 3.9 Klipper virtualenv exists, a second path file adds the same directory to it and Klipper restarts once
 - **AND** an update with different wheels replaces the directory whole, and a later failure in the same operation brings back the replaced one
 
 #### Scenario: Missing or foreign state is left alone
-- **WHEN** the bundle has no wheels, the virtualenv is missing, the directory exists without the package's marker, or an existing path file is not the package's
-- **THEN** the installer leaves them unchanged, never points Moonraker at packages that are not in place, and installs nothing else for this change
+- **WHEN** the bundle has no wheels, a virtualenv is missing, the directory exists without the package's marker, or an existing path file is not the package's
+- **THEN** the installer leaves them unchanged, never points Moonraker or Klipper at packages that are not in place, and installs nothing else for this change
 
 #### Scenario: Speedup deployment remains reversible
-- **WHEN** uninstall finds the package's path file and directory
-- **THEN** it removes the unchanged path file, then the package-owned directory, and restarts Moonraker, leaving QIDI's virtualenv as it was
+- **WHEN** uninstall finds the package's path files and directory
+- **THEN** it removes the unchanged path files, then the package-owned directory, and restarts Moonraker and Klipper, leaving QIDI's virtualenvs as they were
 - **AND** a directory that lost the package's marker or a path file changed after install is preserved and reported
 
 ### Requirement: Recoverable Fluidd QIDI Box filament display

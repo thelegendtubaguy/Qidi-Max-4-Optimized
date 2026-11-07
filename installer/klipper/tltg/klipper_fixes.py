@@ -49,10 +49,16 @@
 #   current time and the enable pin's previous change, and no later than
 #   the move; an enable 0.3 s early that is still ahead of those is
 #   unchanged. Klipper that enables at the move needs no change.
+# - Status encoding: when msgspec is importable, Klipper encodes what it
+#   sends Moonraker with it instead of Python's json, several times faster.
+#   NaN and infinity go out as null, which Moonraker's msgspec decoder
+#   reads; json wrote NaN, which it rejects. Anything msgspec can't encode
+#   goes through json as before.
 
 import gc
 import hashlib
 import inspect
+import json
 import logging
 
 import mcu
@@ -60,6 +66,11 @@ import reactor
 import serialhdl
 import webhooks
 from . import heaters, stepper_enable, tmc
+
+try:
+    import msgspec
+except ImportError:
+    msgspec = None
 
 MARKER = "_tltg_klipper_fixes"
 MAX_MAINTHREAD_TIME = 5.
@@ -107,6 +118,8 @@ ORIGINALS = {
         "9a74a0b5a7e416c0e682a081c2ba3103364397edb0d40cfad3dddbae166bd2e1",
     "EnableTracking.motor_enable":
         "4c98062e7e62f23b182fa789a31cbd28994d0d91dacc4ddb429d9ba08301eeee",
+    "ClientConnection.send":
+        "55aab4af4a66a830c9bbc27deccdf413d762f25bcb0a2da6bab0bd76331707b8",
 }
 
 
@@ -466,6 +479,27 @@ def _do_query(self, eventtime):
     return eventtime + webhooks.SUBSCRIPTION_REFRESH_TIME
 
 
+_msgspec_encode = msgspec.json.Encoder().encode if msgspec else None
+
+
+def _client_send(self, data):
+    try:
+        try:
+            jmsg = _msgspec_encode(data)
+        except (TypeError, ValueError, OverflowError, RecursionError):
+            # msgspec takes fewer types than json, such as None or True as
+            # a dict key; those encode as before.
+            jmsg = json.dumps(data, separators=(',', ':')).encode()
+        self.send_buffer += jmsg + b"\x03"
+    except (TypeError, ValueError) as e:
+        msg = ("json encoding error: %s" % (str(e),))
+        logging.exception(msg)
+        self.printer.invoke_shutdown(msg)
+        return
+    if not self.is_blocking:
+        self._do_send()
+
+
 class KlipperFixes:
     def __init__(self, config):
         self.printer = config.get_printer()
@@ -497,6 +531,13 @@ class KlipperFixes:
                 "QueryStatusHelper._do_query", _do_query)),
             ("stepper enable timing", _fix_stepper_enable),
         ]
+        if msgspec is None:
+            logging.info("tltg_klipper_fixes: msgspec isn't installed for "
+                         "Klipper; status updates use json")
+        else:
+            fixes.append(("status encoding", lambda: _replace(
+                webhooks.ClientConnection, "send", "ClientConnection.send",
+                _client_send)))
         applied, skipped = [], []
         for name, fix in fixes:
             try:
