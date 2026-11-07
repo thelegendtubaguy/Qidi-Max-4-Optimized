@@ -129,7 +129,12 @@ def delete_section(text: str, section_name: str) -> str:
 
 
 def append_section(text: str, section_text: str) -> str:
-    separator = "" if not text or text.endswith(("\n", "\r\n")) else "\n"
+    # QIDI ships some printers' configs with CRLF line endings; a restored section keeps the file's.
+    if "\r\n" in text:
+        section_text = section_text.replace("\r\n", "\n").replace("\n", "\r\n")
+        separator = "" if text.endswith("\n") else "\r\n"
+    else:
+        separator = "" if not text or text.endswith("\n") else "\n"
     return text + separator + section_text
 
 

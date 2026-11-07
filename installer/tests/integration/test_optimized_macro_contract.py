@@ -17,6 +17,10 @@ from installer.tests.integration.test_macro_call_graph import (
 
 OPTIMIZED_MACRO_ROOT = REPO_ROOT / "installer" / "klipper" / "tltg-optimized-macros"
 MAX4_MACRO_ROOT = PRINTER_MACRO_ROOT / "max4"
+NEWEST_STOCK = {
+    "max4": REPO_ROOT / "installer/stock/qidi-max4-defaults/firmwares/01.01.07.01",
+    "plus5": REPO_ROOT / "installer/stock/qidi-plus5-defaults/firmwares/01.01.02.01",
+}
 
 
 class OptimizedMacroContractTests(unittest.TestCase):
@@ -156,11 +160,16 @@ class OptimizedMacroContractTests(unittest.TestCase):
         )
 
     def test_filament_sensor_policy_preserves_events_and_box_recovery(self):
+        for printer, pin in (("max4", "!THR:PA0"), ("plus5", "!THR:PA1")):
+            with self.subTest(printer=printer):
+                sensor = (PRINTER_MACRO_ROOT / printer / "printer_profile.cfg").read_text(encoding="utf-8")
+                self.assertIn("[filament_switch_sensor filament_switch_sensor]", sensor)
+                self.assertIn("pause_on_runout: False", sensor)
+                self.assertIn("runout_gcode:\n  OPTIMIZED_FILAMENT_SENSOR_RUNOUT", sensor)
+                self.assertIn("insert_gcode:\n  OPTIMIZED_FILAMENT_SENSOR_INSERTED", sensor)
+                self.assertIn(f"switch_pin: {pin}", sensor)
+
         text = (OPTIMIZED_MACRO_ROOT / "filament.cfg").read_text(encoding="utf-8")
-        self.assertIn("[filament_switch_sensor filament_switch_sensor]", text)
-        self.assertIn("pause_on_runout: False", text)
-        self.assertIn("runout_gcode:\n  OPTIMIZED_FILAMENT_SENSOR_RUNOUT", text)
-        self.assertIn("insert_gcode:\n  OPTIMIZED_FILAMENT_SENSOR_INSERTED", text)
 
         control = self._macro_gcode("TLTG_FILAMENT_SENSOR")
         self.assertIn("variable_pause_enabled: 1", text)
@@ -196,18 +205,81 @@ class OptimizedMacroContractTests(unittest.TestCase):
         )
 
     def test_vendor_cut_macro_matches_newest_stock_without_exit_dwell(self):
-        stock = self._section_gcode(
-            REPO_ROOT
-            / "installer/stock/qidi-max4-defaults/firmwares/01.01.07.01/config/klipper-macros-qd/filament.cfg",
-            "gcode_macro CUT_FILAMENT_1",
+        for printer, stock_root in NEWEST_STOCK.items():
+            with self.subTest(printer=printer):
+                stock = self._section_gcode(
+                    stock_root / "config/klipper-macros-qd/filament.cfg", "gcode_macro CUT_FILAMENT_1"
+                )
+                optimized = self._section_gcode(
+                    PRINTER_MACRO_ROOT / printer / "nozzle_motion.cfg", "gcode_macro CUT_FILAMENT_1"
+                )
+                stock_lines = [line.rstrip() for line in stock.splitlines() if line.strip()]
+                self.assertEqual(stock_lines[-1].strip(), "G4 P2000")
+                self.assertEqual([line.rstrip() for line in optimized.splitlines() if line.strip()], stock_lines[:-1])
+
+    def test_printer_folders_define_the_same_sections(self):
+        sections = {
+            printer: sorted(
+                name.lower()
+                for path in (PRINTER_MACRO_ROOT / printer).glob("*.cfg")
+                for name, _, _ in iter_sections(path.read_text(encoding="utf-8").splitlines())
+            )
+            for printer in NEWEST_STOCK
+        }
+        self.assertEqual(sections["plus5"], sections["max4"])
+
+    def test_plus5_homes_sensorless_without_closed_loop_commands(self):
+        text = "\n".join(path.read_text(encoding="utf-8") for path in (PRINTER_MACRO_ROOT / "plus5").glob("*.cfg"))
+        for command in ("ENFORCE_MODE", "SET_HOMING_MODE", "SET_HOMING_STATE", "cl_interface", "closed_loop"):
+            self.assertNotIn(command, text)
+
+        macros, duplicates = parse_macro_definitions(installed_macro_files("plus5"))
+        self.assertFalse(duplicates)
+        for axis in ("X", "Y"):
+            home = "\n".join(line for _, line in macros[f"_OPTIMIZED_HOME_{axis}_AND_BACKOFF"].gcode_lines)
+            self.assert_ordered(
+                home,
+                "SET_TMC_CURRENT STEPPER=stepper_x CURRENT={homing_current}",
+                "SET_TMC_CURRENT STEPPER=stepper_y CURRENT={homing_current}",
+                f"G28.6245197 {axis}",
+                'CURRENT={drivers["tmc2240 stepper_x"].run_current}',
+                'CURRENT={drivers["tmc2240 stepper_y"].run_current}',
+            )
+        homing_override = self._section_gcode(PRINTER_MACRO_ROOT / "plus5/homing.cfg", "homing_override")
+        full_home = homing_override[:homing_override.index("{% if xy_home %}")]
+        self.assert_ordered(
+            full_home,
+            "_OPTIMIZED_PREP_XY_HOME SET_Z=1 MOVE_Z=5",
+            "_OPTIMIZED_HOME_Y_AND_BACKOFF",
+            "_OPTIMIZED_HOME_X_AND_BACKOFF",
+            "_OPTIMIZED_HOME_Y_AND_BACKOFF",
+            "_OPTIMIZED_RESTORE_XY_HOMING_STATE",
+            "_OPTIMIZED_HOME_Z_FROM_SAFE_POINT_RAW",
         )
-        optimized = self._macro_gcode("CUT_FILAMENT_1")
-        stock_lines = [line.rstrip() for line in stock.strip().splitlines()]
-        self.assertEqual(stock_lines[-1].strip(), "G4 P2000")
-        self.assertEqual([line.rstrip() for line in optimized.strip().splitlines()], stock_lines[:-1])
+        self.assertGreater(
+            homing_override.index("_OPTIMIZED_RESTORE_DEFAULT_ACCEL WARN=1"), homing_override.rindex("action_raise_error")
+        )
+
+    def test_plus5_nozzle_moves_stay_inside_its_travel(self):
+        limits = {"X": (-7, 326), "Y": (-5, 340)}
+        text = (PRINTER_MACRO_ROOT / "plus5/nozzle_motion.cfg").read_text(encoding="utf-8")
+        profile = (PRINTER_MACRO_ROOT / "plus5/printer_profile.cfg").read_text(encoding="utf-8")
+        relative = False
+        for line in text.splitlines():
+            command = line.split("#")[0].strip()
+            if command in ("G90", "G91"):
+                relative = command == "G91"
+            if relative or not command.startswith(("G0 ", "G1 ")):
+                continue
+            for axis, value in re.findall(r"\b([XY])(-?\d+(?:\.\d+)?)\b", command):
+                low, high = limits[axis]
+                self.assertTrue(low <= float(value) <= high, line)
+        for axis, value in re.findall(r"^variable_\w+_([xy]): (-?[\d.]+)$", profile, re.M):
+            low, high = limits[axis.upper()]
+            self.assertTrue(low <= float(value) <= high, f"{axis} {value}")
 
     def test_slicer_filament_change_serves_both_box_command_surfaces(self):
-        for pack in ("orcaslicer_gcode", "qidistudio_gcode"):
+        for pack in ("orcaslicer_gcode", "qidistudio_gcode", "orcaslicer_gcode/plus5", "qidistudio_gcode/plus5"):
             with self.subTest(pack=pack):
                 text = (REPO_ROOT / pack / "change_filament.gcode").read_text(encoding="utf-8")
                 self.assert_ordered(

@@ -121,7 +121,8 @@ def _select(boxes: list[Box], requested: list[int] | None) -> list[Box]:
 def _stock_image(paths, manifest) -> bytes | None:
     from scripts.flash_box_firmware import image_identity
     candidates = sorted((paths.printer_data_root / BACKUP_DIRECTORY).glob("*/*/before/application.bin"))
-    candidates += sorted((paths.printer_data_root.parent / "update").glob("QD_MAX4_BOX_" + manifest["box"]["stock_version"] + "_*.bin"))
+    # The Box is one accessory for every printer; QIDI names its image after the printer's package (QD_MAX4_, QD_PLUS5_).
+    candidates += sorted((paths.printer_data_root.parent / "update").glob("QD_*_BOX_" + manifest["box"]["stock_version"] + "_*.bin"))
     for candidate in candidates:
         try:
             data = candidate.read_bytes()
